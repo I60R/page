@@ -1,17 +1,21 @@
 [package]
 name = "page"
-version = "0.1.0"
+version = "0.3.0"
 authors = ["160R <160R@protonmail.com>"]
+description = "Pager that utilizes neovim's terminal buffer"
 
 [dependencies]
 rand = "0.3.18"
-clap = "2.27.1"
-neovim-lib = "0.5.0"
 libc = "0.2.33"
+failure = "0.1.1"
+structopt = "0.1.0"
+structopt-derive = "0.1.0"
+lazy_static = "0.2"
+neovim-lib = "0.5.0"
 
 [[bin]]
-name = "page-agent"
-path = "src/page_agent.rs"
+name = "pty-agent"
+path = "src/pty-agent.rs"
 
 [[bin]]
 name = "page"
