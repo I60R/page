@@ -1,6 +1,6 @@
 [package]
 name = "page"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["160R <160R@protonmail.com>"]
 description = "Pager that utilizes neovim's terminal buffer"
 
