@@ -11,10 +11,12 @@ use failure::{Error};
 use neovim_lib::{Neovim, NeovimApi, CallError, Session};
 use rand::{Rng, thread_rng};
 use structopt::StructOpt;
-use std::fs::{remove_file, File, OpenOptions};
+use std::fs::{remove_file, create_dir_all, File, OpenOptions};
 use std::path::PathBuf;
 use std::io::{self, stdin, Read};
-use std::process;
+use std::process::{self, Command, Stdio, Child};
+use std::thread;
+use std::time::Duration;
 use std::net::SocketAddr;
 use std::os::unix::fs::FileTypeExt;
 
@@ -47,38 +49,51 @@ lazy_static! {
 
 
 fn main() {
-    let (mut session, is_child) = open_nvim_session();
+    let (mut session, child_nvim_process) = open_nvim_session();
     session.start_event_loop();
     let mut nvim = Neovim::new(session);
     use_nvim_as_pager(&mut nvim);
-    if is_child {
-        if let Err(error) = nvim.session.take_dispatch_guard().join() {
+    if let Some(mut child) = child_nvim_process {
+        if let Err(error) = child.wait() {
             eprintln!("nvim closed unexpectedly: {:?}", error);
         }
     }
 }
 
-fn open_nvim_session() -> (Session, bool) {
+fn open_nvim_session() -> (Session, Option<Child>) {
     if let Some(nvim_listen_address) = OPT.address.clone() {
         if let Ok(_) = nvim_listen_address.parse::<SocketAddr>() {
             match Session::new_tcp(nvim_listen_address.as_str()) {
-                Ok(session) => return (session, false),
+                Ok(session) => return (session, None),
                 Err(error) => eprintln!("can't connect to tcp socket: {}", error),
             }
         } else {
             match Session::new_unix_socket(nvim_listen_address) {
-                Ok(session) => return (session, false),
+                Ok(session) => return (session, None),
                 Err(error) => eprintln!("can't connect to unix socket: {}", error),
             }
         }
     }
-    match Session::new_child() {
-        Ok(session) => return (session, true),
-        Err(error) => {
-            eprintln!("can't connect to nvim: {}", error);
-            process::exit(3)
-        }
+    let mut nvim_listen_address = PathBuf::from("/tmp/nvimpages");
+    if let Err(error) = create_dir_all(nvim_listen_address.as_path()) {
+        eprintln!("can't create temp dir: {}", error);
+        process::exit(3);
     }
+    nvim_listen_address.push(format!("socket-{}", create_random_string()).as_str());
+    match Command::new("nvim")
+        .stdin(Stdio::null())
+        .env("NVIM_LISTEN_ADDRESS", &nvim_listen_address)
+        .spawn() {
+        Ok(child) => {
+            thread::sleep(Duration::from_millis(100)); // socket not available early
+            match Session::new_unix_socket(&nvim_listen_address) {
+                Ok(session) => return (session, Some(child)),
+                Err(error) => eprintln!("can't connect to nvim: {}", error)
+            }
+        }
+        Err(error) => eprintln!("can't open neovim: {}", error)
+    }
+    process::exit(4);
 }
 
 fn use_nvim_as_pager(mut nvim: &mut Neovim) {
