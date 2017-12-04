@@ -53,7 +53,11 @@ $ exa > /dev/pty/$ID    # will append to same buffer
 
 ## Installation
 
-1. Install `rustup` from package manager 
-2. Configure toolchain: `rustup install stable && rustup default stable`
-3. Clone repo, cd into it
-4. `cargo install --root / --force` (if that requires permission you must configure toolchain as root (or system wide) and re-run with `sudo`)
+* Arch Linux: 
+  * PKGBUILD provided
+  
+* Manually:
+  * Install `rustup` from package manager 
+  * Configure toolchain: `rustup install stable && rustup default stable`
+  * Clone repo, cd into it
+  * `cargo install --root / --force` (if that requires permission you must configure toolchain as root (or system wide) and re-run with `sudo`)
