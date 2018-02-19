@@ -64,15 +64,15 @@ struct Opt {
 #[derive(StructOpt)]
 enum Split {
 
-    #[structopt(name="h", display_order=1, about="hsplit with 6/(ratio + 1)")]
+    #[structopt(name="h", display_order=1, about="hsplit with ratio: 3/(h + 1)")]
     Horizontal {
-        #[structopt(default_value="4")]
+        #[structopt(default_value="1")]
         ratio: u8,
     },
 
-    #[structopt(name="v", display_order=2, about="vsplit with 6/(ratio + 1)")]
+    #[structopt(name="v", display_order=2, about="vsplit with ratio: 3/(h + 1)")]
     Vertical {
-        #[structopt(default_value="4")]
+        #[structopt(default_value="1")]
         ratio: u8,
     },
 }
@@ -135,13 +135,13 @@ fn create_new_nvim_pty_buf(neovim: &mut nvim::Neovim, pty_agent_pipe_id: &String
         Some(Split::Horizontal { ratio }) => {
             neovim.command("vsplit")?;
             let buf_width = neovim.call_function("winwidth", vec![Value::from(0)])?.as_u64().unwrap();
-            let resize_ratio = buf_width * 6 / (ratio as u64 + 1);
+            let resize_ratio = buf_width * 3 / (ratio as u64 + 1);
             neovim.command(&format!("vertical resize {}", resize_ratio))?
         },
         Some(Split::Vertical { ratio }) => {
             neovim.command("split")?;
             let buf_height = neovim.call_function("winheight", vec![Value::from(0)])?.as_u64().unwrap();
-            let resize_ratio = buf_height * 6 / (ratio as u64 + 1);
+            let resize_ratio = buf_height * 3 / (ratio as u64 + 1);
             neovim.command(&format!("resize {}", resize_ratio))?
         }
         None => {}
