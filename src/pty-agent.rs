@@ -1,5 +1,4 @@
-use std::fs::OpenOptions;
-use std::fs::canonicalize;
+use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
 use std::env::args;
@@ -10,7 +9,7 @@ mod util;
 
 fn main() {
     {
-        let stdout_pty_path = canonicalize(PathBuf::from("/dev/stdout")).unwrap();
+        let stdout_pty_path = fs::canonicalize(PathBuf::from("/dev/stdout")).unwrap();
         let pty_agent_pipe_id = args().nth(1).expect("single argument required");
         let pty_agent_pipe_path = util::open_pty_agent_communication_pipe(&pty_agent_pipe_id).unwrap();
         let mut nvim_agent_pipe_open_options = OpenOptions::new();

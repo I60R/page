@@ -1,8 +1,8 @@
 # Maintainer: 160R@protonmail.com
 _pkgname=page
 pkgname=${_pkgname}-git
-pkgver=v0.4.r0.g1dca2e8
 pkgrel=1
+pkgver=git
 pkgdesc='pager that utilizes nvim terminal buffer'
 arch=('i686' 'x86_64')
 url="https://github.com/I60R/page"
