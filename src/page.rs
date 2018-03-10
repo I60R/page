@@ -1,10 +1,5 @@
-#![feature(test)]
-#![feature(try_trait)]
-#![feature(iterator_try_fold)]
 #![feature(termination_trait)]
 #![feature(attr_literals)]
-#![feature(generators)]
-#![feature(getpid)]
 
 #[macro_use]
 extern crate lazy_static;
@@ -46,16 +41,16 @@ struct Opt {
     command: Option<String>,
 
     #[structopt(short="t", default_value="pager",
-    help="set filetype for color highlighting")]
+        help="set filetype for color highlighting")]
     filetype: String,
 
     #[structopt(short="e", display_order=1,
         help="set modifiable")]
     editable: bool,
 
-    #[structopt(short="w", display_order=2,
-        help="set nowrap")]
-    nowrap: bool,
+    #[structopt(short="b", display_order=2,
+        help="switch back from newly created buffer")]
+    back: bool,
 
     #[structopt(subcommand)]
     split: Option<Split>,
@@ -117,12 +112,22 @@ fn open_nvim_ipc_session() -> io::Result<(nvim::Session, Option<process::Child>)
 }
 
 fn create_new_nvim_pty(neovim: &mut nvim::Neovim) -> Result<Option<File>, Box<Error>> {
+    let switch_back_data = if OPT.back {
+        Some((neovim.call_function("winnr", vec![])?.as_u64().unwrap(),
+              neovim.call_function("bufnr", vec![nvim::Value::from("%")])?.as_u64().unwrap()))
+    } else {
+        None
+    };
     let pty_agent_pipe_id = random_string();
     create_new_nvim_pty_buf(neovim, &pty_agent_pipe_id)?;
     set_nvim_pty_buf_name(neovim)?;
     set_nvim_pty_buf_options(neovim)?;
     let nvim_pty_path = get_nvim_pty_path(&pty_agent_pipe_id)?;
     if *FROM_FIFO {
+        if let Some((back_win_id, back_buf_id)) = switch_back_data {
+            neovim.command(&format!("{}wincmd w", back_win_id))?;
+            neovim.command(&format!("{}b", back_buf_id))?;
+        }
         Ok(Some(OpenOptions::new().append(true).open(&nvim_pty_path)?)) // <— return PTY to writing from FIFO
     } else {
         println!("{}", nvim_pty_path); // <— print PTY path, user can write to it manually
@@ -152,7 +157,7 @@ fn create_new_nvim_pty_buf(neovim: &mut nvim::Neovim, pty_agent_pipe_id: &String
 
 fn set_nvim_pty_buf_name(neovim: &mut nvim::Neovim) -> Result<(), nvim::CallError> {
     let mut attempt = 0;
-    let pty_buf_name = if *FROM_FIFO { "\\|PAGE" } else { ">PIPE" };
+    let pty_buf_name = if *FROM_FIFO { "\\|PAGE" } else { ">PAGE" };
     while let Err(e) = neovim.command(
         &if attempt == 0 {
             format!("file {}", pty_buf_name)
@@ -176,11 +181,8 @@ fn set_nvim_pty_buf_options(neovim: &mut nvim::Neovim) -> Result<(), nvim::CallE
     if OPT.editable {
         neovim.command("set modifiable")?;
     }
-    if OPT.nowrap {
-        neovim.command("set nowrap")?;
-    }
-    if let &Some(ref command) = &OPT.command {
-        neovim.command(&command)?;
+    if let Some(command) = OPT.command.as_ref() {
+        neovim.command(command)?;
     }
     Ok(())
 }
