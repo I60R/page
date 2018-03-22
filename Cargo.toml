@@ -1,13 +1,13 @@
 [package]
 name = "page"
-version = "0.7.0"
+version = "0.8.0"
 authors = ["160R <160R@protonmail.com>"]
 description = "Pager that utilizes neovim's terminal buffer"
 
 [dependencies]
 rand = "0.4"
 libc = "0.2.33"
-structopt = "0.2.3"
+structopt = "0.2.5"
 neovim-lib = "0.5.1"
 
 [[bin]]

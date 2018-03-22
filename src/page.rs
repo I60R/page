@@ -14,17 +14,15 @@ use rand::{Rng, thread_rng};
 use structopt::StructOpt;
 use structopt::clap::AppSettings;
 use std::fs::{self, remove_file, File, OpenOptions};
-use std::collections::hash_map::DefaultHasher;
 use std::path::PathBuf;
 use std::io::{self, Read, Write};
 use std::iter;
 use std::process::{self, Command, Stdio};
 use std::thread;
-use std::hash::{Hash, Hasher};
 use std::time::Duration;
 use std::net::{SocketAddr};
 use std::error::Error;
-use std::os::unix::{self, fs::FileTypeExt};
+use std::os::unix::fs::FileTypeExt;
 
 mod util;
 
@@ -82,14 +80,24 @@ enum OptSplit {
 
 
 /// Extends `nvim::Session` with optional `nvim_process` field.
-/// That `nvim_process` might be a newly spawned `nvim` process connected through unix socket.
+/// That `nvim_process` might be a spawned on top `nvim` process connected through unix socket.
 /// It's the same that `nvim::Session::ClientConnection::Child` but stdin|stdout don't inherited.
 struct SessionDecorator {
-    session: nvim::Session,
+    inner: nvim::Session,
     nvim_process: Option<process::Child>
 }
 
 impl SessionDecorator {
+
+    fn new(nvim_listen_address: &Option<String>) -> io::Result<SessionDecorator> {
+        nvim_listen_address.as_ref()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::AddrNotAvailable, "no NVIM_LISTEN_ADDRESS"))
+            .and_then(SessionDecorator::parent)
+            .or_else(|e| {
+                eprintln!("can't connect to parent neovim session: {}", e);
+                SessionDecorator::child()
+            })
+    }
 
     fn child() -> io::Result<SessionDecorator> {
         let mut nvim_listen_address = PathBuf::from("/tmp/nvimpages");
@@ -101,7 +109,7 @@ impl SessionDecorator {
             .spawn()?;
         thread::sleep(Duration::from_millis(150)); // Wait until nvim process not connected to socket.
         Ok(SessionDecorator {
-            session: nvim::Session::new_unix_socket(&nvim_listen_address)?,
+            inner: nvim::Session::new_unix_socket(&nvim_listen_address)?,
             nvim_process: Some(nvim_process),
         })
     }
@@ -111,9 +119,13 @@ impl SessionDecorator {
             .map(|_|            nvim::Session::new_tcp(nvim_listen_address))
             .unwrap_or_else(|_| nvim::Session::new_unix_socket(nvim_listen_address))?;
         Ok(SessionDecorator {
-            session,
+            inner: session,
             nvim_process: None
         })
+    }
+
+    fn start_event_loop(&mut self) {
+        self.inner.start_event_loop()
     }
 }
 
@@ -121,18 +133,18 @@ impl SessionDecorator {
 /// A helper for neovim terminal buffer creation/setting
 struct NvimManager<'a> {
     neovim: &'a mut nvim::Neovim,
+    opt: &'a Opt,
     is_reading_from_fifo: bool,
-    opt: &'a Opt
 }
 
 impl <'a> NvimManager<'a> {
 
     fn new(opt: &'a Opt, neovim: &'a mut nvim::Neovim, is_reading_from_fifo: bool) -> NvimManager<'a> {
-        NvimManager { opt, is_reading_from_fifo, neovim, }
+        NvimManager { opt, neovim, is_reading_from_fifo }
     }
 
-    fn create_pty(&mut self) -> Result<(PathBuf, Option<File>), Box<Error>> {
-        let current_buffer_position = if self.opt.back {
+    fn create_pty(&mut self) -> Result<PtyData, Box<Error>> {
+        let winnr_bufnr = if self.opt.back {
             let winnr = self.neovim.call_function("winnr", vec![])?.as_u64().unwrap();
             let bufnr = self.neovim.call_function("bufnr", vec![nvim::Value::from("%")])?.as_u64().unwrap();
             Some((winnr, bufnr))
@@ -141,25 +153,14 @@ impl <'a> NvimManager<'a> {
         };
         let agent_pipe_name = self.create_pty_buffer()?;
         let pty_path = self.read_pty_path(&agent_pipe_name)?;
-        let buffer_name =
-            if let Some(name) = self.opt.instance.as_ref() {
-                format!(r"get(g:, 'page_icon_named', '') . '{}'", name)
-            } else if self.is_reading_from_fifo {
-                r"get(g:, 'page_icon_pipe', '\\|')".to_owned()
-            } else {
-                r"get(g:, 'page_icon_redirect', '>')".to_owned()
-            };
-        self.update_pty_buffer_name(&buffer_name)?;
         self.update_pty_buffer_options()?;
-        if let Some((winnr, bufnr)) = current_buffer_position {
-            self.neovim.command(&format!("{}wincmd w | {}b", winnr, bufnr))?;
-        }
-        if self.is_reading_from_fifo {
+        let pty = if self.is_reading_from_fifo {
             let pty = OpenOptions::new().append(true).open(&pty_path)?;
-            Ok((pty_path, Some(pty)))
+            Some(pty)
         } else {
-            Ok((pty_path, None))
-        }
+            None
+        };
+        Ok(PtyData { path: pty_path, sink: pty, back: winnr_bufnr })
     }
 
     fn create_pty_buffer(&mut self) -> Result<String, Box<Error>> {
@@ -228,74 +229,97 @@ impl <'a> NvimManager<'a> {
         }
         Ok(())
     }
+
+    fn register_instance(&mut self, instance_name: &String, pty_path: &PathBuf) -> Result<(), Box<Error>> {
+        let pty_path_string = pty_path.to_string_lossy();
+        self.neovim.command(&format!("\
+            let last_page_instance = '{}'
+            let g:page_instances[last_page_instance] = [ bufnr('%'), '{}' ]", instance_name, pty_path_string))?;
+        Ok(())
+    }
+
+    fn get_instance_pty_path(&mut self, instance_name: &String) -> Result<PathBuf, Box<Error>> {
+        let pty_path = self.neovim.command_output(&format!("\
+            let g:page_instances = get(g:, 'page_instances', {{}})
+            let page_instance = get(g:page_instances, '{}', -99999999)
+            if bufexists(page_instance[0])
+               echo page_instance[1]
+            else
+               throw \"instance don't exists\"
+            endif",
+            instance_name))
+            .map(PathBuf::from)?;
+        Ok(pty_path)
+    }
+
+    fn switch_back(&mut self, (winnr, bufnr): (u64, u64)) -> io::Result<()> {
+        self.neovim.command(&format!("{}wincmd w | {}b", winnr, bufnr))
+            .map_err(|e| io::Error::new(io::ErrorKind::Interrupted, format!("can't switch back to buffer: {}", e)))
+    }
 }
 
 
 /// Contains data related to page
-struct Page {
-    pty: (PathBuf, Option<File>),
-    pty_symlink: Option<PathBuf>,
-    nvim_process: Option<process::Child>,
+struct Page<'a> {
+    nvim_manager: &'a mut NvimManager<'a>,
+    is_reading_from_fifo: bool,
 }
 
-impl Page {
+impl <'a> Page <'a> {
 
-    fn new(opt: &Opt, is_read_from_fifo: bool) -> io::Result<Page> {
-        opt.instance.as_ref().map_or_else(
-            |    | Page::from_session(opt, is_read_from_fifo),
-            |name| Page::from_instance(opt, name, is_read_from_fifo)
-                .or_else(|e| {
-                    eprintln!("can't connect to \"{}\": {}", name, e);
-                    Page::from_session(opt, is_read_from_fifo)
-                }))
-    }
-
-    fn from_session(opt: &Opt, is_read_from_fifo: bool) -> io::Result<Page> {
-        let SessionDecorator { mut session, nvim_process } = opt.address.as_ref()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::AddrNotAvailable, "no NVIM_LISTEN_ADDRESS"))
-            .and_then(SessionDecorator::parent)
-            .or_else(|e| {
-                eprintln!("can't connect to parent neovim session: {}", e);
-                SessionDecorator::child()
-            })?;
-        session.start_event_loop();
-        let neovim = &mut nvim::Neovim::new(session);
-        let mut pty_manager = NvimManager::new(opt, neovim, is_read_from_fifo);
-        let pty = pty_manager.create_pty()
-            .map_err(|e| io::Error::new(io::ErrorKind::NotConnected, format!("can't open page: {}", e)))?;
+    fn new(nvim_manager: &'a mut NvimManager<'a>, is_reading_from_fifo: bool) -> io::Result<Page<'a>> {
         Ok(Page {
-            pty,
-            nvim_process,
-            pty_symlink: None
+            nvim_manager,
+            is_reading_from_fifo
         })
     }
 
-    fn from_instance(opt: &Opt, name: &str, is_read_from_fifo: bool) -> io::Result<Page> {
-        let nvim_listen_address = opt.address.as_ref()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::AddrNotAvailable, "no nvim_listen_address"))?;
-        let nvim_listen_address_hash = {
-            let mut hasher = DefaultHasher::default();
-            nvim_listen_address.hash(&mut hasher);
-            hasher.finish()
-        };
-        let mut pty_symlink = PathBuf::from("/tmp/nvimpages");
-        fs::create_dir_all(&pty_symlink)?;
-        pty_symlink.push(format!("{}-{}", nvim_listen_address_hash, name));
-        if pty_symlink.exists() && pty_symlink.metadata()?.modified()? < pty_symlink.symlink_metadata()?.modified()? {
-            let pty_path = fs::canonicalize(pty_symlink)?;
-            let pty = OpenOptions::new().append(true).open(&pty_path)?;
-            Ok(Page {
-                pty: (pty_path, Some(pty)),
-                pty_symlink: None,
-                nvim_process: None,
-            })
+    fn get_pty(&mut self, instance: &Option<String>) -> io::Result<PtyData> {
+        if let Some(instance_name) = instance.as_ref() {
+            self.nvim_manager.get_instance_pty_path(instance_name)
+                .and_then(|pty_path| {
+                    if self.is_reading_from_fifo {
+                        let pty = OpenOptions::new().append(true).open(&pty_path)?;
+                        Ok(PtyData { path: pty_path, sink: Some(pty), back: None, })
+                    } else {
+                        Ok(PtyData { path: pty_path, sink: None, back: None, })
+                    }
+                })
+                .or_else(|e| {
+                    if e.description() != "instance don't exists" {
+                        eprintln!("can't connect to '{}': {}", instance_name, e);
+                    }
+                    let pty_data = self.nvim_manager.create_pty()?;
+                    self.nvim_manager.register_instance(instance_name, &pty_data.path)?;
+                    let pty_buffer_name = &format!(r"get(g:, 'page_icon_instance', '') . '{}'", instance_name);
+                    self.nvim_manager.update_pty_buffer_name(pty_buffer_name)?;
+                    Ok(pty_data)
+                })
         } else {
-            Ok(Page {
-                pty_symlink: Some(pty_symlink),
-                ..Page::from_session(opt, is_read_from_fifo)?
-            })
+            self.nvim_manager.create_pty()
+                .and_then(|pty_data| {
+                    self.nvim_manager.update_pty_buffer_name(if self.is_reading_from_fifo {
+                        r"get(g:, 'page_icon_pipe', '\\|')"
+                    } else {
+                        r"get(g:, 'page_icon_redirect', '>')"
+                    })?;
+                    Ok(pty_data)
+                })
         }
+            .map_err(|e| io::Error::new(io::ErrorKind::NotConnected, format!("can't create pty: {}", e)))
     }
+
+    fn switch_back(&mut self, position: (u64, u64)) -> io::Result<()> {
+        self.nvim_manager.switch_back(position)
+    }
+}
+
+
+/// Contains data related to `nvim` pty buffer
+struct PtyData {
+    path: PathBuf,
+    sink: Option<File>,
+    back: Option<(u64, u64)>
 }
 
 
@@ -303,7 +327,7 @@ fn random_string() -> String {
     thread_rng().gen_ascii_chars().take(32).collect::<String>()
 }
 
-fn is_read_from_fifo() -> bool {
+fn is_reading_from_fifo() -> bool {
     PathBuf::from("/dev/stdin").metadata() // Probably always fails on pipe.
         .map(|stdin_metadata| stdin_metadata.file_type().is_fifo()) // Just to be sure.
         .unwrap_or(true)
@@ -311,30 +335,30 @@ fn is_read_from_fifo() -> bool {
 
 fn main() -> io::Result<()> {
     let opt = Opt::from_args();
-    let is_read_from_fifo = is_read_from_fifo();
-    let page = Page::new(&opt, is_read_from_fifo)?;
-    let (pty_path, pty) = page.pty;
+    let is_reading_from_fifo = is_reading_from_fifo();
+    let mut session = SessionDecorator::new(&opt.address)?;
+    session.start_event_loop();
+    let mut nvim = nvim::Neovim::new(session.inner);
+    let mut nvim_manager = NvimManager::new(&opt, &mut nvim, is_reading_from_fifo);
+    let page = &mut Page::new(&mut nvim_manager, is_reading_from_fifo)?;
+    let pty_data = page.get_pty(&opt.instance)?;
 
-    if let Some(mut pty) = pty {
+    if let Some(position) = pty_data.back {
+        page.switch_back(position)?;
+    }
+
+    if let Some(mut sink) = pty_data.sink {
         if !opt.append {
-            write!(&mut pty, "\x1B[2J\x1B[1;1H")?; // Clear screen
+            write!(&mut sink, "\x1B[2J\x1B[1;1H")?; // Clear screen
         }
-        if is_read_from_fifo {
-            let mut stdin = io::stdin();
-            io::copy(&mut stdin.lock(), &mut pty).map(|_|())?;
-        }
+        let mut stdin = io::stdin();
+        io::copy(&mut stdin.lock(), &mut sink).map(|_|())?;
+    } else {
+        println!("{}", pty_data.path.to_string_lossy());
     }
-    if !is_read_from_fifo {
-        println!("{}", pty_path.to_str().unwrap());
-    }
-    if let Some(symlink_path) = page.pty_symlink {
-        if fs::read_link(&symlink_path).is_ok() { // Check if link exists and is valid
-            fs::remove_file(&symlink_path)?;
-        }
-        unix::fs::symlink(pty_path, symlink_path)?;
-    }
-    if let Some(mut spawned) = page.nvim_process {
-        spawned.wait().map(|_|())?;
+
+    if let Some(mut nvim_process) = session.nvim_process {
+        nvim_process.wait().map(|_|())?;
     }
     Ok(())
 }
