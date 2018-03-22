@@ -90,13 +90,13 @@ struct SessionDecorator {
 impl SessionDecorator {
 
     fn new(nvim_listen_address: &Option<String>) -> io::Result<SessionDecorator> {
-        nvim_listen_address.as_ref()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::AddrNotAvailable, "no NVIM_LISTEN_ADDRESS"))
-            .and_then(SessionDecorator::parent)
-            .or_else(|e| {
-                eprintln!("can't connect to parent neovim session: {}", e);
-                SessionDecorator::child()
-            })
+        nvim_listen_address.as_ref().map_or_else(
+            SessionDecorator::child,
+            |address| SessionDecorator::parent(address)
+                .or_else(|e| {
+                    eprintln!("can't connect to parent neovim session: {}", e);
+                    SessionDecorator::child()
+                }))
     }
 
     fn child() -> io::Result<SessionDecorator> {
