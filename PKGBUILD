@@ -15,12 +15,14 @@ source=("git+https://github.com/I60R/page.git")
 md5sums=('SKIP')
 
 pkgver() {
-    cd "$srcdir/$_pkgname"
+    cd "$srcdir"
+    cd "$_pkgname" > /dev/null 2>&1 || cd ..
     git describe --long --tags | sed 's/\([^-]*-g\)/r\1/;s/-/./g'
 }
 
 package() {
-    cd "$srcdir/$_pkgname"
+    cd "$srcdir"
+    cd "$_pkgname" > /dev/null 2>&1 || cd ..
     cargo install --force --bins --root $pkgdir/usr
     if [[ -f $pkgdir/usr/.crates.toml ]]; then
         rm $pkgdir/usr/.crates.toml

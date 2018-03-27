@@ -39,7 +39,8 @@ Defaults:
 ## Installation
 
 * Arch Linux:
-  * PKGBUILD provided
+  * Make package: `git clone git@github.com:I60R/page.git && cd page && makepkg -ef`
+  * Install: `sudo pacman -U page-git*.pkg.tar.xz`
 
 * Manually:
   * Install `rustup` from your distribution package manager
