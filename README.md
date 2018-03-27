@@ -15,9 +15,9 @@
 Defaults:
 
 ```viml
-    let g:page_icon_instance = ''
-    let g:page_icon_redirect = '>'
-    let g:page_icon_pipe = '|'
+    let g:page_icon_instance = '§' "  devicon is used on gif
+    let g:page_icon_redirect = '>§'
+    let g:page_icon_pipe = '|§'
 ```
 
 

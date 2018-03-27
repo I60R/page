@@ -291,7 +291,7 @@ impl <'a> Page <'a> {
                     }
                     let pty_data = self.nvim_manager.create_pty()?;
                     self.nvim_manager.register_instance(instance_name, &pty_data.path)?;
-                    let pty_buffer_name = &format!(r"get(g:, 'page_icon_instance', '') . '{}'", instance_name);
+                    let pty_buffer_name = &format!(r"get(g:, 'page_icon_instance', '§') . '{}'", instance_name);
                     self.nvim_manager.update_pty_buffer_name(pty_buffer_name)?;
                     Ok(pty_data)
                 })
@@ -299,9 +299,9 @@ impl <'a> Page <'a> {
             self.nvim_manager.create_pty()
                 .and_then(|pty_data| {
                     self.nvim_manager.update_pty_buffer_name(if self.is_reading_from_fifo {
-                        r"get(g:, 'page_icon_pipe', '\\|')"
+                        r"get(g:, 'page_icon_pipe', '\\|§')"
                     } else {
-                        r"get(g:, 'page_icon_redirect', '>')"
+                        r"get(g:, 'page_icon_redirect', '>§')"
                     })?;
                     Ok(pty_data)
                 })
@@ -328,7 +328,7 @@ fn random_string() -> String {
 }
 
 fn is_reading_from_fifo() -> bool {
-    PathBuf::from("/dev/stdin").metadata() // Probably always fails on pipe.
+    PathBuf::from("/dev/stdin").metadata() // Probably always returns Err when `page` reads from pipe.
         .map(|stdin_metadata| stdin_metadata.file_type().is_fifo()) // Just to be sure.
         .unwrap_or(true)
 }
