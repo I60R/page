@@ -405,16 +405,16 @@ fn main() -> io::Result<()> {
 
     if is_any_file_present {
         let exit = !(is_reading_from_fifo || use_instance.is_some());
+        let single_file = opt.files.len() == 1;
+        if exit && single_file {
+            nvim_manager.split_current_buffer_if_required()
+                .map_err(|e| map_io_err("Can't apply split: {}", e))?;
+        }
         let stay_on_current_buffer = opt.back || !exit;
         Page::ShowFiles { paths: &opt.files }
             .run(&mut nvim_manager, stay_on_current_buffer)
             .map_err(|e| map_io_err("Error when reading files: {}", e))?;
         if exit {
-            let single_file = opt.files.len() == 1;
-            if single_file {
-                nvim_manager.split_current_buffer_if_required()
-                    .map_err(|e| map_io_err("Can't apply split: {}", e))?;
-            }
             return close_child_nvim_if_spawned(nvim_process);
         }
     }
