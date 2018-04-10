@@ -182,7 +182,7 @@ impl <'a> NvimManager<'a> {
             if bufexists(page_instance[0])
                  echo page_instance[1]
             else
-                throw \"instance don't exists\"
+                throw \"Instance don't exists\"
             endif", name))?;
         Ok(PathBuf::from(pty_path_str))
     }
@@ -213,42 +213,43 @@ impl <'a> NvimManager<'a> {
 
     fn split_current_buffer(&mut self) -> Result<(), Box<Error>> {
         if self.opt.split_right > 0 {
-            self.nvim.command("vsplit")?;
+            self.nvim.command("belowright vsplit")?;
             let buf_width = self.nvim.call_function("winwidth", vec![Value::from(0)])?.as_u64().unwrap();
             let resize_ratio = buf_width * 3 / (self.opt.split_right as u64 + 1);
             self.nvim.command(&format!("vertical resize {}", resize_ratio))?;
         } else if self.opt.split_left > 0 {
-            self.nvim.command("vsplit")?;
+            self.nvim.command("aboveleft vsplit")?;
             let buf_width = self.nvim.call_function("winwidth", vec![Value::from(0)])?.as_u64().unwrap();
-            let resize_ratio = buf_width * 3 / (self.opt.split_right as u64 + 1);
-            self.nvim.command(&format!("norm! <C-w>r | vertical resize {}", resize_ratio))?;
+            let resize_ratio = buf_width * 3 / (self.opt.split_left as u64 + 1);
+            self.nvim.command(&format!("vertical resize {}", resize_ratio))?;
         } else if self.opt.split_below > 0 {
-            self.nvim.command("split")?;
+            self.nvim.command("belowright split")?;
             let buf_height = self.nvim.call_function("winheight", vec![Value::from(0)])?.as_u64().unwrap();
             let resize_ratio = buf_height * 3 / (self.opt.split_below as u64 + 1);
             self.nvim.command(&format!("resize {}", resize_ratio))?;
         } else if self.opt.split_above > 0 {
-            self.nvim.command("split")?;
+            self.nvim.command("aboveleft split")?;
             let buf_height = self.nvim.call_function("winheight", vec![Value::from(0)])?.as_u64().unwrap();
-            let resize_ratio = buf_height * 3 / (self.opt.split_below as u64 + 1);
-            self.nvim.command(&format!("norm! <C-w>r | resize {}", resize_ratio))?;
+            let resize_ratio = buf_height * 3 / (self.opt.split_above as u64 + 1);
+            self.nvim.command(&format!("resize {}", resize_ratio))?;
         } else if let Some(split_right_cols) = self.opt.split_right_cols {
-            self.nvim.command(&format!("vsplit | vertical resize {}", split_right_cols))?;
+            self.nvim.command(&format!("belowright vsplit | vertical resize {}", split_right_cols))?;
         } else if let Some(split_left_cols) = self.opt.split_left_cols {
-            self.nvim.command(&format!("vsplit | norm! <C-w>r | vertical resize {}", split_left_cols))?;
+            self.nvim.command(&format!("aboveleft vsplit | vertical resize {}", split_left_cols))?;
         } else if let Some(split_below_rows) = self.opt.split_below_rows {
-            self.nvim.command(&format!("split | resize {}", split_below_rows))?;
+            self.nvim.command(&format!("belowright split | resize {}", split_below_rows))?;
         } else if let Some(split_above_rows) = self.opt.split_above_rows {
-            self.nvim.command(&format!("split | norm! <C-w>r | resize {}", split_above_rows))?;
+            self.nvim.command(&format!("aboveleft split | resize {}", split_above_rows))?;
         }
         Ok(())
     }
 
     fn update_current_buffer_name(&mut self, name: &str) -> Result<(), nvim::CallError> {
-        iter::once((0,                 format!("exe 'file ' . {}",          name    )))
+        let buf_exists = "Vim(file):E95: Buffer with this name already exists";
+        iter::once((0,                 format!("exe 'file ' . {}",          name    ))) // first name without number
             .chain((1..99).map(|i| (i, format!("exe 'file ' . {} . '({})'", name, i))))
             .try_for_each(|(attempt, cmd)| match self.nvim.command(&cmd) {
-                Err(err) => if attempt < 99 && err.description() == "Vim(file):E95: Buffer with this name already exists" { Ok(()) } else { Err(Err(err)) },
+                Err(err) => if attempt < 99 && err.description() == buf_exists { Ok(()) } else { Err(Err(err)) },
                 Ok(succ) => Err(Ok(succ)),
             }).or_else(|break_status| break_status)
     }
@@ -259,7 +260,7 @@ impl <'a> NvimManager<'a> {
             setl scrolloff=999
             setl signcolumn=no
             setl nonumber
-            selt modifiable
+            setl modifiable
             norm M")?;
         if let Some(user_command) = self.opt.command.as_ref() {
             let saved_position = self.get_current_buffer_position()?;
@@ -330,8 +331,8 @@ impl <'a> Page<'a> {
                 nvim_manager.try_get_pty_instance(&name)
                     .map(PathBuf::from)
                     .or_else(|e| {
-                        if e.description() != "instance don't exists" {
-                            eprintln!("can't connect to '{}': {}", &name, e);
+                        if e.description() != "Instance don't exists" {
+                            eprintln!("Can't connect to '{}': {}", &name, e);
                         }
                         nvim_manager.create_pty_with_buffer_instance(&name)
                     })?
@@ -339,7 +340,7 @@ impl <'a> Page<'a> {
             Page::ShowFiles { paths } => {
                 for file in paths {
                     if let Err(e) = nvim_manager.open_file_buffer(file) {
-                        eprintln!("error opening \"{}\": {}", file, e);
+                        eprintln!("Error opening \"{}\": {}", file, e);
                     }
                 }
                 PathBuf::new() // Null object
