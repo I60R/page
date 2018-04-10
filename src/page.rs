@@ -10,7 +10,7 @@ extern crate rand;
 
 use neovim_lib::{self as nvim, NeovimApi, Value};
 use rand::{Rng, thread_rng};
-use structopt::{StructOpt, clap::AppSettings::*};
+use structopt::{StructOpt, clap::{ ArgGroup, AppSettings::* }};
 use std::fs::{self, remove_file, File, OpenOptions};
 use std::path::PathBuf;
 use std::io::{self, Read, Write};
@@ -26,7 +26,12 @@ mod util;
 
 
 #[derive(StructOpt)]
-#[structopt(raw(global_settings="&[Propagated,GlobalVersion,DisableHelpSubcommand,DeriveDisplayOrder]"))]
+#[structopt(raw(
+    global_settings="&[DisableHelpSubcommand, DeriveDisplayOrder]",
+    group=r#"ArgGroup::with_name("splits")
+        .args(&["split_left", "split_right", "split_above", "split_below"])
+        .args(&["split_left_cols", "split_right_cols", "split_above_rows", "split_below_rows"])
+        .multiple(false)"#))]
 struct Opt {
     /// Neovim session address
     #[structopt(short="s", env="NVIM_LISTEN_ADDRESS")]
@@ -60,25 +65,37 @@ struct Opt {
     #[structopt(short="p")]
     print_pty_path: bool,
 
-    /// Split at right with ratio: $width  * 3 / ($r + 1)
-    #[structopt(short="r", parse(from_occurrences),
-        raw(conflicts_with_all=r#"&["split_below", "split_below_cols", "split_right_cols"]"#))]
+    /// Split right with ratio: $width  * 3 / ($r + 1)
+    #[structopt(short="r", parse(from_occurrences))]
     split_right: u8,
 
-    /// Split at below with ratio: $height * 3 / ($d + 1)
-    #[structopt(short="d", parse(from_occurrences),
-        raw(conflicts_with_all=r#"&["split_right", "split_below_cols", "split_right_cols"]"#))]
+    /// Split left  with ratio: $width  * 3 / ($l + 1)
+    #[structopt(short="l", parse(from_occurrences))]
+    split_left: u8,
+
+    /// Split above with ratio: $height * 3 / ($u + 1)
+    #[structopt(short="u", parse(from_occurrences))]
+    split_above: u8,
+
+    /// Split below with ratio: $height * 3 / ($d + 1)
+    #[structopt(short="d", parse(from_occurrences))]
     split_below: u8,
 
-    /// Split at below and resize to $D rows
-    #[structopt(short="D",
-        raw(conflicts_with_all=r#"&["split_right_cols", "split_below", "split_right"]"#))]
-    split_below_rows: Option<u8>,
-
-    /// Split at right and resize to $R columns
-    #[structopt(short="R",
-        raw(conflicts_with_all=r#"&["split_below_cols", "split_below", "split_right"]"#))]
+    /// Split right and resize to $R columns
+    #[structopt(short="R")]
     split_right_cols: Option<u8>,
+
+    /// Split left  and resize to $L columns
+    #[structopt(short="L")]
+    split_left_cols: Option<u8>,
+
+    /// Split above and resize to $U rows
+    #[structopt(short="U")]
+    split_above_rows: Option<u8>,
+
+    /// Split below and resize to $D rows
+    #[structopt(short="D")]
+    split_below_rows: Option<u8>,
 
     /// Open these files in separate buffers
     #[structopt(name="FILES")]
@@ -141,7 +158,9 @@ impl <'a> NvimManager<'a> {
     }
 
     fn create_pty_with_buffer(&mut self) -> Result<PathBuf, Box<Error>> {
-        let agent_pipe_name = self.create_pty_buffer_with_running_agent()?;
+        self.split_current_buffer()?;
+        let agent_pipe_name = random_string();
+        self.nvim.command(&format!("term pty-agent {}", agent_pipe_name))?;
         let pty_path = self.read_pty_device_path(&agent_pipe_name)?;
         self.update_current_buffer_options()?;
         Ok(pty_path)
@@ -178,29 +197,6 @@ impl <'a> NvimManager<'a> {
         Ok(())
     }
 
-    fn create_pty_buffer_with_running_agent(&mut self) -> Result<String, Box<Error>> {
-        let agent_pipe_name = random_string();
-        if self.opt.split_right > 0 {
-            self.nvim.command("vsplit")?;
-            let buf_width = self.nvim.call_function("winwidth", vec![Value::from(0)])?.as_u64().unwrap();
-            let resize_ratio = buf_width * 3 / (self.opt.split_right as u64 + 1);
-            self.nvim.command(&format!("vertical resize {}", resize_ratio))?;
-        } else if self.opt.split_below > 0 {
-            self.nvim.command("split")?;
-            let buf_height = self.nvim.call_function("winheight", vec![Value::from(0)])?.as_u64().unwrap();
-            let resize_ratio = buf_height * 3 / (self.opt.split_below as u64 + 1);
-            self.nvim.command(&format!("resize {}", resize_ratio))?;
-        } else if let Some(rows) = self.opt.split_right_cols.as_ref() {
-            self.nvim.command("vsplit")?;
-            self.nvim.command(&format!("vertical resize {}", rows))?;
-        } else if let Some(cols) = self.opt.split_below_rows.as_ref() {
-            self.nvim.command("split")?;
-            self.nvim.command(&format!("resize {}", cols))?;
-        }
-        self.nvim.command(&format!("term pty-agent {}", agent_pipe_name))?;
-        Ok(agent_pipe_name)
-    }
-
     fn read_pty_device_path(&mut self, agent_pipe_name: &str) -> Result<PathBuf, Box<Error>> {
         let agent_pipe_path = util::open_agent_pipe(agent_pipe_name)?;
         let mut agent_pipe = File::open(&agent_pipe_path)?;
@@ -213,6 +209,39 @@ impl <'a> NvimManager<'a> {
             eprintln!("can't remove agent pipe {:?}: {:?}", &agent_pipe_path, e);
         }
         Ok(pty_path)
+    }
+
+    fn split_current_buffer(&mut self) -> Result<(), Box<Error>> {
+        if self.opt.split_right > 0 {
+            self.nvim.command("vsplit")?;
+            let buf_width = self.nvim.call_function("winwidth", vec![Value::from(0)])?.as_u64().unwrap();
+            let resize_ratio = buf_width * 3 / (self.opt.split_right as u64 + 1);
+            self.nvim.command(&format!("vertical resize {}", resize_ratio))?;
+        } else if self.opt.split_left > 0 {
+            self.nvim.command("vsplit")?;
+            let buf_width = self.nvim.call_function("winwidth", vec![Value::from(0)])?.as_u64().unwrap();
+            let resize_ratio = buf_width * 3 / (self.opt.split_right as u64 + 1);
+            self.nvim.command(&format!("norm! <C-w>r | vertical resize {}", resize_ratio))?;
+        } else if self.opt.split_below > 0 {
+            self.nvim.command("split")?;
+            let buf_height = self.nvim.call_function("winheight", vec![Value::from(0)])?.as_u64().unwrap();
+            let resize_ratio = buf_height * 3 / (self.opt.split_below as u64 + 1);
+            self.nvim.command(&format!("resize {}", resize_ratio))?;
+        } else if self.opt.split_above > 0 {
+            self.nvim.command("split")?;
+            let buf_height = self.nvim.call_function("winheight", vec![Value::from(0)])?.as_u64().unwrap();
+            let resize_ratio = buf_height * 3 / (self.opt.split_below as u64 + 1);
+            self.nvim.command(&format!("norm! <C-w>r | resize {}", resize_ratio))?;
+        } else if let Some(split_right_cols) = self.opt.split_right_cols {
+            self.nvim.command(&format!("vsplit | vertical resize {}", split_right_cols))?;
+        } else if let Some(split_left_cols) = self.opt.split_left_cols {
+            self.nvim.command(&format!("vsplit | norm! <C-w>r | vertical resize {}", split_left_cols))?;
+        } else if let Some(split_below_rows) = self.opt.split_below_rows {
+            self.nvim.command(&format!("split | resize {}", split_below_rows))?;
+        } else if let Some(split_above_rows) = self.opt.split_above_rows {
+            self.nvim.command(&format!("split | norm! <C-w>r | resize {}", split_above_rows))?;
+        }
+        Ok(())
     }
 
     fn update_current_buffer_name(&mut self, name: &str) -> Result<(), nvim::CallError> {
@@ -316,7 +345,6 @@ impl <'a> Page<'a> {
                 PathBuf::new() // Null object
             },
         };
-
         if let Some(saved_position) = saved_buffer_position {
             nvim_manager.switch_to_buffer_position(saved_position)?;
         }
@@ -342,7 +370,7 @@ fn main() -> io::Result<()> {
     let use_instance = opt.instance.as_ref().or(opt.instance_append.as_ref());
 
     let is_reading_from_fifo = is_reading_from_fifo();
-    let is_files_present = !opt.files.is_empty();
+    let is_any_file_present = !opt.files.is_empty();
 
     let RunningSession { mut session, nvim_process } = RunningSession::connect_to_parent_or_child(opt.address.as_ref())?;
     session.start_event_loop();
@@ -352,19 +380,23 @@ fn main() -> io::Result<()> {
     if let Some(instance_name) = opt.instance_close.as_ref() {
         nvim_manager.close_pty_instance(&instance_name)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Error when closing \"{}\": {}", instance_name, e)))?;
-        let close_instance_only = !(is_reading_from_fifo || use_instance.is_some() || is_files_present);
+        let close_instance_only = !(is_reading_from_fifo || use_instance.is_some() || is_any_file_present);
         if close_instance_only {
             return Ok(());
         }
     }
 
-    if is_files_present {
+    if is_any_file_present {
         let show_files_only = !(is_reading_from_fifo || use_instance.is_some());
         let stay_on_current_buffer = opt.back || !show_files_only;
         Page::ShowFiles { paths: &opt.files }
             .run(&mut nvim_manager, stay_on_current_buffer)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Error when reading files: {}", e)))?;
         if show_files_only {
+            if opt.files.len() == 1 {
+                nvim_manager.split_current_buffer()
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Can't apply split: {}", e)))?;
+            }
             return Ok(());
         }
     }
