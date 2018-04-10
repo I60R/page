@@ -31,6 +31,9 @@ mod util;
     group=r#"ArgGroup::with_name("splits")
         .args(&["split_left", "split_right", "split_above", "split_below"])
         .args(&["split_left_cols", "split_right_cols", "split_above_rows", "split_below_rows"])
+        .multiple(false)"#,
+    group=r#"ArgGroup::with_name("instances")
+        .args(&["instance", "instance_append"])
         .multiple(false)"#))]
 struct Opt {
     /// Neovim session address
@@ -42,11 +45,11 @@ struct Opt {
     command: Option<String>,
 
     /// Use named instance buffer instead of opening new
-    #[structopt(short="i", conflicts_with="instance_append")]
+    #[structopt(short="i")]
     instance: Option<String>,
 
     /// The same as "-i" but with append mode
-    #[structopt(short="a", conflicts_with="instance")]
+    #[structopt(short="a")]
     instance_append: Option<String>,
 
     /// Close named instance buffer
@@ -61,39 +64,39 @@ struct Opt {
     #[structopt(short="b")]
     back: bool,
 
-    /// Print path of pty buffer
+    /// Print path to /dev/pty/* associated with pager buffer
     #[structopt(short="p")]
     print_pty_path: bool,
 
-    /// Split right with ratio: $width  * 3 / ($r + 1)
+    /// Split right with ratio: window_width  * 3 / (<r provided> + 1)
     #[structopt(short="r", parse(from_occurrences))]
     split_right: u8,
 
-    /// Split left  with ratio: $width  * 3 / ($l + 1)
+    /// Split left  with ratio: window_width  * 3 / (<l provided> + 1)
     #[structopt(short="l", parse(from_occurrences))]
     split_left: u8,
 
-    /// Split above with ratio: $height * 3 / ($u + 1)
+    /// Split above with ratio: window_height * 3 / (<u provided> + 1)
     #[structopt(short="u", parse(from_occurrences))]
     split_above: u8,
 
-    /// Split below with ratio: $height * 3 / ($d + 1)
+    /// Split below with ratio: window_height * 3 / (<d provided> + 1)
     #[structopt(short="d", parse(from_occurrences))]
     split_below: u8,
 
-    /// Split right and resize to $R columns
+    /// Split right and resize to <split_right_cols> columns
     #[structopt(short="R")]
     split_right_cols: Option<u8>,
 
-    /// Split left  and resize to $L columns
+    /// Split left  and resize to <split_left_cols>  columns
     #[structopt(short="L")]
     split_left_cols: Option<u8>,
 
-    /// Split above and resize to $U rows
+    /// Split above and resize to <split_above_rows> rows
     #[structopt(short="U")]
     split_above_rows: Option<u8>,
 
-    /// Split below and resize to $D rows
+    /// Split below and resize to <split_below_rows> rows
     #[structopt(short="D")]
     split_below_rows: Option<u8>,
 
@@ -108,21 +111,22 @@ struct Opt {
 /// That `nvim_process` might be a spawned on top `nvim` process connected through unix socket.
 /// It's the same that `nvim::Session::ClientConnection::Child` but stdin|stdout don't inherited.
 struct RunningSession {
-    session: nvim::Session,
+    nvim_session: nvim::Session,
     nvim_process: Option<process::Child>
 }
 
 impl RunningSession {
     fn connect_to_parent_or_child(nvim_listen_address: Option<&String>) -> io::Result<RunningSession> {
-        nvim_listen_address.map_or_else(RunningSession::child,
-            |address| RunningSession::parent(address)
-                .or_else(|e| {
-                    eprintln!("can't connect to parent neovim session: {}", e);
-                    RunningSession::child()
-                }))
+        nvim_listen_address
+            .map_or_else(RunningSession::spawn_child,
+                         |address| RunningSession::connect_to_parent(address)
+                             .or_else(|e| {
+                                 eprintln!("can't connect to parent neovim session: {}", e);
+                                 RunningSession::spawn_child()
+                    }))
     }
 
-    fn child() -> io::Result<RunningSession> {
+    fn spawn_child() -> io::Result<RunningSession> {
         let mut nvim_listen_address = PathBuf::from("/tmp/nvim-page");
         fs::create_dir_all(&nvim_listen_address)?;
         nvim_listen_address.push(&format!("socket-{}", random_string()));
@@ -131,17 +135,15 @@ impl RunningSession {
             .env("NVIM_LISTEN_ADDRESS", &nvim_listen_address)
             .spawn()?;
         thread::sleep(Duration::from_millis(150)); // Wait until nvim process not connected to socket.
-        Ok(RunningSession {
-            session: nvim::Session::new_unix_socket(&nvim_listen_address)?,
-            nvim_process: Some(nvim_process),
-        })
+        let nvim_session = nvim::Session::new_unix_socket(&nvim_listen_address)?;
+        Ok(RunningSession { nvim_session, nvim_process: Some(nvim_process) })
     }
 
-    fn parent(nvim_listen_address: &String) -> io::Result<RunningSession> {
-        let session = nvim_listen_address.parse::<SocketAddr>()
-            .map(           |_| nvim::Session::new_tcp(nvim_listen_address))
-            .unwrap_or_else(|_| nvim::Session::new_unix_socket(nvim_listen_address))?;
-        Ok(RunningSession { session, nvim_process: None })
+    fn connect_to_parent(nvim_listen_address: &String) -> io::Result<RunningSession> {
+        let nvim_session = nvim_listen_address.parse::<SocketAddr>().ok()
+            .map_or_else(||nvim::Session::new_unix_socket(nvim_listen_address),
+                         |_|nvim::Session::new_tcp(nvim_listen_address))?;
+        Ok(RunningSession { nvim_session, nvim_process: None })
     }
 }
 
@@ -153,12 +155,9 @@ struct NvimManager<'a> {
 }
 
 impl <'a> NvimManager<'a> {
-    fn new(opt: &'a Opt, nvim: &'a mut nvim::Neovim) -> NvimManager<'a> {
-        NvimManager { opt, nvim }
-    }
 
     fn create_pty_with_buffer(&mut self) -> Result<PathBuf, Box<Error>> {
-        self.split_current_buffer()?;
+        self.split_current_buffer_if_required()?;
         let agent_pipe_name = random_string();
         self.nvim.command(&format!("term pty-agent {}", agent_pipe_name))?;
         let pty_path = self.read_pty_device_path(&agent_pipe_name)?;
@@ -211,7 +210,7 @@ impl <'a> NvimManager<'a> {
         Ok(pty_path)
     }
 
-    fn split_current_buffer(&mut self) -> Result<(), Box<Error>> {
+    fn split_current_buffer_if_required(&mut self) -> Result<(), Box<Error>> {
         if self.opt.split_right > 0 {
             self.nvim.command("belowright vsplit")?;
             let buf_width = self.nvim.call_function("winwidth", vec![Value::from(0)])?.as_u64().unwrap();
@@ -365,6 +364,17 @@ fn is_reading_from_fifo() -> bool {
         .unwrap_or(true)
 }
 
+fn close_child_nvim_if_spawned(spawned_nvim_process: Option<process::Child>) -> io::Result<()> {
+    if let Some(mut nvim_process) = spawned_nvim_process {
+        nvim_process.wait().map(|_| ())?;
+    }
+    Ok(())
+}
+
+fn map_io_err<E: AsRef<Error>>(msg: &str, e: E) -> io::Error {
+    io::Error::new(io::ErrorKind::Other, format!("{}: {}", msg, e.as_ref()))
+}
+
 
 fn main() -> io::Result<()> {
     let opt = Opt::from_args();
@@ -373,39 +383,46 @@ fn main() -> io::Result<()> {
     let is_reading_from_fifo = is_reading_from_fifo();
     let is_any_file_present = !opt.files.is_empty();
 
-    let RunningSession { mut session, nvim_process } = RunningSession::connect_to_parent_or_child(opt.address.as_ref())?;
-    session.start_event_loop();
-    let mut nvim = nvim::Neovim::new(session);
-    let mut nvim_manager = NvimManager::new(&opt, &mut nvim);
+    let RunningSession { mut nvim_session, nvim_process } = RunningSession::connect_to_parent_or_child(opt.address.as_ref())?;
+    nvim_session.start_event_loop();
+
+    let mut nvim = nvim::Neovim::new(nvim_session);
+    let mut nvim_manager = NvimManager { opt: &opt, nvim: &mut nvim };
+
 
     if let Some(instance_name) = opt.instance_close.as_ref() {
-        nvim_manager.close_pty_instance(&instance_name)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Error when closing \"{}\": {}", instance_name, e)))?;
-        let close_instance_only = !(is_reading_from_fifo || use_instance.is_some() || is_any_file_present);
-        if close_instance_only {
+        if opt.address.is_some() {
+            nvim_manager.close_pty_instance(&instance_name)
+                .map_err(|e| map_io_err(&format!("Error when closing \"{}\"", instance_name), e))?;
+        } else {
+            eprintln!("Can't close instance on newly spawned nvim process")
+        }
+        let exit = !(is_reading_from_fifo || use_instance.is_some() || is_any_file_present);
+        if exit {
             return Ok(());
         }
     }
 
     if is_any_file_present {
-        let show_files_only = !(is_reading_from_fifo || use_instance.is_some());
-        let stay_on_current_buffer = opt.back || !show_files_only;
+        let exit = !(is_reading_from_fifo || use_instance.is_some());
+        let stay_on_current_buffer = opt.back || !exit;
         Page::ShowFiles { paths: &opt.files }
             .run(&mut nvim_manager, stay_on_current_buffer)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Error when reading files: {}", e)))?;
-        if show_files_only {
-            if opt.files.len() == 1 {
-                nvim_manager.split_current_buffer()
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Can't apply split: {}", e)))?;
+            .map_err(|e| map_io_err("Error when reading files: {}", e))?;
+        if exit {
+            let single_file = opt.files.len() == 1;
+            if single_file {
+                nvim_manager.split_current_buffer_if_required()
+                    .map_err(|e| map_io_err("Can't apply split: {}", e))?;
             }
-            return Ok(());
+            return close_child_nvim_if_spawned(nvim_process);
         }
     }
 
     let pty_path = use_instance
         .map_or_else(||Page::Regular { is_reading_from_fifo }, |name| Page::Instance { name })
         .run(&mut nvim_manager, opt.back)
-        .map_err(|e| io::Error::new(io::ErrorKind::NotConnected, format!("Can't connect to PTY: {}", e)))?;
+        .map_err(|e| map_io_err("Can't connect to PTY: {}", e))?;
 
     if is_reading_from_fifo {
         let mut pty_device = OpenOptions::new().append(true).open(&pty_path)?;
@@ -420,8 +437,5 @@ fn main() -> io::Result<()> {
         println!("{}", pty_path.to_string_lossy());
     }
 
-    if let Some(mut nvim_process) = nvim_process {
-        nvim_process.wait().map(|_| ())?;
-    }
-    Ok(())
+    close_child_nvim_if_spawned(nvim_process)
 }
