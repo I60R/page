@@ -8,7 +8,7 @@ extern crate structopt;
 extern crate neovim_lib;
 extern crate rand;
 
-use neovim_lib::{self as nvim, NeovimApi, Value};
+use neovim_lib::{self as nvim, neovim_api as nvim_api, NeovimApi, Value};
 use rand::{Rng, thread_rng};
 use structopt::{StructOpt, clap::{ ArgGroup, AppSettings::* }};
 use std::fs::{self, remove_file, File, OpenOptions};
@@ -254,13 +254,7 @@ impl <'a> NvimManager<'a> {
     }
 
     fn update_current_buffer_options(&mut self) -> Result<(), Box<Error>> {
-        self.nvim.command("\
-            setl scrollback=-1
-            setl scrolloff=999
-            setl signcolumn=no
-            setl nonumber
-            setl modifiable
-            norm M")?;
+        self.nvim.command("setl scrollback=-1 scrolloff=999 signcolumn=no nonumber modifiable winfixwidth | norm M")?;
         if let Some(user_command) = self.opt.command.as_ref() {
             let saved_position = self.get_current_buffer_position()?;
             self.nvim.command(user_command)?;
@@ -276,14 +270,13 @@ impl <'a> NvimManager<'a> {
         Ok(())
     }
 
-    fn get_current_buffer_position(&mut self) -> Result<(u64, u64), Box<Error>> {
-        let winnr = self.nvim.call_function("winnr", vec![])?.as_u64().unwrap();
-        let bufnr = self.nvim.call_function("bufnr", vec![nvim::Value::from("%")])?.as_u64().unwrap();
-        Ok((winnr, bufnr))
+    fn get_current_buffer_position(&mut self) -> Result<(nvim_api::Window, nvim_api::Buffer), Box<Error>> {
+        Ok((self.nvim.get_current_win()?, self.nvim.get_current_buf()?))
     }
 
-    fn switch_to_buffer_position(&mut self, (winnr, bufnr): (u64, u64)) -> Result<(), Box<Error>> {
-        self.nvim.command(&format!("{}wincmd w | {}b", winnr, bufnr))?;
+    fn switch_to_buffer_position(&mut self, (win, buf): (nvim_api::Window, nvim_api::Buffer)) -> Result<(), Box<Error>> {
+        self.nvim.set_current_win(&win)?;
+        self.nvim.set_current_buf(&buf)?;
         Ok(())
     }
 
@@ -378,10 +371,11 @@ fn map_io_err<E: AsRef<Error>>(msg: &str, e: E) -> io::Error {
 
 fn main() -> io::Result<()> {
     let opt = Opt::from_args();
-    let use_instance = opt.instance.as_ref().or(opt.instance_append.as_ref());
+    let instance = opt.instance.as_ref().or(opt.instance_append.as_ref());
 
     let is_reading_from_fifo = is_reading_from_fifo();
-    let is_any_file_present = !opt.files.is_empty();
+    let has_files_to_show = !opt.files.is_empty();
+    let uses_instance = instance.is_some();
 
     let RunningSession { mut nvim_session, nvim_process } = RunningSession::connect_to_parent_or_child(opt.address.as_ref())?;
     nvim_session.start_event_loop();
@@ -391,22 +385,22 @@ fn main() -> io::Result<()> {
 
 
     if let Some(instance_name) = opt.instance_close.as_ref() {
-        if opt.address.is_some() {
+        if nvim_process.is_some() {
+            eprintln!("Can't close instance on newly spawned nvim process")
+        } else {
             nvim_manager.close_pty_instance(&instance_name)
                 .map_err(|e| map_io_err(&format!("Error when closing \"{}\"", instance_name), e))?;
-        } else {
-            eprintln!("Can't close instance on newly spawned nvim process")
         }
-        let exit = !(is_reading_from_fifo || use_instance.is_some() || is_any_file_present);
+        let exit = !(is_reading_from_fifo || uses_instance || has_files_to_show);
         if exit {
             return Ok(());
         }
     }
 
-    if is_any_file_present {
-        let exit = !(is_reading_from_fifo || use_instance.is_some());
-        let single_file = opt.files.len() == 1;
-        if exit && single_file {
+    if has_files_to_show {
+        let exit = !(is_reading_from_fifo || uses_instance);
+        let show_single_file_and_exit = exit && opt.files.len() == 1;
+        if show_single_file_and_exit {
             nvim_manager.split_current_buffer_if_required()
                 .map_err(|e| map_io_err("Can't apply split: {}", e))?;
         }
@@ -419,8 +413,7 @@ fn main() -> io::Result<()> {
         }
     }
 
-    let pty_path = use_instance
-        .map_or_else(||Page::Regular { is_reading_from_fifo }, |name| Page::Instance { name })
+    let pty_path = instance.map_or_else(||Page::Regular { is_reading_from_fifo }, |name| Page::Instance { name })
         .run(&mut nvim_manager, opt.back)
         .map_err(|e| map_io_err("Can't connect to PTY: {}", e))?;
 
