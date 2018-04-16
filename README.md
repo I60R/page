@@ -1,16 +1,21 @@
 # Page
 
-Allows you to redirect text into neovim's :term buffer.  
-ANSI escape sequences are interpreted directly, so it's very fast.  
+Allows you to redirect text into neovim.  
+You can set it as `$PAGER` to view logs, diffs, various command outputs.  
   
-You will have familiar keybindings and all text editing, searching and navigating facilities that neovim provides.  
+ANSI escape sequences are interpreted directly by :term buffer (this makes it faster than [vimpager](https://github.com/rkitover/vimpager) and [nvimpager](https://github.com/lucc/nvimpager)).  
+No need to wait until EOF - text displayed instantly as it arrives.  
+  
+Uses parent neovim process when available (great fit alongside with [neovim-remote](https://github.com/mhinz/neovim-remote)).  
+  
+You will have familiar keybindings and all text editing, searching and navigating facilities that neovim provides (this makes it better than [less](https://en.wikipedia.org/wiki/Less_(Unix)).  
 
 
 
 ## Usage
 
 For full list of cli options refer to [src/cli.rs](https://github.com/I60R/page/blob/master/src/cli.rs)
-
+  
 
 ![](https://i.imgur.com/fVZqvsk.gif)
 
