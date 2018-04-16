@@ -3,11 +3,12 @@
 
 ## Usage
 
-![](https://i.imgur.com/hnndUHy.gif)
+![](https://i.imgur.com/fVZqvsk.gif)
 
-![](https://i.imgur.com/cktYQjY.gif)
+![](https://i.imgur.com/sMF9sDP.gif)
 
-![](https://i.imgur.com/iYDlYpj.gif)
+![](https://i.imgur.com/r38no3B.gif)
+
 
 
 ## Settings
