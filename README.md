@@ -13,12 +13,16 @@
 
 ## Settings
 
-Defaults:
-
+Appearance:
 ```viml
-    let g:page_icon_instance = '§' "  devicon is used on gif
+    let g:page_icon_instance = '§'
     let g:page_icon_redirect = '>§'
     let g:page_icon_pipe = '|§'
+```
+
+Buffer defaults:
+```viml
+    setl scrollback=-1 scrolloff=999 signcolumn=no nonumber modifiable winfixwidth
 ```
 
 
