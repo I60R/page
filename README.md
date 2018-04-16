@@ -1,7 +1,16 @@
-# page(r) - read in neovim buffer
+# Page
+
+Allows you to redirect text into neovim's :term buffer.  
+ANSI escape sequences are interpreted directly, so it's very fast.  
+  
+You will have familiar keybindings and all text editing, searching and navigating facilities that neovim provides.  
+
 
 
 ## Usage
+
+For full list of cli options refer to [src/cli.rs](https://github.com/I60R/page/blob/master/src/cli.rs)
+
 
 ![](https://i.imgur.com/fVZqvsk.gif)
 
@@ -23,6 +32,11 @@ Appearance:
 Buffer defaults:
 ```viml
     setl scrollback=-1 scrolloff=999 signcolumn=no nonumber modifiable winfixwidth
+```
+
+Filetype set:
+```viml
+    pager
 ```
 
 
