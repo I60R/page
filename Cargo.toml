@@ -1,8 +1,8 @@
 [package]
 name = "page"
-version = "0.12.3"
+version = "0.12.4"
 authors = ["160R <160R@protonmail.com>"]
-description = "Pager that utilizes neovim's terminal buffer"
+description = "A pager that utilizes neovim's terminal buffer"
 
 [dependencies]
 rand = "0.4"
