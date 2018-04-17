@@ -1,4 +1,3 @@
-#![feature(termination_trait)]
 #![feature(attr_literals)]
 #![feature(iterator_try_fold)]
 
@@ -26,8 +25,6 @@ use std::error::Error;
 use std::os::unix::fs::FileTypeExt;
 use structopt::StructOpt;
 
-use cli::Opt;
-
 
 /// Extends `nvim::Session` with optional `nvim_process` field.
 /// That `nvim_process` might be a spawned on top `nvim` process connected through unix socket.
@@ -43,7 +40,7 @@ impl RunningSession {
             .map_or_else(RunningSession::spawn_child,
                          |address| RunningSession::connect_to_parent(address)
                              .or_else(|e| {
-                                 eprintln!("can't connect to parent neovim session: {}", e);
+                                 eprintln!("can't connect to parent nvim session: {}", e);
                                  RunningSession::spawn_child()
                     }))
     }
@@ -61,7 +58,7 @@ impl RunningSession {
         Ok(RunningSession { nvim_session, nvim_child_process: Some(nvim_child_process) })
     }
 
-    fn connect_to_parent(nvim_listen_address: &String) -> io::Result<RunningSession> {
+    fn connect_to_parent(nvim_listen_address: &str) -> io::Result<RunningSession> {
         let nvim_session = nvim_listen_address.parse::<SocketAddr>().ok()
             .map_or_else(||nvim::Session::new_unix_socket(nvim_listen_address),
                          |_|nvim::Session::new_tcp(nvim_listen_address))?;
@@ -70,10 +67,10 @@ impl RunningSession {
 }
 
 
-/// A helper for neovim terminal buffer creation/setting
+/// A helper for nvim terminal buffer creation/setting
 struct NvimManager<'a> {
     nvim: &'a mut nvim::Neovim,
-    opt: &'a Opt,
+    opt: &'a cli::Opt,
 }
 
 impl <'a> NvimManager<'a> {
@@ -135,22 +132,22 @@ impl <'a> NvimManager<'a> {
         if self.opt.split_right > 0 {
             self.nvim.command("belowright vsplit")?;
             let buf_width = self.nvim.call_function("winwidth", vec![Value::from(0)])?.as_u64().unwrap();
-            let resize_ratio = buf_width * 3 / (self.opt.split_right as u64 + 1);
+            let resize_ratio = buf_width * 3 / (u64::from(self.opt.split_right) + 1);
             self.nvim.command(&format!("vertical resize {}", resize_ratio))?;
         } else if self.opt.split_left > 0 {
             self.nvim.command("aboveleft vsplit")?;
             let buf_width = self.nvim.call_function("winwidth", vec![Value::from(0)])?.as_u64().unwrap();
-            let resize_ratio = buf_width * 3 / (self.opt.split_left as u64 + 1);
+            let resize_ratio = buf_width * 3 / (u64::from(self.opt.split_left) + 1);
             self.nvim.command(&format!("vertical resize {}", resize_ratio))?;
         } else if self.opt.split_below > 0 {
             self.nvim.command("belowright split")?;
             let buf_height = self.nvim.call_function("winheight", vec![Value::from(0)])?.as_u64().unwrap();
-            let resize_ratio = buf_height * 3 / (self.opt.split_below as u64 + 1);
+            let resize_ratio = buf_height * 3 / (u64::from(self.opt.split_below) + 1);
             self.nvim.command(&format!("resize {}", resize_ratio))?;
         } else if self.opt.split_above > 0 {
             self.nvim.command("aboveleft split")?;
             let buf_height = self.nvim.call_function("winheight", vec![Value::from(0)])?.as_u64().unwrap();
-            let resize_ratio = buf_height * 3 / (self.opt.split_above as u64 + 1);
+            let resize_ratio = buf_height * 3 / (u64::from(self.opt.split_above) + 1);
             self.nvim.command(&format!("resize {}", resize_ratio))?;
         } else if let Some(split_right_cols) = self.opt.split_right_cols {
             self.nvim.command(&format!("belowright vsplit | vertical resize {}", split_right_cols))?;
@@ -170,7 +167,7 @@ impl <'a> NvimManager<'a> {
             .chain((1..99).map(|i| (i, format!("exe 'file ' . {} . '({})'", name, i))))
             .try_for_each(|(attempt, cmd)| match self.nvim.command(&cmd) {
                 Err(err) => if attempt < 99 && err.description() == buf_exists { Ok(()) } else { Err(Err(err)) },
-                Ok(succ) => Err(Ok(succ)),
+                Ok(()) => Err(Ok(())),
             }).or_else(|break_status| break_status)
     }
 
@@ -201,7 +198,7 @@ impl <'a> NvimManager<'a> {
         Ok(())
     }
 
-    fn open_file_buffer(&mut self, file: &String) -> Result<(), Box<Error>> {
+    fn open_file_buffer(&mut self, file: &str) -> Result<(), Box<Error>> {
         let file_path = fs::canonicalize(file)?;
         self.nvim.command(&format!("e {} | ", file_path.to_string_lossy()))?;
         self.update_current_buffer_options()
@@ -301,8 +298,8 @@ fn map_io_err<E: AsRef<Error>>(msg: &str, e: E) -> io::Error {
 
 
 fn main() -> io::Result<()> {
-    let opt = Opt::from_args();
-    let instance = opt.instance.as_ref().or(opt.instance_append.as_ref());
+    let opt = cli::Opt::from_args();
+    let instance = opt.instance.as_ref().or_else(||opt.instance_append.as_ref());
 
     let RunningSession { mut nvim_session, nvim_child_process } = RunningSession::connect_to_parent_or_child(opt.address.as_ref())?;
     nvim_session.start_event_loop();
@@ -347,7 +344,7 @@ fn main() -> io::Result<()> {
 
     if is_reading_from_fifo {
         let mut pty_device = OpenOptions::new().append(true).open(&pty_path)?;
-        if !opt.instance_append.is_some() {
+        if opt.instance_append.is_none() {
             write!(&mut pty_device, "\x1B[2J\x1B[1;1H")?; // Clear screen
         }
         let stdin = io::stdin();
