@@ -1,5 +1,8 @@
 # Page
 
+[![Build Status](https://travis-ci.org/I60R/page.svg?branch=master)](https://travis-ci.org/I60R/page)
+[![Lines Of Code](https://tokei.rs/b1/github/I60R/page)](https://github.com/I60R/page)
+
 Allows you to redirect text into neovim.  
 You can set it as `$PAGER` to view logs, diffs, various command outputs.  
   
@@ -8,7 +11,7 @@ No need to wait until EOF - text displayed instantly as it arrives.
   
 Uses parent neovim process when available (great fit alongside with [neovim-remote](https://github.com/mhinz/neovim-remote)).  
   
-You will have familiar keybindings and all text editing, searching and navigating facilities that neovim provides (this makes it better than [less](https://en.wikipedia.org/wiki/Less_(Unix)).  
+You will have familiar keybindings and all text editing, searching and navigating facilities that neovim provides (this makes it better than [less](https://en.wikipedia.org/wiki/Less_(Unix))).  
 
 
 
@@ -37,11 +40,7 @@ Appearance:
 Buffer defaults:
 ```viml
     setl scrollback=-1 scrolloff=999 signcolumn=no nonumber modifiable winfixwidth
-```
-
-Filetype set:
-```viml
-    pager
+    setl filetype=pager
 ```
 
 
