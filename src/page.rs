@@ -1,6 +1,3 @@
-#![feature(attr_literals)]
-#![feature(iterator_try_fold)]
-
 #[macro_use]
 extern crate structopt;
 
@@ -161,14 +158,17 @@ impl <'a> NvimManager<'a> {
         Ok(())
     }
 
-    fn update_current_buffer_name(&mut self, name: &str) -> Result<(), nvim::CallError> {
-        let buf_exists = "Vim(file):E95: Buffer with this name already exists";
-        iter::once((0,                 format!("exe 'file ' . {}",          name    ))) // first name without number
-            .chain((1..99).map(|i| (i, format!("exe 'file ' . {} . '({})'", name, i))))
-            .try_for_each(|(attempt, cmd)| match self.nvim.command(&cmd) {
-                Err(err) => if attempt < 99 && err.description() == buf_exists { Ok(()) } else { Err(Err(err)) },
-                Ok(()) => Err(Ok(())),
-            }).or_else(|break_status| break_status)
+    fn update_current_buffer_name(&mut self, name: &str) -> Result<(), Box<Error>> {
+        let first_attempt =                 (0, format!("exe 'file ' . {}",          name    ));
+        let next_attempts = (1..99).map(|i| (i, format!("exe 'file ' . {} . '({})'", name, i)));
+        let buf_exists_err_msg = "0 - Vim(file):E95: Buffer with this name already exists";
+        for (attempt_count, cmd) in iter::once(first_attempt).chain(next_attempts) {
+            match self.nvim.command(&cmd) {
+                Err(e) => if attempt_count > 99 || e.to_string() != buf_exists_err_msg { return Err(e)? },
+                Ok(()) => return Ok(()),
+            }
+        }
+        return Err("Can't update buffer name")?;
     }
 
     fn update_current_buffer_options(&mut self) -> Result<(), Box<Error>> {
@@ -206,13 +206,13 @@ impl <'a> NvimManager<'a> {
 }
 
 
-/// Represents usecase
+/// Represents use case
 enum Page<'a> {
     Instance {
         name: &'a str,
     },
     Regular {
-        is_reading_from_fifo: bool,
+        reading_from_fifo: bool,
     },
     ShowFiles {
         paths: &'a Vec<String>
@@ -227,12 +227,12 @@ impl <'a> Page<'a> {
             None
         };
         let pty_path = match self {
-            Page::Regular { is_reading_from_fifo } => {
+            Page::Regular { reading_from_fifo } => {
                 if can_split {
                     nvim_manager.split_current_buffer_if_required()?;
                 }
                 let pty_path = nvim_manager.create_pty_with_buffer()?;
-                let pty_buffer_name = if is_reading_from_fifo {
+                let pty_buffer_name = if reading_from_fifo {
                     r"get(g:, 'page_icon_pipe', '\\|§')"
                 } else {
                     r"get(g:, 'page_icon_redirect', '>§')"
@@ -285,19 +285,12 @@ fn is_reading_from_fifo() -> bool {
         .unwrap_or(true)
 }
 
-fn close_child_nvim_if_spawned(spawned_nvim_process: Option<process::Child>) -> io::Result<()> {
-    if let Some(mut nvim_process) = spawned_nvim_process {
-        nvim_process.wait().map(|_| ())?;
-    }
-    Ok(())
-}
-
-fn map_io_err<E: AsRef<Error>>(msg: &str, e: E) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, format!("{}: {}", msg, e.as_ref()))
+fn close_child_nvim_if_spawned(spawned_nvim_process: Option<process::Child>) -> Result<(), Box<Error>> {
+    spawned_nvim_process.map_or(Ok(()), |mut p| { p.wait()?; Ok(()) })
 }
 
 
-fn main() -> io::Result<()> {
+fn main() -> Result<(), Box<Error>> {
     let opt = cli::Opt::from_args();
     let instance = opt.instance.as_ref().or_else(||opt.instance_append.as_ref());
 
@@ -307,51 +300,48 @@ fn main() -> io::Result<()> {
     let mut nvim = nvim::Neovim::new(nvim_session);
     let mut nvim_manager = NvimManager { opt: &opt, nvim: &mut nvim };
 
-    let is_reading_from_fifo = is_reading_from_fifo();
-    let is_connected_to_parent_nvim_process = nvim_child_process.is_none();
+    let reading_from_fifo = is_reading_from_fifo();
+    let connected_to_parent_nvim_process = nvim_child_process.is_none();
     let has_files_to_show = !opt.files.is_empty();
     let uses_instance = instance.is_some();
 
 
     if let Some(instance_name) = opt.instance_close.as_ref() {
         if nvim_child_process.is_some() {
-            eprintln!("Can't close instance on newly spawned nvim process")
+            eprintln!("Can't close instance on newly spawned nvim process");
         } else {
-            nvim_manager.close_pty_instance(&instance_name)
-                .map_err(|e| map_io_err(&format!("Error when closing \"{}\"", instance_name), e))?;
+            nvim_manager.close_pty_instance(&instance_name)?;
         }
-        let exit = !(is_reading_from_fifo || uses_instance || has_files_to_show);
-        if exit {
+        let other_tasks = reading_from_fifo || uses_instance || has_files_to_show;
+        if !other_tasks {
             return Ok(());
         }
     }
 
     if has_files_to_show {
-        let exit = !(is_reading_from_fifo || uses_instance);
-        let can_split = is_connected_to_parent_nvim_process && exit && opt.files.len() == 1;
-        let stay_on_current_buffer = opt.back || !exit;
+        let other_tasks = reading_from_fifo || uses_instance;
+        let can_split = connected_to_parent_nvim_process && other_tasks && opt.files.len() == 1;
+        let stay_on_current_buffer = opt.back || other_tasks;
         Page::ShowFiles { paths: &opt.files }
-            .run(&mut nvim_manager, stay_on_current_buffer, can_split)
-            .map_err(|e| map_io_err("Error when reading files: {}", e))?;
-        if exit {
+            .run(&mut nvim_manager, stay_on_current_buffer, can_split)?;
+        if !other_tasks {
             return close_child_nvim_if_spawned(nvim_child_process);
         }
     }
 
-    let pty_path = instance.map_or_else(|| Page::Regular { is_reading_from_fifo }, |name| Page::Instance { name })
-        .run(&mut nvim_manager, opt.back, is_connected_to_parent_nvim_process)
-        .map_err(|e| map_io_err("Can't connect to PTY: {}", e))?;
+    let pty_path = instance.map_or_else(|| Page::Regular { reading_from_fifo }, |name| Page::Instance { name })
+        .run(&mut nvim_manager, opt.back, connected_to_parent_nvim_process)?;
 
-    if is_reading_from_fifo {
+    if reading_from_fifo {
         let mut pty_device = OpenOptions::new().append(true).open(&pty_path)?;
         if opt.instance_append.is_none() {
             write!(&mut pty_device, "\x1B[2J\x1B[1;1H")?; // Clear screen
         }
         let stdin = io::stdin();
-        io::copy(&mut stdin.lock(), &mut pty_device).map(|_| ())?;
+        io::copy(&mut stdin.lock(), &mut pty_device).map(drop)?;
     }
 
-    if (opt.print_pty_path || !is_reading_from_fifo) && is_connected_to_parent_nvim_process {
+    if (opt.print_pty_path || !reading_from_fifo) && connected_to_parent_nvim_process {
         println!("{}", pty_path.to_string_lossy());
     }
 

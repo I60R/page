@@ -4,13 +4,8 @@ use structopt::{clap::{ ArgGroup, AppSettings::* }};
 #[derive(StructOpt)]
 #[structopt(raw(
     global_settings="&[DisableHelpSubcommand, DeriveDisplayOrder]",
-    group=r#"ArgGroup::with_name("splits")
-        .args(&["split_left", "split_right", "split_above", "split_below"])
-        .args(&["split_left_cols", "split_right_cols", "split_above_rows", "split_below_rows"])
-        .multiple(false)"#,
-    group=r#"ArgGroup::with_name("instances")
-        .args(&["instance", "instance_append"])
-        .multiple(false)"#))]
+    group="splits_arg_group()",
+    group="instance_arg_group()"))]
 pub struct Opt {
     /// Neovim session address
     #[structopt(short="s", env="NVIM_LISTEN_ADDRESS")]
@@ -81,3 +76,16 @@ pub struct Opt {
     pub files: Vec<String>
 }
 
+
+fn instance_arg_group() -> ArgGroup<'static> {
+    ArgGroup::with_name("instances")
+        .args(&["instance", "instance_append"])
+        .multiple(false)
+}
+
+fn splits_arg_group() -> ArgGroup<'static> {
+    ArgGroup::with_name("splits")
+        .args(&["split_left", "split_right", "split_above", "split_below"])
+        .args(&["split_left_cols", "split_right_cols", "split_above_rows", "split_below_rows"])
+        .multiple(false)
+}
