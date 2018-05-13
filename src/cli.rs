@@ -30,6 +30,10 @@ pub struct Opt {
 
     /// Only closes named instance buffer if exists
     #[structopt(short="x")]
+    pub instance_close_only: Option<String>,
+
+    /// Close named instance buffer
+    #[structopt(short="X")]
     pub instance_close: Option<String>,
 
     /// Hint for syntax highlighting when reads from stdin

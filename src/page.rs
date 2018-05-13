@@ -253,9 +253,6 @@ impl <'a> NvimManager<'a> {
         Ok(var)
 
     }
-}
-
-
 
 fn random_string() -> String {
     thread_rng().sample_iter(&Alphanumeric).take(32).collect()
