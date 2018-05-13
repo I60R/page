@@ -5,7 +5,8 @@ use structopt::{clap::{ ArgGroup, AppSettings::* }};
 #[structopt(raw(
     global_settings="&[DisableHelpSubcommand, DeriveDisplayOrder]",
     group="splits_arg_group()",
-    group="instance_arg_group()"))]
+    group="instance_use_arg_group()",
+    group="instance_close_arg_group()"))]
 pub struct Opt {
     /// Neovim session address
     #[structopt(short="s", env="NVIM_LISTEN_ADDRESS")]
@@ -15,6 +16,10 @@ pub struct Opt {
     #[structopt(short="e")]
     pub command: Option<String>,
 
+    /// Run command in pager buffer after reading was done
+    #[structopt(short="E")]
+    pub command_post: Option<String>,
+
     /// Use named instance buffer instead of opening new
     #[structopt(short="i")]
     pub instance: Option<String>,
@@ -23,8 +28,12 @@ pub struct Opt {
     #[structopt(short="a")]
     pub instance_append: Option<String>,
 
-    /// Close named instance buffer
+    /// Close named instance buffer without opening new
     #[structopt(short="x")]
+    pub instance_close_only: Option<String>,
+
+    /// Close named instance buffer
+    #[structopt(short="X")]
     pub instance_close: Option<String>,
 
     /// Filetype hint, allows color highlighting when reading from stdin
@@ -77,9 +86,15 @@ pub struct Opt {
 }
 
 
-fn instance_arg_group() -> ArgGroup<'static> {
+fn instance_use_arg_group() -> ArgGroup<'static> {
     ArgGroup::with_name("instances")
         .args(&["instance", "instance_append"])
+        .multiple(false)
+}
+
+fn instance_close_arg_group() -> ArgGroup<'static> {
+    ArgGroup::with_name("close")
+        .args(&["instance_close", "instance_close_only"])
         .multiple(false)
 }
 
