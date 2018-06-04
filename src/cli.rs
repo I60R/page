@@ -30,21 +30,21 @@ pub struct Opt {
 
     /// Close named instance buffer without opening new
     #[structopt(short="x")]
-    pub instance_close_only: Option<String>,
-
-    /// Close named instance buffer
-    #[structopt(short="X")]
     pub instance_close: Option<String>,
 
     /// Filetype hint, allows color highlighting when reading from stdin
     #[structopt(short="t", default_value="pager")]
     pub filetype: String,
 
+    /// Don't open new buffer [default if only -x or FILES provided]
+    #[structopt(short="c")]
+    pub cmd_mode: bool,
+
     /// Stay focused on current buffer
     #[structopt(short="b")]
     pub back: bool,
 
-    /// Print path to /dev/pty/* associated with pager buffer
+    /// Print path to /dev/pty/* associated with pager buffer [default when don't reads from pipe]
     #[structopt(short="p")]
     pub print_pty_path: bool,
 
