@@ -164,25 +164,25 @@ impl <'a> NvimManager<'a> {
         for (attempt_count, cmd) in iter::once(first_attempt).chain(next_attempts) {
             match self.nvim.command(&cmd) {
                 Err(e) => if attempt_count > 99 || e.to_string() != buf_exists_err_msg { return Err(e)? },
-                Ok(()) => return Ok(()),
+                Ok(()) => {
+                    self.nvim.command("redraw!")?;  // To update statusline
+                    return Ok(())
+                },
             }
         }
         return Err("Can't update buffer name")?;
     }
 
     fn set_page_default_options_to_current_buffer(&mut self) -> Result<(), Box<Error>> {
-        self.nvim.command("setl scrollback=-1 scrolloff=999 signcolumn=no nonumber modifiable winfixwidth | norm M")?;
-        Ok(())
+        Ok(self.nvim.command("setl scrollback=-1 scrolloff=999 signcolumn=no nonumber modifiable winfixwidth | norm M")?)
     }
 
     fn update_current_buffer_filetype(&mut self, filetype: &str) -> Result<(), Box<Error>> {
-        self.nvim.command(&format!("setl filetype={}", filetype))?;
-        Ok(())
+        Ok(self.nvim.command(&format!("setl filetype={}", filetype))?)
     }
 
     fn execute_user_command_on_current_buffer(&mut self, command: &str) -> Result<(), Box<Error>> {
-        self.nvim.command(command)?;
-        Ok(())
+        Ok(self.nvim.command(command)?)
     }
 
     fn get_current_buffer_position(&mut self) -> Result<(nvim_api::Window, nvim_api::Buffer), Box<Error>> {
