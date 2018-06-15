@@ -307,7 +307,7 @@ impl <'a> App<'a> {
         Ok(())
     }
 
-    fn handle_redirect_mode(&mut self, &Ctx { opt, ref nvim_child_process, ref initial_position, read_from_fifo, instance, .. }: &Ctx) -> Result<(), Box<Error>> {
+    fn handle_redirect_mode(&mut self, &Ctx { opt, ref initial_position, read_from_fifo, instance, .. }: &Ctx) -> Result<(), Box<Error>> {
         if let Some(user_command) = opt.command.as_ref() {
             self.nvim_manager.execute_user_command_on_current_buffer(user_command)?;
         }
@@ -325,7 +325,8 @@ impl <'a> App<'a> {
                 if instance.is_some() {
                     self.nvim_manager.update_current_buffer_filetype(&opt.filetype)?;
                 }
-            } else if nvim_child_process.is_none() && (opt.pty_print || !read_from_fifo) {
+            }
+            if !read_from_fifo || opt.pty_print {
                 println!("{}", pty_path.to_string_lossy());
             }
         }
