@@ -9,10 +9,10 @@ use structopt::{clap::{ ArgGroup, AppSettings::* }};
     group="instance_close_arg_group()"))]
 pub struct Opt {
     /// Neovim session address
-    #[structopt(short="s", env="NVIM_LISTEN_ADDRESS")]
+    #[structopt(short="a", env="NVIM_LISTEN_ADDRESS")]
     pub address: Option<String>,
 
-    /// Run command in pager buffer
+    /// Run command in pager buffer when reading begins
     #[structopt(short="e")]
     pub command: Option<String>,
 
@@ -20,33 +20,33 @@ pub struct Opt {
     #[structopt(short="E")]
     pub command_post: Option<String>,
 
-    /// Use named instance buffer instead of opening new
+    /// Use named instance buffer if exist, or spawn new. New content will overwrite
     #[structopt(short="i")]
     pub instance: Option<String>,
 
-    /// The same as "-i" but with append mode
-    #[structopt(short="a")]
+    /// Use named instance buffer if exist, or spawn new. New content will be appended
+    #[structopt(short="I")]
     pub instance_append: Option<String>,
 
-    /// Close named instance buffer without opening new
+    /// Only closes named instance buffer if exists
     #[structopt(short="x")]
     pub instance_close: Option<String>,
 
-    /// Filetype hint, allows color highlighting when reading from stdin
+    /// Filetype hint for syntax highlighting when page reads from stdin
     #[structopt(short="t", default_value="pager")]
     pub filetype: String,
 
-    /// Don't open new buffer [default if only -x or FILES provided]
-    #[structopt(short="c")]
-    pub cmd_mode: bool,
+    /// Open new buffer [set by default, except only <instance_close> or <FILES> provided]
+    #[structopt(short="o")]
+    pub pty_open: bool,
+
+    /// Print path to /dev/pty/* associated with pager buffer [default when don't reads from pipe]
+    #[structopt(short="p")]
+    pub pty_print: bool,
 
     /// Stay focused on current buffer
     #[structopt(short="b")]
     pub back: bool,
-
-    /// Print path to /dev/pty/* associated with pager buffer [default when don't reads from pipe]
-    #[structopt(short="p")]
-    pub print_pty_path: bool,
 
     /// Split right with ratio: window_width  * 3 / (<r provided> + 1)
     #[structopt(short="r", parse(from_occurrences))]

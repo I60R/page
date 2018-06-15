@@ -1,6 +1,6 @@
 [package]
 name = "page"
-version = "0.14.0"
+version = "0.15.0"
 authors = ["160R <160R@protonmail.com>"]
 description = "A pager that utilizes neovim's terminal buffer"
 repository = "https://github.com/I60R/page"
@@ -8,9 +8,9 @@ license = "MIT"
 readme = "README.md"
 
 [dependencies]
-rand = "0.4.2"
-libc = "0.2.40"
-structopt = "0.2.8"
+rand = "0.5.1"
+libc = "0.2.42"
+structopt = "0.2.10"
 neovim-lib = "0.5.2"
 
 [[bin]]
