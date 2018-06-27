@@ -5,8 +5,7 @@ use structopt::{clap::{ ArgGroup, AppSettings::* }};
 #[structopt(raw(
     global_settings="&[DisableHelpSubcommand, DeriveDisplayOrder]",
     group="splits_arg_group()",
-    group="instance_use_arg_group()",
-    group="instance_close_arg_group()"))]
+    group="instance_use_arg_group()"))]
 pub struct Opt {
     /// Neovim session address
     #[structopt(short="a", env="NVIM_LISTEN_ADDRESS")]
@@ -36,11 +35,11 @@ pub struct Opt {
     #[structopt(short="t", default_value="pager")]
     pub filetype: String,
 
-    /// Open new buffer [set by default, except only <instance_close> or <FILES> provided]
+    /// Open new buffer [set by default, unless only <instance_close> or <FILES> provided]
     #[structopt(short="o")]
     pub pty_open: bool,
 
-    /// Print path to /dev/pty/* associated with pager buffer [default when don't reads from pipe]
+    /// Print path to /dev/pty/* for redirecting [set by default when don't reads from pipe]
     #[structopt(short="p")]
     pub pty_print: bool,
 
@@ -89,12 +88,6 @@ pub struct Opt {
 fn instance_use_arg_group() -> ArgGroup<'static> {
     ArgGroup::with_name("instances")
         .args(&["instance", "instance_append"])
-        .multiple(false)
-}
-
-fn instance_close_arg_group() -> ArgGroup<'static> {
-    ArgGroup::with_name("close")
-        .args(&["instance_close", "instance_close_only"])
         .multiple(false)
 }
 

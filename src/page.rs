@@ -10,58 +10,60 @@ mod cli;
 
 use neovim_lib::{self as nvim, neovim_api as nvim_api, NeovimApi, Value};
 use rand::{Rng, thread_rng, distributions::Alphanumeric};
-use std::fs::{self, remove_file, File, OpenOptions};
-use std::path::PathBuf;
-use std::io::{self, Read, Write};
-use std::iter;
-use std::process::{self, Command, Stdio};
-use std::thread;
-use std::time::Duration;
-use std::net::{SocketAddr};
-use std::error::Error;
-use std::os::unix::fs::FileTypeExt;
 use structopt::StructOpt;
+use std::{
+    fs::{self, remove_file, File, OpenOptions},
+    path::PathBuf,
+    io::{self, Read, Write},
+    iter,
+    thread,
+    process::{self, Command, Stdio},
+    time::Duration,
+    net::SocketAddr,
+    error::Error,
+    os::unix::fs::FileTypeExt,
+};
 
 
-/// Extends `nvim::Session` to be able to spawn new nvim process
-/// unlike `nvim::Session::ClientConnection::Child` stdin|stdout will be not inherited.
+/// Extends `nvim::Session` to be able to spawn new nvim process.
+/// Unlike `nvim::Session::ClientConnection::Child` stdin|stdout of new process will be not inherited.
 struct NvimSessionConnector {
     nvim_session: nvim::Session,
     nvim_child_process: Option<process::Child>
 }
 
 impl NvimSessionConnector {
-    fn connect_to_parent_or_child(nvim_listen_address: &Option<String>) -> io::Result<NvimSessionConnector> {
-        Ok(if let Some(address) = nvim_listen_address {
+    fn connect_to_parent_or_child(nvim_parent_listen_address: &Option<String>) -> io::Result<NvimSessionConnector> {
+        Ok(if let Some(nvim_parent_listen_address) = nvim_parent_listen_address {
             NvimSessionConnector {
-                nvim_session: NvimSessionConnector::connect_at_address(address)?,
+                nvim_session: NvimSessionConnector::session_from_address(nvim_parent_listen_address)?,
                 nvim_child_process: None
             }
         } else {
-            let (address, nvim_child_process) = NvimSessionConnector::spawn_child_nvim_process()?;
+            let (nvim_child_listen_address, nvim_child_process) = NvimSessionConnector::spawn_child_nvim_process()?;
             NvimSessionConnector {
-                nvim_session: NvimSessionConnector::connect_at_address(address.to_string_lossy().as_ref())?,
+                nvim_session: NvimSessionConnector::session_from_address(nvim_child_listen_address.to_string_lossy().as_ref())?,
                 nvim_child_process: Some(nvim_child_process)
             }
         })
     }
 
     fn spawn_child_nvim_process() -> io::Result<(PathBuf, process::Child)> {
-        let nvim_listen_address = {
+        let nvim_child_listen_address = {
             let mut path = PathBuf::from("/tmp/nvim-page");
             fs::create_dir_all(&path)?;
             path.push(&format!("socket-{}", random_string()));
             path
         };
         let nvim_child_process = Command::new("nvim")
-            .stdin(Stdio::null()) // Don't inherit stdin, nvim can't redirect content into terminal buffer
-            .env("NVIM_LISTEN_ADDRESS", &nvim_listen_address)
+            .stdin(Stdio::null()) // Don't inherit stdin, nvim can't redirect content into terminal(!) buffer
+            .env("NVIM_LISTEN_ADDRESS", &nvim_child_listen_address)
             .spawn()?;
-        thread::sleep(Duration::from_millis(150)); // Wait until nvim process connects to socket.
-        Ok((nvim_listen_address, nvim_child_process))
+        thread::sleep(Duration::from_millis(150)); // Wait while nvim child process connects to socket.
+        Ok((nvim_child_listen_address, nvim_child_process))
     }
 
-    fn connect_at_address(nvim_listen_address: impl AsRef<str>) -> io::Result<nvim::Session> {
+    fn session_from_address(nvim_listen_address: impl AsRef<str>) -> io::Result<nvim::Session> {
         let nvim_listen_address = nvim_listen_address.as_ref();
         nvim_listen_address.parse::<SocketAddr>()
             .ok().map_or_else(| |nvim::Session::new_unix_socket(nvim_listen_address),
@@ -70,7 +72,7 @@ impl NvimSessionConnector {
 }
 
 
-/// A helper for nvim terminal buffer creation/setting
+/// A helper for nvim terminal buffer creation/configuration
 struct NvimManager<'a> {
     nvim: &'a mut nvim::Neovim,
 }
@@ -217,7 +219,7 @@ fn is_reading_from_fifo() -> bool {
 
 
 // Context in which application is invoked. Contains related read-only data
-struct Ctx<'a> {
+struct Cx<'a> {
     opt: &'a cli::Opt,
     instance: Option<&'a String>,
     nvim_child_process: Option<process::Child>,
@@ -234,7 +236,7 @@ struct App<'a> {
 }
 
 impl <'a> App<'a> {
-    fn handle_close_instance_flag(&mut self, &Ctx { opt, ref nvim_child_process, .. }: &Ctx) -> Result<(), Box<Error>> {
+    fn handle_close_instance_flag(&mut self, &Cx { opt, ref nvim_child_process, .. }: &Cx) -> Result<(), Box<Error>> {
         if let Some(instance_name) = opt.instance_close.as_ref() {
             match nvim_child_process {
                 Some(_) => eprintln!("Can't close instance on newly spawned nvim process"),
@@ -244,7 +246,7 @@ impl <'a> App<'a> {
         Ok(())
     }
 
-    fn handle_files_provided(&mut self, &Ctx { opt, ref initial_position, read_from_fifo, instance, .. }: &Ctx) -> Result<(), Box<Error>> {
+    fn handle_files_provided(&mut self, &Cx { opt, ref initial_position, read_from_fifo, instance, .. }: &Cx) -> Result<(), Box<Error>> {
         if !opt.files.is_empty() {
             for file in opt.files.iter().as_ref() {
                 match self.nvim_manager.open_file_buffer(file) {
@@ -259,7 +261,7 @@ impl <'a> App<'a> {
         Ok(())
     }
 
-    fn handle_exit_before_pty_open(&self, &Ctx { opt, instance, .. }: &Ctx) {
+    fn handle_exit_before_pty_open(&self, &Cx { opt, instance, .. }: &Cx) {
         let can_exit = opt.instance_close.is_some() || !opt.files.is_empty();
         if (!opt.pty_open && can_exit)
             && !opt.back
@@ -273,7 +275,7 @@ impl <'a> App<'a> {
         }
     }
 
-    fn handle_pty_open(&mut self, &Ctx { opt, ref nvim_child_process, instance, read_from_fifo, .. }: &Ctx) -> Result<(), Box<Error>> {
+    fn handle_pty_open(&mut self, &Cx { opt, ref nvim_child_process, instance, read_from_fifo, .. }: &Cx) -> Result<(), Box<Error>> {
         let open_page_buffer = |app: &mut App| -> Result<(), Box<Error>> {
             if nvim_child_process.is_none() {
                 app.nvim_manager.split_current_buffer_if_required(opt)?;
@@ -307,7 +309,7 @@ impl <'a> App<'a> {
         Ok(())
     }
 
-    fn handle_redirect_mode(&mut self, &Ctx { opt, ref initial_position, read_from_fifo, instance, .. }: &Ctx) -> Result<(), Box<Error>> {
+    fn handle_redirect_mode(&mut self, &Cx { opt, ref initial_position, read_from_fifo, instance, .. }: &Cx) -> Result<(), Box<Error>> {
         if let Some(user_command) = opt.command.as_ref() {
             self.nvim_manager.execute_user_command_on_current_buffer(user_command)?;
         }
@@ -344,7 +346,7 @@ impl <'a> App<'a> {
         Ok(())
     }
 
-    fn handle_exit(self, Ctx { nvim_child_process, .. }: Ctx) -> Result<(), Box<Error>> {
+    fn handle_exit(self, Cx { nvim_child_process, .. }: Cx) -> Result<(), Box<Error>> {
         nvim_child_process.map_or(Ok(()), |mut process| { process.wait()?; Ok(()) })
     }
 }
@@ -358,7 +360,7 @@ fn main() -> Result<(), Box<Error>> {
     nvim_session.start_event_loop();
     let mut nvim = nvim::Neovim::new(nvim_session);
 
-    let ctx = Ctx {
+    let cx = Cx {
         opt: &opt,
         instance: opt.instance.as_ref().or_else(||opt.instance_append.as_ref()),
         nvim_child_process,
@@ -370,10 +372,10 @@ fn main() -> Result<(), Box<Error>> {
         pty_path: &mut None,
         new_position: &mut None,
     };
-    app.handle_close_instance_flag(&ctx)?;
-    app.handle_files_provided(&ctx)?;
-    app.handle_exit_before_pty_open(&ctx);
-    app.handle_pty_open(&ctx)?;
-    app.handle_redirect_mode(&ctx)?;
-    app.handle_exit(ctx)
+    app.handle_close_instance_flag(&cx)?;
+    app.handle_files_provided(&cx)?;
+    app.handle_exit_before_pty_open(&cx);
+    app.handle_pty_open(&cx)?;
+    app.handle_redirect_mode(&cx)?;
+    app.handle_exit(cx)
 }
