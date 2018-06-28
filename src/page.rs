@@ -34,18 +34,18 @@ struct NvimSessionConnector {
 
 impl NvimSessionConnector {
     fn connect_to_parent_or_child(nvim_parent_listen_address: &Option<String>) -> io::Result<NvimSessionConnector> {
-        Ok(if let Some(nvim_parent_listen_address) = nvim_parent_listen_address {
-            NvimSessionConnector {
+        if let Some(nvim_parent_listen_address) = nvim_parent_listen_address {
+            Ok(NvimSessionConnector {
                 nvim_session: NvimSessionConnector::session_from_address(nvim_parent_listen_address)?,
                 nvim_child_process: None
-            }
+            })
         } else {
             let (nvim_child_listen_address, nvim_child_process) = NvimSessionConnector::spawn_child_nvim_process()?;
-            NvimSessionConnector {
+            Ok(NvimSessionConnector {
                 nvim_session: NvimSessionConnector::session_from_address(nvim_child_listen_address.to_string_lossy().as_ref())?,
                 nvim_child_process: Some(nvim_child_process)
-            }
-        })
+            })
+        }
     }
 
     fn spawn_child_nvim_process() -> io::Result<(PathBuf, process::Child)> {
@@ -72,48 +72,53 @@ impl NvimSessionConnector {
 }
 
 
+/// A typealias to clarify signatures a bit. Used only when Input/Output is involved
+type IO<T = ()> = Result<T, Box<Error>>;
+
+
 /// A helper for nvim terminal buffer creation/configuration
 struct NvimManager<'a> {
     nvim: &'a mut nvim::Neovim,
 }
 
 impl <'a> NvimManager<'a> {
-    fn create_pty_with_buffer(&mut self) -> Result<PathBuf, Box<Error>> {
+    fn create_pty_with_buffer(&mut self) -> IO<(nvim_api::Buffer, PathBuf)> {
         let agent_pipe_name = random_string();
         self.nvim.command(&format!("term pty-agent {}", agent_pipe_name))?;
-        Ok(self.read_pty_device_path(&agent_pipe_name)?)
+        Ok((self.nvim.get_current_buf()?, self.read_pty_device_path(&agent_pipe_name)?))
     }
 
-    fn register_buffer_as_instance(&mut self, instance_name: &str, instance_pty_path: &str) -> Result<(), Box<Error>> {
-        self.nvim.command(&format!("\
-            let last_page_instance = '{}'
-            let g:page_instances[last_page_instance] = [ bufnr('%'), '{}' ]", instance_name, instance_pty_path))?;
+    fn register_buffer_as_instance(&mut self, instance_name: &str, buffer: &nvim_api::Buffer, instance_pty_path: &str) -> IO {
+        Ok(buffer.set_var(self.nvim, "page_instance", Value::from(vec![Value::from(instance_name), Value::from(instance_pty_path)]))?)
+    }
+
+    fn find_instance_buffer(&mut self, name: &str) -> IO<Option<(nvim_api::Buffer, PathBuf)>> {
+        for buffer in self.nvim.list_bufs()? {
+            match buffer.get_var(self.nvim, "page_instance") {
+                Err(e) => if e.to_string() != "1 - Key 'page_instance' not found" { return Err(e)? },
+                Ok(ref v) => if let Some(a) = v.as_array() {
+                    if let [ref inst_name, ref inst_pty_path] = a[..] {
+                        if let (Some(instance_name), Some(instance_pty_path)) = (inst_name.as_str(), inst_pty_path.as_str()) {
+                            if instance_name == name {
+                                return Ok(Some((buffer.clone(), PathBuf::from(instance_pty_path))))
+                            }
+                        }
+                    }
+                }
+            }
+        };
+        Ok(None)
+    }
+
+    fn close_pty_instance(&mut self, instance_name: &str) -> IO {
+        if let Some((buffer, _)) = self.find_instance_buffer(&instance_name)? {
+            let id = buffer.get_number(self.nvim)?;
+            self.nvim.command(&format!("exe 'bd!' . {}", id))?;
+        }
         Ok(())
     }
 
-    fn try_get_pty_path_of_instance(&mut self, name: &str) -> Result<PathBuf, Box<Error>> {
-        let pty_path_str = self.nvim.command_output(&format!("\
-            let g:page_instances = get(g:, 'page_instances', {{}})
-            let page_instance = get(g:page_instances, '{}', -99999999)
-            if bufexists(page_instance[0])
-                 echo page_instance[1]
-            else
-                throw \"Instance don't exists\"
-            endif", name))?;
-        Ok(PathBuf::from(pty_path_str))
-    }
-
-    fn close_pty_instance(&mut self, instance_name: &str) -> Result<(), Box<Error>> {
-        self.nvim.command_output(&format!("\
-            let g:page_instances = get(g:, 'page_instances', {{}})
-            let page_instance = get(g:page_instances, '{}', -99999999)
-            if bufexists(page_instance[0])
-                exe 'bd!' . page_instance[0]
-            endif", instance_name))?;
-        Ok(())
-    }
-
-    fn read_pty_device_path(&mut self, agent_pipe_name: &str) -> Result<PathBuf, Box<Error>> {
+    fn read_pty_device_path(&mut self, agent_pipe_name: &str) -> IO<PathBuf> {
         let agent_pipe_path = util::open_agent_pipe(agent_pipe_name)?;
         let pty_path = {
             let mut pty_path = String::new();
@@ -126,7 +131,7 @@ impl <'a> NvimManager<'a> {
         Ok(pty_path)
     }
 
-    fn split_current_buffer_if_required(&mut self, opt: &cli::Opt) -> Result<(), Box<Error>> {
+    fn split_current_buffer_if_required(&mut self, opt: &cli::Opt) -> IO {
         if opt.split_right > 0 {
             self.nvim.command("belowright vsplit")?;
             let buf_width = self.nvim.call_function("winwidth", vec![Value::from(0)])?.as_u64().unwrap();
@@ -159,13 +164,12 @@ impl <'a> NvimManager<'a> {
         Ok(())
     }
 
-    fn update_current_buffer_name(&mut self, name: &str) -> Result<(), Box<Error>> {
-        let first_attempt =                 (0, format!("exe 'file ' . {}",          name    ));
-        let next_attempts = (1..99).map(|i| (i, format!("exe 'file ' . {} . '({})'", name, i)));
-        let buf_exists_err_msg = "0 - Vim(file):E95: Buffer with this name already exists";
-        for (attempt_count, cmd) in iter::once(first_attempt).chain(next_attempts) {
-            match self.nvim.command(&cmd) {
-                Err(e) => if attempt_count > 99 || e.to_string() != buf_exists_err_msg { return Err(e)? },
+    fn update_buffer_name(&mut self, buffer: &nvim_api::Buffer, name: &str) -> IO {
+        let first_attempt = iter::once((0, name.to_string()));
+        let next_attempts = (1..99).map(|i| (i, format!("{}({})", name, i)));
+        for (attempt_count, name) in first_attempt.chain(next_attempts) {
+            match buffer.set_name(self.nvim, &name) {
+                Err(e) => if attempt_count > 99 || e.to_string() != "0 - Failed to rename buffer" { return Err(e)? },
                 Ok(()) => {
                     self.nvim.command("redraw!")?;  // To update statusline
                     return Ok(())
@@ -175,32 +179,38 @@ impl <'a> NvimManager<'a> {
         return Err("Can't update buffer name")?;
     }
 
-    fn set_page_default_options_to_current_buffer(&mut self) -> Result<(), Box<Error>> {
-        Ok(self.nvim.command("setl scrollback=-1 scrolloff=999 signcolumn=no nonumber modifiable winfixwidth | norm M")?)
+    fn update_buffer_filetype(&mut self, buffer: &nvim_api::Buffer, filetype: &str) -> IO {
+        Ok(buffer.set_option(self.nvim, "filetype", Value::from(filetype))?)
     }
 
-    fn update_current_buffer_filetype(&mut self, filetype: &str) -> Result<(), Box<Error>> {
-        Ok(self.nvim.command(&format!("setl filetype={}", filetype))?)
+    fn set_page_default_options_to_current_buffer(&mut self) -> IO {
+        Ok(self.nvim.command("setl scrollback=-1 scrolloff=999 signcolumn=no nonumber modifiable winfixwidth | normal M")?)
     }
 
-    fn execute_user_command_on_current_buffer(&mut self, command: &str) -> Result<(), Box<Error>> {
-        Ok(self.nvim.command(command)?)
+    fn execute_user_command_on_buffer(&mut self, buffer: &nvim_api::Buffer, command: &str) -> IO {
+        let initial_pos = self.get_current_buffer_position()?;
+        self.nvim.set_current_buf(buffer)?;
+        self.nvim.command(command)?;
+        self.switch_to_buffer_position(&initial_pos)?;
+        Ok(())
     }
 
-    fn get_current_buffer_position(&mut self) -> Result<(nvim_api::Window, nvim_api::Buffer), Box<Error>> {
+    fn get_current_buffer_position(&mut self) -> IO<(nvim_api::Window, nvim_api::Buffer)> {
         Ok((self.nvim.get_current_win()?, self.nvim.get_current_buf()?))
     }
 
-    fn switch_to_buffer_position(&mut self, (win, buf): &(nvim_api::Window, nvim_api::Buffer)) -> Result<(), Box<Error>> {
+    fn switch_to_buffer_position(&mut self, (win, buf): &(nvim_api::Window, nvim_api::Buffer)) -> IO {
         self.nvim.set_current_win(win)?;
         self.nvim.set_current_buf(buf)?;
         Ok(())
     }
 
-    fn open_file_buffer(&mut self, file: &str) -> Result<(), Box<Error>> {
-        let file_path = fs::canonicalize(file)?;
-        self.nvim.command(&format!("e {}", file_path.to_string_lossy()))?;
-        self.set_page_default_options_to_current_buffer()
+    fn go_to_insert_mode(&mut self) -> IO {
+        Ok(self.nvim.feedkeys("A", "n", false)?)
+    }
+
+    fn open_file_buffer(&mut self, file: &str) -> IO {
+        Ok(self.nvim.command(&format!("e {}", fs::canonicalize(file)?.to_string_lossy()))?)
     }
 }
 
@@ -232,21 +242,21 @@ struct Cx<'a> {
 struct App<'a> {
     nvim_manager: &'a mut NvimManager<'a>,
     pty_path: &'a mut Option<PathBuf>,
-    new_position: &'a mut Option<(nvim_api::Window, nvim_api::Buffer)>,
+    buffer: &'a mut Option<nvim_api::Buffer>,
 }
 
 impl <'a> App<'a> {
-    fn handle_close_instance_flag(&mut self, &Cx { opt, ref nvim_child_process, .. }: &Cx) -> Result<(), Box<Error>> {
-        if let Some(instance_name) = opt.instance_close.as_ref() {
+    fn handle_close_instance_pty(&mut self, &Cx { opt, ref nvim_child_process, .. }: &Cx) -> IO {
+        if let Some(name) = opt.instance_close.as_ref() {
             match nvim_child_process {
                 Some(_) => eprintln!("Can't close instance on newly spawned nvim process"),
-                None => self.nvim_manager.close_pty_instance(&instance_name)?,
+                None => self.nvim_manager.close_pty_instance(name)?,
             }
         }
         Ok(())
     }
 
-    fn handle_files_provided(&mut self, &Cx { opt, ref initial_position, read_from_fifo, instance, .. }: &Cx) -> Result<(), Box<Error>> {
+    fn handle_open_files_provided(&mut self, &Cx { opt, ref initial_position, read_from_fifo, instance, .. }: &Cx) -> IO {
         if !opt.files.is_empty() {
             for file in opt.files.iter().as_ref() {
                 match self.nvim_manager.open_file_buffer(file) {
@@ -261,61 +271,82 @@ impl <'a> App<'a> {
         Ok(())
     }
 
-    fn handle_exit_before_pty_open(&self, &Cx { opt, instance, .. }: &Cx) {
-        let can_exit = opt.instance_close.is_some() || !opt.files.is_empty();
-        if (!opt.pty_open && can_exit)
-            && !opt.back
+    fn should_exit_without_pty_open(&self, &Cx { opt, instance, .. }: &Cx) -> bool {
+        let has_early_exit_command = opt.instance_close.is_some() || !opt.files.is_empty();
+        (has_early_exit_command && !opt.pty_open) // Check for absence of other commands
+            && !opt.back && !opt.back_insert
             && instance.is_none()
             && opt.command.is_none() && opt.command_post.is_none()
             && opt.split_left_cols.is_none() && opt.split_right_cols.is_none() && opt.split_above_rows.is_none() && opt.split_below_rows.is_none()
             && opt.split_left == 0 && opt.split_right == 0 && opt.split_above == 0 && opt.split_below == 0
             && &opt.filetype == "pager"
-            {
-            process::exit(0);
-        }
     }
 
-    fn handle_pty_open(&mut self, &Cx { opt, ref nvim_child_process, instance, read_from_fifo, .. }: &Cx) -> Result<(), Box<Error>> {
-        let open_page_buffer = |app: &mut App| -> Result<(), Box<Error>> {
+    fn handle_pty_open_with_settings(&mut self, &Cx { opt, ref nvim_child_process, instance, read_from_fifo, .. }: &Cx) -> IO {
+        let open_page_buffer_closure = |app: &mut App| Ok({
             if nvim_child_process.is_none() {
                 app.nvim_manager.split_current_buffer_if_required(opt)?;
             }
-            *app.pty_path = Some(app.nvim_manager.create_pty_with_buffer()?);
-            *app.new_position = Some(app.nvim_manager.get_current_buffer_position()?);
+            let (buffer, pty_path) = app.nvim_manager.create_pty_with_buffer()?;
             app.nvim_manager.set_page_default_options_to_current_buffer()?;
-            app.nvim_manager.update_current_buffer_filetype(&opt.filetype)
-        };
+            app.nvim_manager.update_buffer_filetype(&buffer, &opt.filetype)?;
+            (buffer, pty_path)
+        }) as IO<_>;
         match instance {
             None => {
-                open_page_buffer(self)?;
-                self.nvim_manager.update_current_buffer_name(if read_from_fifo {
-                    r"get(g:, 'page_icon_pipe', '\\|§')"
-                } else {
-                    r"get(g:, 'page_icon_redirect', '>§')"
-                })?;
+                let (buffer, pty_path) = open_page_buffer_closure(self)?;
+                let page_icon = if read_from_fifo { "page_icon_pipe" } else { "page_icon_redirect" };
+                let page_icon = self.nvim_manager.nvim.get_var(page_icon).map(|v| v.to_string())
+                    .or_else(|e| if e.to_string() == format!("1 - Key '{}' not found", page_icon) {
+                        Ok(String::from(if read_from_fifo { "|§" } else { ">$" }))
+                    } else {
+                        Err(e)
+                    })?;
+                self.nvim_manager.update_buffer_name(&buffer, &page_icon)?;
+                *self.buffer = Some(buffer);
+                *self.pty_path = Some(pty_path);
             },
-            Some(instance_name) => match self.nvim_manager.try_get_pty_path_of_instance(&instance_name) {
-                Ok(pty_path) => *self.pty_path = Some(pty_path),
-                Err(e) => {
-                    if e.description() != "Instance don't exists" {
-                        eprintln!("Can't connect to '{}': {}", &instance_name, e);
+            Some(name) => {
+                let (buffer, pty_path) = match self.nvim_manager.find_instance_buffer(&name)? {
+                    Some(it) => it,
+                    None => {
+                        let (buffer, pty_path) = open_page_buffer_closure(self)?;
+                        self.nvim_manager.register_buffer_as_instance(name, &buffer, &pty_path.to_string_lossy())?;
+                        let page_icon = self.nvim_manager.nvim.get_var("page_icon_instance").map(|v| v.to_string())
+                            .or_else(|e| if &e.to_string() == "1 - Key 'page_icon_instance' not found" {
+                                Ok(String::from("$"))
+                            } else {
+                                Err(e)
+                            })?;
+                        self.nvim_manager.update_buffer_name(&buffer, &format!("{}{}", page_icon, name))?;
+                        (buffer, pty_path)
                     }
-                    open_page_buffer(self)?;
-                    self.nvim_manager.register_buffer_as_instance(&instance_name, &self.pty_path.as_ref().unwrap().to_string_lossy())?;
-                    self.nvim_manager.update_current_buffer_name(&format!(r"get(g:, 'page_icon_instance', '§') . '{}'", instance_name))?;
-                }
+                };
+                *self.buffer = Some(buffer);
+                *self.pty_path = Some(pty_path);
             }
-        };
+        }
         Ok(())
     }
 
-    fn handle_redirect_mode(&mut self, &Cx { opt, ref initial_position, read_from_fifo, instance, .. }: &Cx) -> Result<(), Box<Error>> {
-        if let Some(user_command) = opt.command.as_ref() {
-            self.nvim_manager.execute_user_command_on_current_buffer(user_command)?;
+    fn handle_user_command(&mut self, command: &Option<String>) -> IO {
+        if let (Some(command), Some(buffer)) = (command, &self.buffer) {
+            self.nvim_manager.execute_user_command_on_buffer(&buffer, &command)?;
         }
-        if opt.back {
+        Ok(())
+    }
+
+    fn handle_opt_back_focus(&mut self, &Cx { opt, ref initial_position, .. }: &Cx) -> IO {
+        if opt.back || opt.back_insert {
             self.nvim_manager.switch_to_buffer_position(&initial_position)?;
         }
+        if opt.back_insert {
+            self.nvim_manager.go_to_insert_mode()?;
+        }
+        Ok(())
+    }
+
+    fn handle_redirect_mode(&mut self, &Cx { opt, read_from_fifo, ref nvim_child_process, .. }: &Cx) -> IO {
         if let Some(pty_path) = self.pty_path {
             if read_from_fifo {
                 let mut pty_device = OpenOptions::new().append(true).open(&pty_path)?;
@@ -324,36 +355,26 @@ impl <'a> App<'a> {
                 }
                 let stdin = io::stdin();
                 io::copy(&mut stdin.lock(), &mut pty_device).map(drop)?;
-                if instance.is_some() {
-                    self.nvim_manager.update_current_buffer_filetype(&opt.filetype)?;
-                }
             }
-            if !read_from_fifo || opt.pty_print {
+            if opt.pty_print || (!read_from_fifo && nvim_child_process.is_none()) {
                 println!("{}", pty_path.to_string_lossy());
-            }
-        }
-        if let (Some(user_command_post), Some(new_position)) = (opt.command_post.as_ref(), self.new_position.as_ref()) {
-            let current_position = if new_position != initial_position {
-                Some(self.nvim_manager.get_current_buffer_position()?)
-            } else {
-                None
-            };
-            self.nvim_manager.execute_user_command_on_current_buffer(user_command_post)?;
-            if let Some(saved_position) = current_position {
-                self.nvim_manager.switch_to_buffer_position(&saved_position)?;
             }
         }
         Ok(())
     }
 
-    fn handle_exit(self, Cx { nvim_child_process, .. }: Cx) -> Result<(), Box<Error>> {
-        nvim_child_process.map_or(Ok(()), |mut process| { process.wait()?; Ok(()) })
+    fn handle_exit(self, Cx { nvim_child_process, .. }: Cx) -> IO {
+        match nvim_child_process {
+            Some(mut nvim_child_process) => { nvim_child_process.wait().map(drop)?; },
+            None => {},
+        }
+        Ok(())
     }
 }
 
 
 
-fn main() -> Result<(), Box<Error>> {
+fn main() -> IO {
     let opt = cli::Opt::from_args();
 
     let NvimSessionConnector { mut nvim_session, nvim_child_process } = NvimSessionConnector::connect_to_parent_or_child(&opt.address)?;
@@ -362,7 +383,7 @@ fn main() -> Result<(), Box<Error>> {
 
     let cx = Cx {
         opt: &opt,
-        instance: opt.instance.as_ref().or_else(||opt.instance_append.as_ref()),
+        instance: opt.instance.as_ref().or_else(|| opt.instance_append.as_ref()),
         nvim_child_process,
         initial_position: (nvim.get_current_win()?, nvim.get_current_buf()?),
         read_from_fifo: is_reading_from_fifo(),
@@ -370,12 +391,19 @@ fn main() -> Result<(), Box<Error>> {
     let mut app = App {
         nvim_manager: &mut NvimManager { nvim: &mut nvim, },
         pty_path: &mut None,
-        new_position: &mut None,
+        buffer: &mut None,
     };
-    app.handle_close_instance_flag(&cx)?;
-    app.handle_files_provided(&cx)?;
-    app.handle_exit_before_pty_open(&cx);
-    app.handle_pty_open(&cx)?;
-    app.handle_redirect_mode(&cx)?;
-    app.handle_exit(cx)
+    app.handle_close_instance_pty(&cx)?;
+    app.handle_open_files_provided(&cx)?;
+    if !app.should_exit_without_pty_open(&cx) {
+        app.handle_pty_open_with_settings(&cx)?;
+        app.handle_user_command(&cx.opt.command)?;
+        app.handle_opt_back_focus(&cx)?;
+        app.handle_redirect_mode(&cx)?;
+        app.handle_user_command(&cx.opt.command_post)?;
+    }
+    app.handle_exit(cx)?;
+    Ok(())
 }
+
+

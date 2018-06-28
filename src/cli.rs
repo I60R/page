@@ -5,6 +5,7 @@ use structopt::{clap::{ ArgGroup, AppSettings::* }};
 #[structopt(raw(
     global_settings="&[DisableHelpSubcommand, DeriveDisplayOrder]",
     group="splits_arg_group()",
+    group="back_arg_group()",
     group="instance_use_arg_group()"))]
 pub struct Opt {
     /// Neovim session address
@@ -47,6 +48,10 @@ pub struct Opt {
     #[structopt(short="b")]
     pub back: bool,
 
+    /// Stay focused on current buffer and keep INSERT mode
+    #[structopt(short="B")]
+    pub back_insert: bool,
+
     /// Split right with ratio: window_width  * 3 / (<r provided> + 1)
     #[structopt(short="r", parse(from_occurrences))]
     pub split_right: u8,
@@ -88,6 +93,12 @@ pub struct Opt {
 fn instance_use_arg_group() -> ArgGroup<'static> {
     ArgGroup::with_name("instances")
         .args(&["instance", "instance_append"])
+        .multiple(false)
+}
+
+fn back_arg_group() -> ArgGroup<'static> {
+    ArgGroup::with_name("backs")
+        .args(&["back", "back_insert"])
         .multiple(false)
 }
 

@@ -3,22 +3,46 @@
 [![Build Status](https://travis-ci.org/I60R/page.svg?branch=master)](https://travis-ci.org/I60R/page)
 [![Lines Of Code](https://tokei.rs/b1/github/I60R/page)](https://github.com/I60R/page)
 
-Allows you to redirect text into neovim.  
+Allows you to redirect text directly into neovim.  
 You can set it as `$PAGER` to view logs, diffs, various command outputs.  
   
-ANSI escape sequences are interpreted directly by :term buffer (this makes it faster than [vimpager](https://github.com/rkitover/vimpager) and [nvimpager](https://github.com/lucc/nvimpager)).  
-No need to wait until EOF - text displayed instantly as it arrives.  
+ANSI escape sequences will be interpreted directly by :term buffer (this makes it faster than [vimpager](https://github.com/rkitover/vimpager) and [nvimpager](https://github.com/lucc/nvimpager)).  
+No need to wait until EOF - text will be displayed instantly as it arrives.  
   
 Uses parent neovim process when available (great fit alongside with [neovim-remote](https://github.com/mhinz/neovim-remote)).  
   
-You will have familiar keybindings and all text editing, searching and navigating facilities that neovim provides (this makes it better than [less](https://en.wikipedia.org/wiki/Less_(Unix))).  
+You will have familiar keybindings and all text editing, searching and navigating facilities that neovim provides (this makes it better than [less](https://en.wikipedia.org/wiki/Less_(Unix) and a lot of other pagers)).  
 
 
+```help
+USAGE:
+    page [FLAGS] [OPTIONS] [FILES]...
+FLAGS:
+    -o               Open new buffer [set by default, unless only <instance_close> or <FILES> provided]
+    -p               Print path to /dev/pty/* for redirecting [set by default when don't reads from pipe]
+    -b               Stay focused on current buffer
+    -r               Split right with ratio: window_width  * 3 / (<r provided> + 1)
+    -l               Split left  with ratio: window_width  * 3 / (<l provided> + 1)
+    -u               Split above with ratio: window_height * 3 / (<u provided> + 1)
+    -d               Split below with ratio: window_height * 3 / (<d provided> + 1)
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+OPTIONS:
+    -a <address>                 Neovim session address [env:NVIM_LISTEN_ADDRESS: ]
+    -e <command>                 Run command in pager buffer when reading begins
+    -E <command_post>            Run command in pager buffer after reading was done
+    -i <instance>                Use named instance buffer if exist, or spawn new. New content will overwrite
+    -I <instance_append>         Use named instance buffer if exist, or spawn new. New content will be appended
+    -x <instance_close>          Only closes named instance buffer if exists
+    -t <filetype>                Filetype hint for syntax highlighting when page reads from stdin [default: pager]
+    -R <split_right_cols>        Split right and resize to <split_right_cols> columns
+    -L <split_left_cols>         Split left  and resize to <split_left_cols>  columns
+    -U <split_above_rows>        Split above and resize to <split_above_rows> rows
+    -D <split_below_rows>        Split below and resize to <split_below_rows> rows
+ARGS:
+    <FILES>...    Open these files in separate buffers
+```
 
-## Usage
-
-For full list of cli options refer to [src/cli.rs](https://github.com/I60R/page/blob/master/src/cli.rs)
-  
 
 ![](https://i.imgur.com/fVZqvsk.gif)
 
