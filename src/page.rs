@@ -14,8 +14,8 @@ use structopt::StructOpt;
 use std::{
     fs::{self, remove_file, File, OpenOptions},
     path::PathBuf,
-    io::{self, Read, Write},
     iter,
+    io::{self, Read, Write},
     thread,
     process::{self, Command, Stdio},
     time::Duration,
@@ -66,7 +66,7 @@ impl NvimSessionConnector {
     fn session_from_address(nvim_listen_address: impl AsRef<str>) -> io::Result<nvim::Session> {
         let nvim_listen_address = nvim_listen_address.as_ref();
         nvim_listen_address.parse::<SocketAddr>()
-            .ok().map_or_else(| |nvim::Session::new_unix_socket(nvim_listen_address),
+            .ok().map_or_else(||nvim::Session::new_unix_socket(nvim_listen_address),
                               |_|nvim::Session::new_tcp(nvim_listen_address))
     }
 }
@@ -85,7 +85,9 @@ impl <'a> NvimManager<'a> {
     fn create_pty_with_buffer(&mut self) -> IO<(nvim_api::Buffer, PathBuf)> {
         let agent_pipe_name = random_string();
         self.nvim.command(&format!("term pty-agent {}", agent_pipe_name))?;
-        Ok((self.nvim.get_current_buf()?, self.read_pty_device_path(&agent_pipe_name)?))
+        let buffer = self.nvim.get_current_buf()?;
+        let pty_path = self.read_pty_device_path(&agent_pipe_name)?;
+        Ok((buffer, pty_path))
     }
 
     fn register_buffer_as_instance(&mut self, instance_name: &str, buffer: &nvim_api::Buffer, instance_pty_path: &str) -> IO {
@@ -97,10 +99,11 @@ impl <'a> NvimManager<'a> {
             match buffer.get_var(self.nvim, "page_instance") {
                 Err(e) => if e.to_string() != "1 - Key 'page_instance' not found" { return Err(e)? },
                 Ok(ref v) => if let Some(a) = v.as_array() {
-                    if let [ref inst_name, ref inst_pty_path] = a[..] {
-                        if let (Some(instance_name), Some(instance_pty_path)) = (inst_name.as_str(), inst_pty_path.as_str()) {
+                    if let [ref instance_name, ref instance_pty_path] = a[..] {
+                        if let (Some(instance_name), Some(instance_pty_path)) = (instance_name.as_str(), instance_pty_path.as_str()) {
                             if instance_name == name {
-                                return Ok(Some((buffer.clone(), PathBuf::from(instance_pty_path))))
+                                let pty_path = PathBuf::from(instance_pty_path);
+                                return Ok(Some((buffer, pty_path)))
                             }
                         }
                     }
@@ -136,30 +139,30 @@ impl <'a> NvimManager<'a> {
             self.nvim.command("belowright vsplit")?;
             let buf_width = self.nvim.call_function("winwidth", vec![Value::from(0)])?.as_u64().unwrap();
             let resize_ratio = buf_width * 3 / (u64::from(opt.split_right) + 1);
-            self.nvim.command(&format!("vertical resize {}", resize_ratio))?;
+            self.nvim.command(&format!("vertical resize {} | set wfw", resize_ratio))?;
         } else if opt.split_left > 0 {
             self.nvim.command("aboveleft vsplit")?;
             let buf_width = self.nvim.call_function("winwidth", vec![Value::from(0)])?.as_u64().unwrap();
             let resize_ratio = buf_width * 3 / (u64::from(opt.split_left) + 1);
-            self.nvim.command(&format!("vertical resize {}", resize_ratio))?;
+            self.nvim.command(&format!("vertical resize {} | set wfw", resize_ratio))?;
         } else if opt.split_below > 0 {
             self.nvim.command("belowright split")?;
             let buf_height = self.nvim.call_function("winheight", vec![Value::from(0)])?.as_u64().unwrap();
             let resize_ratio = buf_height * 3 / (u64::from(opt.split_below) + 1);
-            self.nvim.command(&format!("resize {}", resize_ratio))?;
+            self.nvim.command(&format!("resize {} | set wfh", resize_ratio))?;
         } else if opt.split_above > 0 {
             self.nvim.command("aboveleft split")?;
             let buf_height = self.nvim.call_function("winheight", vec![Value::from(0)])?.as_u64().unwrap();
             let resize_ratio = buf_height * 3 / (u64::from(opt.split_above) + 1);
-            self.nvim.command(&format!("resize {}", resize_ratio))?;
+            self.nvim.command(&format!("resize {} | set wfh", resize_ratio))?;
         } else if let Some(split_right_cols) = opt.split_right_cols {
-            self.nvim.command(&format!("belowright vsplit | vertical resize {}", split_right_cols))?;
+            self.nvim.command(&format!("belowright vsplit | vertical resize {} | set wfw", split_right_cols))?;
         } else if let Some(split_left_cols) = opt.split_left_cols {
-            self.nvim.command(&format!("aboveleft vsplit | vertical resize {}", split_left_cols))?;
+            self.nvim.command(&format!("aboveleft vsplit | vertical resize {} | set wfw", split_left_cols))?;
         } else if let Some(split_below_rows) = opt.split_below_rows {
-            self.nvim.command(&format!("belowright split | resize {}", split_below_rows))?;
+            self.nvim.command(&format!("belowright split | resize {} | set wfh", split_below_rows))?;
         } else if let Some(split_above_rows) = opt.split_above_rows {
-            self.nvim.command(&format!("aboveleft split | resize {}", split_above_rows))?;
+            self.nvim.command(&format!("aboveleft split | resize {} | set wfh", split_above_rows))?;
         }
         Ok(())
     }
@@ -184,14 +187,14 @@ impl <'a> NvimManager<'a> {
     }
 
     fn set_page_default_options_to_current_buffer(&mut self) -> IO {
-        Ok(self.nvim.command("setl scrollback=-1 scrolloff=999 signcolumn=no nonumber modifiable winfixwidth | normal M")?)
+        Ok(self.nvim.command("setl scrollback=-1 scrolloff=999 signcolumn=no nonumber modifiable | normal M")?)
     }
 
     fn execute_user_command_on_buffer(&mut self, buffer: &nvim_api::Buffer, command: &str) -> IO {
-        let initial_pos = self.get_current_buffer_position()?;
+        let initial_buffer = self.get_current_buffer_position()?;
         self.nvim.set_current_buf(buffer)?;
         self.nvim.command(command)?;
-        self.switch_to_buffer_position(&initial_pos)?;
+        self.switch_to_buffer_position(&initial_buffer)?;
         Ok(())
     }
 
@@ -271,11 +274,11 @@ impl <'a> App<'a> {
         Ok(())
     }
 
-    fn should_exit_without_pty_open(&self, &Cx { opt, instance, .. }: &Cx) -> bool {
+    fn should_exit_without_pty_open(&self, &Cx { opt, .. }: &Cx) -> bool {
         let has_early_exit_command = opt.instance_close.is_some() || !opt.files.is_empty();
         (has_early_exit_command && !opt.pty_open) // Check for absence of other commands
             && !opt.back && !opt.back_insert
-            && instance.is_none()
+            && opt.instance.is_none()
             && opt.command.is_none() && opt.command_post.is_none()
             && opt.split_left_cols.is_none() && opt.split_right_cols.is_none() && opt.split_above_rows.is_none() && opt.split_below_rows.is_none()
             && opt.split_left == 0 && opt.split_right == 0 && opt.split_above == 0 && opt.split_below == 0
@@ -336,25 +339,34 @@ impl <'a> App<'a> {
         Ok(())
     }
 
-    fn handle_opt_back_focus(&mut self, &Cx { opt, ref initial_position, .. }: &Cx) -> IO {
-        if opt.back || opt.back_insert {
-            self.nvim_manager.switch_to_buffer_position(&initial_position)?;
-        }
-        if opt.back_insert {
-            self.nvim_manager.go_to_insert_mode()?;
-        }
-        Ok(())
-    }
 
-    fn handle_redirect_mode(&mut self, &Cx { opt, read_from_fifo, ref nvim_child_process, .. }: &Cx) -> IO {
-        if let Some(pty_path) = self.pty_path {
-            if read_from_fifo {
-                let mut pty_device = OpenOptions::new().append(true).open(&pty_path)?;
-                if opt.instance_append.is_none() {
-                    write!(&mut pty_device, "\x1B[3J\x1B[H\x1b[2J")?; // Clear screen
+    fn handle_redirect_mode(&mut self, &Cx { opt, read_from_fifo, ref initial_position, ref nvim_child_process, .. }: &Cx) -> IO {
+        let App { ref mut nvim_manager, ref pty_path, buffer, ..} = self;
+        if let Some(pty_path) = pty_path {
+            let handle_opt_back_closure = |nvim_manager: &mut NvimManager| Ok({
+                if opt.back || opt.back_insert {
+                    nvim_manager.switch_to_buffer_position(&initial_position)?;
                 }
-                let stdin = io::stdin();
-                io::copy(&mut stdin.lock(), &mut pty_device).map(drop)?;
+                if opt.back_insert {
+                    nvim_manager.go_to_insert_mode()?;
+                }
+            }) as IO<_>;
+            let use_instance = opt.instance.is_some();
+            if read_from_fifo || use_instance {
+                let mut pty_device = OpenOptions::new().append(true).open(pty_path)?;
+                if use_instance {
+                    if let Some(buffer) = buffer {
+                        nvim_manager.nvim.set_current_buf(buffer)?;
+                        write!(&mut pty_device, "\x1B[3J\x1B[H\x1b[2J")?; // Clear screen sequence
+                    }
+                }
+                handle_opt_back_closure(nvim_manager)?;
+                if read_from_fifo {
+                    let stdin = io::stdin();
+                    io::copy(&mut stdin.lock(), &mut pty_device).map(drop)?;
+                }
+            } else {
+                handle_opt_back_closure(nvim_manager)?;
             }
             if opt.pty_print || (!read_from_fifo && nvim_child_process.is_none()) {
                 println!("{}", pty_path.to_string_lossy());
@@ -398,7 +410,6 @@ fn main() -> IO {
     if !app.should_exit_without_pty_open(&cx) {
         app.handle_pty_open_with_settings(&cx)?;
         app.handle_user_command(&cx.opt.command)?;
-        app.handle_opt_back_focus(&cx)?;
         app.handle_redirect_mode(&cx)?;
         app.handle_user_command(&cx.opt.command_post)?;
     }
