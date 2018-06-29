@@ -42,6 +42,7 @@ impl NvimSessionConnector {
         } else {
             if !read_from_fifo && !opt.page_no_protect &&  std::env::var_os("PAGE_REDIRECTION_PROTECT").map_or(true, |v| &v != "0") {
                 println!("/DON'T/REDIRECT(--help[-W])")
+
             }
             let (nvim_child_listen_address, nvim_child_process) = NvimSessionConnector::spawn_child_nvim_process()?;
             Ok(NvimSessionConnector {
