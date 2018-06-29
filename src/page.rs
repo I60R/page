@@ -186,7 +186,7 @@ impl <'a> NvimManager<'a> {
                 },
             }
         }
-        return Err("Can't update buffer name")?;
+        Err("Can't update buffer name")?
     }
 
     fn update_buffer_filetype(&mut self, buffer: &nvim_api::Buffer, filetype: &str) -> IO {
