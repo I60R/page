@@ -32,7 +32,7 @@ pub struct Opt {
     #[structopt(short="x")]
     pub instance_close: Option<String>,
 
-    /// Filetype hint for syntax highlighting when page reads from stdin
+    /// Hint for syntax highlighting when reads from stdin
     #[structopt(short="t", default_value="pager")]
     pub filetype: String,
 
@@ -51,6 +51,16 @@ pub struct Opt {
     /// Stay focused on current buffer and keep INSERT mode
     #[structopt(short="B")]
     pub back_insert: bool,
+
+    /// Follow output instead of keeping position
+    #[structopt(short="f")]
+    pub follow: bool,
+
+    /// Flush redirecting protection, that prevents from producing junk and possible corruption of files
+    /// when no <address> available and "cmd > $(page)" is invoked, because $(page) here will hold nvim UI.
+    /// [env: PAGE_REDIRECTION_PROTECT:1]
+    #[structopt(short="W")]
+    pub page_no_protect: bool,
 
     /// Split right with ratio: window_width  * 3 / (<r provided> + 1)
     #[structopt(short="r", parse(from_occurrences))]
@@ -84,7 +94,7 @@ pub struct Opt {
     #[structopt(short="D")]
     pub split_below_rows: Option<u8>,
 
-    /// Open these files in separate buffers
+    /// Additionally open these files in separate buffers
     #[structopt(name="FILES")]
     pub files: Vec<String>
 }
