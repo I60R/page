@@ -40,12 +40,8 @@ impl NvimSessionConnector {
                 nvim_child_process: None
             })
         } else {
-            if !read_from_fifo && !opt.page_no_protect {
-                let protect = std::env::var_os("PAGE_REDIRECTION_PROTECT")
-                    .map_or(true, |value| { if &value == "0" { false } else { true } });
-                if protect {
-                    println!("/DON'T/REDIRECT(--help[-W])")
-                }
+            if !read_from_fifo && !opt.page_no_protect &&  std::env::var_os("PAGE_REDIRECTION_PROTECT").map_or(true, |v| &v != "0") {
+                println!("/DON'T/REDIRECT(--help[-W])")
             }
             let (nvim_child_listen_address, nvim_child_process) = NvimSessionConnector::spawn_child_nvim_process()?;
             Ok(NvimSessionConnector {
@@ -98,7 +94,8 @@ impl <'a> NvimManager<'a> {
     }
 
     fn register_buffer_as_instance(&mut self, instance_name: &str, buffer: &nvim_api::Buffer, instance_pty_path: &str) -> IO {
-        Ok(buffer.set_var(self.nvim, "page_instance", Value::from(vec![Value::from(instance_name), Value::from(instance_pty_path)]))?)
+        buffer.set_var(self.nvim, "page_instance", Value::from(vec![Value::from(instance_name), Value::from(instance_pty_path)]))?;
+        Ok(())
     }
 
     fn find_instance_buffer(&mut self, name: &str) -> IO<Option<(nvim_api::Buffer, PathBuf)>> {
@@ -190,11 +187,13 @@ impl <'a> NvimManager<'a> {
     }
 
     fn update_buffer_filetype(&mut self, buffer: &nvim_api::Buffer, filetype: &str) -> IO {
-        Ok(buffer.set_option(self.nvim, "filetype", Value::from(filetype))?)
+        buffer.set_option(self.nvim, "filetype", Value::from(filetype))?;
+        Ok(())
     }
 
     fn set_page_default_options_to_current_buffer(&mut self) -> IO {
-        Ok(self.nvim.command("setl scrollback=-1 scrolloff=999 signcolumn=no nonumber modified nomodifiable")?)
+        self.nvim.command("setl scrollback=-1 scrolloff=999 signcolumn=no nonumber modified nomodifiable")?;
+        Ok(())
     }
 
     fn execute_user_command_on_buffer(&mut self, buffer: &nvim_api::Buffer, command: &str) -> IO {
@@ -216,7 +215,8 @@ impl <'a> NvimManager<'a> {
     }
 
     fn exit_term_insert_mode(&mut self) -> IO {
-        Ok(self.nvim.command(r###"exe "norm \<C-\>\<C-n>""###)?) // feedkeys not works here
+        self.nvim.command(r###"exe "norm \<C-\>\<C-n>""###)?;
+        Ok(()) // feedkeys not works here
     }
 
     fn set_current_buffer_insert_mode(&mut self) -> IO {
@@ -238,7 +238,8 @@ impl <'a> NvimManager<'a> {
     }
 
     fn open_file_buffer(&mut self, file: &str) -> IO {
-        Ok(self.nvim.command(&format!("e {}", fs::canonicalize(file)?.to_string_lossy()))?)
+        self.nvim.command(&format!("e {}", fs::canonicalize(file)?.to_string_lossy()))?;
+        Ok(())
     }
 
     fn get_var_or_default(&mut self, key: &str, default: &str) -> IO<String> {
@@ -365,7 +366,7 @@ impl <'a> App<'a> {
     }
 
     fn handle_user_command_post(&mut self, command: &Option<String>) -> IO {
-        if let Some(_) = command {
+        if command.is_some() {
             thread::sleep(Duration::from_millis(50)); // Fixes errors when `page` is set as `$MANPAGER`
             self.handle_user_command(command)?;
         }
@@ -420,10 +421,9 @@ impl <'a> App<'a> {
     }
 
     fn handle_exit(self, Cx { nvim_child_process, .. }: Cx) -> IO {
-        match nvim_child_process {
-            Some(mut nvim_child_process) => { nvim_child_process.wait().map(drop)?; },
-            None => {},
-        }
+        if let Some(mut nvim_child_process) = nvim_child_process {
+            nvim_child_process.wait().map(drop)?;
+        };
         Ok(())
     }
 }
