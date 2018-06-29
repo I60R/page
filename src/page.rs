@@ -240,6 +240,17 @@ impl <'a> NvimManager<'a> {
     fn open_file_buffer(&mut self, file: &str) -> IO {
         Ok(self.nvim.command(&format!("e {}", fs::canonicalize(file)?.to_string_lossy()))?)
     }
+
+    fn get_var_or_default(&mut self, key: &str, default: &str) -> IO<String> {
+        let var = self.nvim.get_var(key).map(|v| v.to_string())
+            .or_else(|e| if e.to_string() == format!("1 - Key '{}' not found", key) {
+                Ok(String::from(default))
+            } else {
+                Err(e)
+            })?;
+        Ok(var)
+
+    }
 }
 
 
@@ -292,7 +303,7 @@ impl <'a> App<'a> {
                     _ => self.nvim_manager.set_page_default_options_to_current_buffer()?
                 }
             }
-            if read_from_fifo || use_instance.is_some() || opt.back {
+            if read_from_fifo || use_instance.is_some() {
                 self.nvim_manager.switch_to_buffer_position(&initial_position)?;
             }
         }
@@ -323,13 +334,8 @@ impl <'a> App<'a> {
         let (buffer, pty_path) = match use_instance {
             None => {
                 let (buffer, pty_path) = open_page_buffer_hook(self)?;
-                let page_icon = if read_from_fifo { "page_icon_pipe" } else { "page_icon_redirect" };
-                let page_icon = self.nvim_manager.nvim.get_var(page_icon).map(|v| v.to_string())
-                    .or_else(|e| if e.to_string() == format!("1 - Key '{}' not found", page_icon) {
-                        Ok(String::from(if read_from_fifo { "|§" } else { ">$" }))
-                    } else {
-                        Err(e)
-                    })?;
+                let (page_icon_key, page_icon_default) = if read_from_fifo { ("page_icon_pipe", "|$") } else { ("page_icon_redirect", ">$") };
+                let page_icon = self.nvim_manager.get_var_or_default(page_icon_key, page_icon_default)?;
                 self.nvim_manager.update_buffer_name(&buffer, &page_icon)?;
                 (buffer, pty_path)
             },
@@ -339,12 +345,7 @@ impl <'a> App<'a> {
                     None => {
                         let (buffer, pty_path) = open_page_buffer_hook(self)?;
                         self.nvim_manager.register_buffer_as_instance(name, &buffer, &pty_path.to_string_lossy())?;
-                        let page_icon = self.nvim_manager.nvim.get_var("page_icon_instance").map(|v| v.to_string())
-                            .or_else(|e| if &e.to_string() == "1 - Key 'page_icon_instance' not found" {
-                                Ok(String::from("$"))
-                            } else {
-                                Err(e)
-                            })?;
+                        let page_icon = self.nvim_manager.get_var_or_default("page_icon_instance", "$")?;
                         self.nvim_manager.update_buffer_name(&buffer, &format!("{}{}", page_icon, name))?;
                         (buffer, pty_path)
                     }
@@ -383,8 +384,11 @@ impl <'a> App<'a> {
             } else {
                 nvim_manager.set_current_buffer_reading_mode()?;
             }
+            if nvim_child_process.is_some() {
+                return Ok(()); // There's no buffer to switch back
+            }
             if opt.back_insert || opt.back {
-                thread::sleep(Duration::from_millis(50)); // To not send keys into wrong buffer
+                thread::sleep(Duration::from_millis(50)); // To prevent sending keys into wrong buffer
                 nvim_manager.switch_to_buffer_position(&initial_position)?;
             }
             if opt.back_insert {
