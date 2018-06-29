@@ -4,45 +4,63 @@ use structopt::{clap::{ ArgGroup, AppSettings::* }};
 #[derive(StructOpt)]
 #[structopt(raw(
     global_settings="&[DisableHelpSubcommand, DeriveDisplayOrder]",
-    group=r#"ArgGroup::with_name("splits")
-        .args(&["split_left", "split_right", "split_above", "split_below"])
-        .args(&["split_left_cols", "split_right_cols", "split_above_rows", "split_below_rows"])
-        .multiple(false)"#,
-    group=r#"ArgGroup::with_name("instances")
-        .args(&["instance", "instance_append"])
-        .multiple(false)"#))]
+    group="splits_arg_group()",
+    group="back_arg_group()",
+    group="instance_use_arg_group()"))]
 pub struct Opt {
     /// Neovim session address
-    #[structopt(short="s", env="NVIM_LISTEN_ADDRESS")]
+    #[structopt(short="a", env="NVIM_LISTEN_ADDRESS")]
     pub address: Option<String>,
 
-    /// Run command in pager buffer
+    /// Run command in pager buffer when reading begins
     #[structopt(short="e")]
     pub command: Option<String>,
 
-    /// Use named instance buffer instead of opening new
+    /// Run command in pager buffer after reading was done
+    #[structopt(short="E")]
+    pub command_post: Option<String>,
+
+    /// Use named instance buffer if exist, or spawn new. New content will overwrite
     #[structopt(short="i")]
     pub instance: Option<String>,
 
-    /// The same as "-i" but with append mode
-    #[structopt(short="a")]
+    /// Use named instance buffer if exist, or spawn new. New content will be appended
+    #[structopt(short="I")]
     pub instance_append: Option<String>,
 
-    /// Close named instance buffer
+    /// Only closes named instance buffer if exists
     #[structopt(short="x")]
     pub instance_close: Option<String>,
 
-    /// Filetype hint, allows color highlighting when reading from stdin
+    /// Hint for syntax highlighting when reads from stdin
     #[structopt(short="t", default_value="pager")]
     pub filetype: String,
+
+    /// Open new buffer [set by default, unless only <instance_close> or <FILES> provided]
+    #[structopt(short="o")]
+    pub pty_open: bool,
+
+    /// Print path to /dev/pty/* for redirecting [set by default when don't reads from pipe]
+    #[structopt(short="p")]
+    pub pty_print: bool,
 
     /// Stay focused on current buffer
     #[structopt(short="b")]
     pub back: bool,
 
-    /// Print path to /dev/pty/* associated with pager buffer
-    #[structopt(short="p")]
-    pub print_pty_path: bool,
+    /// Stay focused on current buffer and keep INSERT mode
+    #[structopt(short="B")]
+    pub back_insert: bool,
+
+    /// Follow output instead of keeping position
+    #[structopt(short="f")]
+    pub follow: bool,
+
+    /// Flush redirecting protection, that prevents from producing junk and possible corruption of files
+    /// when no <address> available and "cmd > $(page)" is invoked, because $(page) here will hold nvim UI.
+    /// [env: PAGE_REDIRECTION_PROTECT:1]
+    #[structopt(short="W")]
+    pub page_no_protect: bool,
 
     /// Split right with ratio: window_width  * 3 / (<r provided> + 1)
     #[structopt(short="r", parse(from_occurrences))]
@@ -76,8 +94,27 @@ pub struct Opt {
     #[structopt(short="D")]
     pub split_below_rows: Option<u8>,
 
-    /// Open these files in separate buffers
+    /// Additionally open these files in separate buffers
     #[structopt(name="FILES")]
     pub files: Vec<String>
 }
 
+
+fn instance_use_arg_group() -> ArgGroup<'static> {
+    ArgGroup::with_name("instances")
+        .args(&["instance", "instance_append"])
+        .multiple(false)
+}
+
+fn back_arg_group() -> ArgGroup<'static> {
+    ArgGroup::with_name("backs")
+        .args(&["back", "back_insert"])
+        .multiple(false)
+}
+
+fn splits_arg_group() -> ArgGroup<'static> {
+    ArgGroup::with_name("splits")
+        .args(&["split_left", "split_right", "split_above", "split_below"])
+        .args(&["split_left_cols", "split_right_cols", "split_above_rows", "split_below_rows"])
+        .multiple(false)
+}

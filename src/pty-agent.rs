@@ -3,20 +3,22 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::env::args;
 use std::thread;
+use std::error::Error;
 
 mod util;
 
 
-fn main() {
+fn main() -> Result<(), Box<Error>> {
     {
-        let stdout_pty_path = fs::canonicalize(PathBuf::from("/dev/stdout")).unwrap();
-        let pty_agent_pipe_id = args().nth(1).expect("single argument required");
-        let pty_agent_pipe_path = util::open_agent_pipe(&pty_agent_pipe_id).unwrap();
-        let mut nvim_agent_pipe_open_options = OpenOptions::new();
-        nvim_agent_pipe_open_options.write(true);
-        let mut nvim_agent_pipe = nvim_agent_pipe_open_options.open(&pty_agent_pipe_path).unwrap();
-        nvim_agent_pipe.write_all(stdout_pty_path.to_string_lossy().as_bytes()).unwrap();
-        nvim_agent_pipe.flush().unwrap();
+        let stdout_pty_path = fs::canonicalize(PathBuf::from("/dev/stdout"))?;
+        if let Some(pty_agent_pipe_id) = args().nth(1) {
+            let pty_agent_pipe_path = util::open_agent_pipe(&pty_agent_pipe_id)?;
+            let mut nvim_agent_pipe = OpenOptions::new().write(true)
+                .open(&pty_agent_pipe_path)?;
+            nvim_agent_pipe.write_all(stdout_pty_path.to_string_lossy().as_bytes())?;
+            nvim_agent_pipe.flush()?;
+        }
     }
-    thread::park();
+    thread::park(); // Prevents :term buffer to close
+    Ok(())
 }
