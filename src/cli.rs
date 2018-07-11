@@ -28,19 +28,19 @@ pub struct Opt {
     #[structopt(short="I")]
     pub instance_append: Option<String>,
 
-    /// Only closes named instance buffer if exists
+    /// Closes named instance buffer if exists [revokes implied options]
     #[structopt(short="x")]
     pub instance_close: Option<String>,
 
-    /// Hint for syntax highlighting when reads from stdin
+    /// Hint for syntax highlighting when read from stdin
     #[structopt(short="t", default_value="pager")]
     pub filetype: String,
 
-    /// Open new buffer [set by default, unless only <instance_close> or <FILES> provided]
+    /// Open new buffer [implied]
     #[structopt(short="o")]
     pub pty_open: bool,
 
-    /// Print path to /dev/pty/* for redirecting [set by default when don't reads from pipe]
+    /// Print /dev/pty/* path for redirecting [implied when page don't read from pipe]
     #[structopt(short="p")]
     pub pty_print: bool,
 
@@ -52,7 +52,7 @@ pub struct Opt {
     #[structopt(short="B")]
     pub back_insert: bool,
 
-    /// Follow output instead of keeping position
+    /// Follow output instead of keeping top position
     #[structopt(short="f")]
     pub follow: bool,
 
@@ -94,7 +94,7 @@ pub struct Opt {
     #[structopt(short="D")]
     pub split_below_rows: Option<u8>,
 
-    /// Additionally open these files in separate buffers
+    /// Open provided files in separate buffers [revokes implied options]
     #[structopt(name="FILES")]
     pub files: Vec<String>
 }

@@ -6,8 +6,8 @@ extern crate rand;
 extern crate notify;
 
 
-mod util;
 mod cli;
+mod common;
 
 use neovim_lib::{self as nvim, neovim_api as nvim_api, NeovimApi, Value};
 use rand::{Rng, thread_rng, distributions::Alphanumeric};
@@ -71,7 +71,7 @@ impl NvimSessionConnector {
 
     fn spawn_child_nvim_process() -> IO<(PathBuf, process::Child)> {
         let mut nvim_child_listen_address = env::temp_dir();
-        nvim_child_listen_address.push("nvim-page");
+        nvim_child_listen_address.push(common::PAGE_TMP_DIR_NAME);
         fs::create_dir_all(&nvim_child_listen_address)?;
         nvim_child_listen_address.push(&format!("socket-{}", random_string()));
         let nvim_child_process = Command::new("nvim")
@@ -140,7 +140,7 @@ impl <'a> NvimManager<'a> {
     }
 
     fn read_pty_device_path(&mut self, agent_pipe_name: &str) -> IO<PathBuf> {
-        let agent_pipe_path = util::open_agent_pipe(agent_pipe_name)?;
+        let agent_pipe_path = common::open_agent_pipe(agent_pipe_name)?;
         let pty_path = {
             let mut pty_path = String::new();
             File::open(&agent_pipe_path)?.read_to_string(&mut pty_path)?;
