@@ -247,7 +247,7 @@ impl <'a> NvimManager<'a> {
 
     fn set_current_buffer_reading_mode(&mut self) -> IO {
         self.exit_term_insert_mode()?;
-        self.nvim.feedkeys("M", "n", false)?;
+        self.nvim.feedkeys("ggM", "n", false)?;
         Ok(())
     }
 
@@ -310,9 +310,11 @@ impl <'a> App<'a> {
     fn handle_open_files_provided(&mut self, &Cx { opt, ref initial_position, read_from_fifo, use_instance, .. }: &Cx) -> IO {
         if !opt.files.is_empty() {
             for file in opt.files.iter().as_ref() {
-                match self.nvim_manager.open_file_buffer(file) {
-                    Err(e) => eprintln!("Error opening \"{}\": {}", file, e),
-                    _ => self.nvim_manager.set_page_default_options_to_current_buffer()?
+                if let Err(e) = self.nvim_manager.open_file_buffer(file) {
+                    println!("Error opening \"{}\": {}", file, e);
+                } else {
+                    self.nvim_manager.set_page_default_options_to_current_buffer()?;
+                    self.nvim_manager.set_current_buffer_reading_mode()?;
                 }
             }
             if read_from_fifo || use_instance.is_some() {
