@@ -10,6 +10,7 @@ readme = "README.md"
 [dependencies]
 rand = "0.5.1"
 libc = "0.2.42"
+notify = "4.0.3"
 structopt = "0.2.10"
 neovim-lib = "0.5.2"
 

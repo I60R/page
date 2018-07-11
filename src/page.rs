@@ -3,6 +3,7 @@ extern crate structopt;
 
 extern crate neovim_lib;
 extern crate rand;
+extern crate notify;
 
 
 mod util;
@@ -12,17 +13,30 @@ use neovim_lib::{self as nvim, neovim_api as nvim_api, NeovimApi, Value};
 use rand::{Rng, thread_rng, distributions::Alphanumeric};
 use structopt::StructOpt;
 use std::{
+    env,
     fs::{self, remove_file, File, OpenOptions},
-    path::PathBuf,
+    path::{Path, PathBuf},
     iter,
     io::{self, Read, Write},
     thread,
     process::{self, Command, Stdio},
+    sync::mpsc,
     time::Duration,
     net::SocketAddr,
     error::Error,
     os::unix::fs::FileTypeExt,
 };
+use notify::{
+    Watcher,
+    RecursiveMode,
+    DebouncedEvent
+};
+
+
+
+/// A typealias to clarify signatures a bit. Used only when Input/Output is involved
+type IO<T = ()> = Result<T, Box<Error>>;
+
 
 
 /// Extends `nvim::Session` to be able to spawn new nvim process.
@@ -33,51 +47,51 @@ struct NvimSessionConnector {
 }
 
 impl NvimSessionConnector {
-    fn connect_to_parent_or_child(opt: &cli::Opt, read_from_fifo: bool) -> io::Result<NvimSessionConnector> {
+    fn connect_to_parent_or_child(opt: &cli::Opt, read_from_fifo: bool) -> IO<NvimSessionConnector> {
         if let Some(nvim_parent_listen_address) = opt.address.as_ref() {
+            let nvim_session = Self::session_from_address(nvim_parent_listen_address)?;
             Ok(NvimSessionConnector {
-                nvim_session: NvimSessionConnector::session_from_address(nvim_parent_listen_address)?,
+                nvim_session,
                 nvim_child_process: None
             })
         } else {
-            if !read_from_fifo && !opt.page_no_protect &&  std::env::var_os("PAGE_REDIRECTION_PROTECT").map_or(true, |v| &v != "0") {
+            if !read_from_fifo && !opt.page_no_protect && std::env::var_os("PAGE_REDIRECTION_PROTECT").map_or(true, |v| &v != "0") {
                 println!("/DON'T/REDIRECT(--help[-W])")
 
             }
             let (nvim_child_listen_address, nvim_child_process) = NvimSessionConnector::spawn_child_nvim_process()?;
+            let nvim_session = Self::session_from_address(&nvim_child_listen_address.to_string_lossy())?;
             Ok(NvimSessionConnector {
-                nvim_session: NvimSessionConnector::session_from_address(nvim_child_listen_address.to_string_lossy().as_ref())?,
+                nvim_session,
                 nvim_child_process: Some(nvim_child_process)
             })
         }
     }
 
-    fn spawn_child_nvim_process() -> io::Result<(PathBuf, process::Child)> {
+    fn spawn_child_nvim_process() -> IO<(PathBuf, process::Child)> {
         let nvim_child_listen_address = {
-            let mut path = PathBuf::from("/tmp/nvim-page");
-            fs::create_dir_all(&path)?;
-            path.push(&format!("socket-{}", random_string()));
-            path
+            let mut tmp = env::temp_dir();
+            tmp.push("nvim-page");
+            fs::create_dir_all(&tmp)?;
+            tmp.push(&format!("socket-{}", random_string()));
+            tmp
         };
         let nvim_child_process = Command::new("nvim")
-            .stdin(Stdio::null()) // Don't inherit stdin, nvim can't redirect content into terminal(!) buffer
+            .stdin(Stdio::null()) // Don't inherit stdin, nvim can't redirect content into terminal buffer
             .env("NVIM_LISTEN_ADDRESS", &nvim_child_listen_address)
             .spawn()?;
-        thread::sleep(Duration::from_millis(150)); // Wait while nvim child process connects to socket.
+        wait_until_file_is_created(&nvim_child_listen_address)?;
         Ok((nvim_child_listen_address, nvim_child_process))
     }
 
     fn session_from_address(nvim_listen_address: impl AsRef<str>) -> io::Result<nvim::Session> {
         let nvim_listen_address = nvim_listen_address.as_ref();
-        nvim_listen_address.parse::<SocketAddr>()
-            .ok().map_or_else(||nvim::Session::new_unix_socket(nvim_listen_address),
-                              |_|nvim::Session::new_tcp(nvim_listen_address))
+        match nvim_listen_address.parse::<SocketAddr>() {
+            Ok(_) => nvim::Session::new_tcp(nvim_listen_address),
+            _ => nvim::Session::new_unix_socket(nvim_listen_address)
+        }
     }
 }
-
-
-/// A typealias to clarify signatures a bit. Used only when Input/Output is involved
-type IO<T = ()> = Result<T, Box<Error>>;
 
 
 /// A helper for nvim terminal buffer creation/configuration
