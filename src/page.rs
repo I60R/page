@@ -15,7 +15,7 @@ use structopt::StructOpt;
 use std::{
     env,
     fs::{self, remove_file, File, OpenOptions},
-    path::{Path, PathBuf},
+    path::PathBuf,
     iter,
     io::{self, Read, Write},
     thread,
@@ -29,7 +29,8 @@ use std::{
 use notify::{
     Watcher,
     RecursiveMode,
-    DebouncedEvent
+    RawEvent,
+    op,
 };
 
 
@@ -69,18 +70,15 @@ impl NvimSessionConnector {
     }
 
     fn spawn_child_nvim_process() -> IO<(PathBuf, process::Child)> {
-        let nvim_child_listen_address = {
-            let mut tmp = env::temp_dir();
-            tmp.push("nvim-page");
-            fs::create_dir_all(&tmp)?;
-            tmp.push(&format!("socket-{}", random_string()));
-            tmp
-        };
+        let mut nvim_child_listen_address = env::temp_dir();
+        nvim_child_listen_address.push("nvim-page");
+        fs::create_dir_all(&nvim_child_listen_address)?;
+        nvim_child_listen_address.push(&format!("socket-{}", random_string()));
         let nvim_child_process = Command::new("nvim")
             .stdin(Stdio::null()) // Don't inherit stdin, nvim can't redirect content into terminal buffer
             .env("NVIM_LISTEN_ADDRESS", &nvim_child_listen_address)
             .spawn()?;
-        wait_until_file_is_created(&nvim_child_listen_address)?;
+        wait_until_file_created(&nvim_child_listen_address)?;
         Ok((nvim_child_listen_address, nvim_child_process))
     }
 
@@ -122,7 +120,7 @@ impl <'a> NvimManager<'a> {
                     },
                 Ok(v) => {
                     if let Some([Value::String(instance_name_found), Value::String(instance_pty_path)]) = v.as_array().map(Vec::as_slice) {
-                        if instance_name == &instance_name_found.to_string() {
+                        if instance_name == instance_name_found.to_string() {
                             let pty_path = PathBuf::from(instance_pty_path.to_string());
                             return Ok(Some((buffer, pty_path)))
                         }
