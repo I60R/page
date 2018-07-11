@@ -324,11 +324,13 @@ impl <'a> App<'a> {
         Ok(())
     }
 
-    fn should_exit_without_pty_open(&self, &Cx { opt, .. }: &Cx) -> bool {
+    fn should_exit_without_pty_open(&self, &Cx { opt, read_from_fifo, .. }: &Cx) -> bool {
         let has_early_exit_command = opt.instance_close.is_some() || !opt.files.is_empty();
-        (has_early_exit_command && !opt.pty_open) // Check for absence of other commands
+        (has_early_exit_command && !opt.pty_open && !read_from_fifo) // Check for absence of other commands
             && !opt.back && !opt.back_insert
-            && opt.instance.is_none()
+            && !opt.pty_print
+            && !opt.follow
+            && opt.instance.is_none() && opt.instance_append.is_none()
             && opt.command.is_none() && opt.command_post.is_none()
             && opt.split_left_cols.is_none() && opt.split_right_cols.is_none() && opt.split_above_rows.is_none() && opt.split_below_rows.is_none()
             && opt.split_left == 0 && opt.split_right == 0 && opt.split_above == 0 && opt.split_below == 0
