@@ -113,17 +113,18 @@ impl <'a> NvimManager<'a> {
         Ok(())
     }
 
-    fn find_instance_buffer(&mut self, name: &str) -> IO<Option<(nvim_api::Buffer, PathBuf)>> {
+    fn find_instance_buffer(&mut self, instance_name: &str) -> IO<Option<(nvim_api::Buffer, PathBuf)>> {
         for buffer in self.nvim.list_bufs()? {
             match buffer.get_var(self.nvim, "page_instance") {
-                Err(e) => if e.to_string() != "1 - Key 'page_instance' not found" { return Err(e)? },
-                Ok(ref v) => if let Some(a) = v.as_array() {
-                    if let [ref instance_name, ref instance_pty_path] = a[..] {
-                        if let (Some(instance_name), Some(instance_pty_path)) = (instance_name.as_str(), instance_pty_path.as_str()) {
-                            if instance_name == name {
-                                let pty_path = PathBuf::from(instance_pty_path);
-                                return Ok(Some((buffer, pty_path)))
-                            }
+                Err(e) =>
+                    if e.to_string() != "1 - Key 'page_instance' not found" {
+                        return Err(e)?
+                    },
+                Ok(v) => {
+                    if let Some([Value::String(instance_name_found), Value::String(instance_pty_path)]) = v.as_array().map(Vec::as_slice) {
+                        if instance_name == &instance_name_found.to_string() {
+                            let pty_path = PathBuf::from(instance_pty_path.to_string());
+                            return Ok(Some((buffer, pty_path)))
                         }
                     }
                 }
