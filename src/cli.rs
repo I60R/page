@@ -32,6 +32,10 @@ pub struct Opt {
     #[structopt(short="x")]
     pub instance_close: Option<String>,
 
+    /// Set buffer name
+    #[structopt(short="n", env="PAGE_BUFFER_NAME")]
+    pub name: Option<String>,
+
     /// Hint for syntax highlighting when read from stdin
     #[structopt(short="t", default_value="pager")]
     pub filetype: String,
@@ -56,7 +60,7 @@ pub struct Opt {
     #[structopt(short="f")]
     pub follow: bool,
 
-    /// Flush redirecting protection, that prevents from producing junk and possible corruption of files
+    /// Flush redirecting protection that prevents from producing junk and possible corruption of files
     /// when no <address> available and "cmd > $(page)" is invoked, because $(page) here will hold nvim UI.
     /// [env: PAGE_REDIRECTION_PROTECT:1]
     #[structopt(short="W")]

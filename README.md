@@ -65,7 +65,7 @@ Under nvim terminal:
 
 Appearance:
 ```viml
-    let g:page_icon_instance = '§'
+    let g:page_icon_instance = '#'
     let g:page_icon_redirect = '>§'
     let g:page_icon_pipe = '|§'
 ```

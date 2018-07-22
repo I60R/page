@@ -350,19 +350,29 @@ impl <'a> App<'a> {
         let (buffer, pty_path) = match use_instance {
             None => {
                 let (buffer, pty_path) = open_page_buffer_hook(self)?;
-                let (page_icon_key, page_icon_default) = if read_from_fifo { ("page_icon_pipe", "|$") } else { ("page_icon_redirect", ">$") };
-                let page_icon = self.nvim_manager.get_var_or_default(page_icon_key, page_icon_default)?;
-                self.nvim_manager.update_buffer_name(&buffer, &page_icon)?;
+                let (page_icon_key, page_icon_default) = if read_from_fifo { ("page_icon_pipe", "|") } else { ("page_icon_redirect", ">") };
+                let mut buffer_title = self.nvim_manager.get_var_or_default(page_icon_key, page_icon_default)?;
+                if let Some(ref buffer_name) = opt.name {
+                    buffer_title.insert_str(0, &buffer_name);
+                }
+                self.nvim_manager.update_buffer_name(&buffer, &buffer_title)?;
                 (buffer, pty_path)
             },
-            Some(name) => {
-                match self.nvim_manager.find_instance_buffer(&name)? {
+            Some(instance_name) => {
+                match self.nvim_manager.find_instance_buffer(&instance_name)? {
                     Some(it) => it,
                     None => {
                         let (buffer, pty_path) = open_page_buffer_hook(self)?;
-                        self.nvim_manager.register_buffer_as_instance(name, &buffer, &pty_path.to_string_lossy())?;
-                        let page_icon = self.nvim_manager.get_var_or_default("page_icon_instance", "$")?;
-                        self.nvim_manager.update_buffer_name(&buffer, &format!("{}{}", page_icon, name))?;
+                        self.nvim_manager.register_buffer_as_instance(instance_name, &buffer, &pty_path.to_string_lossy())?;
+                        let (page_icon_key, page_icon_default) = ("page_icon_instance", "#");
+                        let mut buffer_title = self.nvim_manager.get_var_or_default(page_icon_key, page_icon_default)?;
+                        buffer_title.insert_str(0, instance_name);
+                        if let Some(ref buffer_name) = opt.name {
+                            if buffer_name != instance_name {
+                                buffer_title.push_str(buffer_name);
+                            }
+                        }
+                        self.nvim_manager.update_buffer_name(&buffer, &buffer_title)?;
                         (buffer, pty_path)
                     }
                 }
