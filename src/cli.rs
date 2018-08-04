@@ -1,13 +1,24 @@
-use structopt::{clap::{ ArgGroup, AppSettings::* }};
+use neovim_lib::neovim_api::{
+    Buffer,
+    Window
+};
+use std::process;
+use structopt::{
+    clap::{
+        ArgGroup,
+        AppSettings::*
+    }
+};
 
 
-#[derive(StructOpt)]
+// Contains arguments provided by command line
+#[derive(StructOpt, Debug)]
 #[structopt(raw(
     global_settings="&[DisableHelpSubcommand, DeriveDisplayOrder]",
     group="splits_arg_group()",
     group="back_arg_group()",
     group="instance_use_arg_group()"))]
-pub struct Opt {
+pub(crate) struct Options {
     /// Neovim session address
     #[structopt(short="a", env="NVIM_LISTEN_ADDRESS")]
     pub address: Option<String>,
@@ -36,7 +47,7 @@ pub struct Opt {
     #[structopt(short="n", env="PAGE_BUFFER_NAME")]
     pub name: Option<String>,
 
-    /// Hint for syntax highlighting when read from stdin
+    /// Hint for syntax highlighting for text read from stdin
     #[structopt(short="t", default_value="pager")]
     pub filetype: String,
 
@@ -61,8 +72,12 @@ pub struct Opt {
     pub follow: bool,
 
     /// Flush redirecting protection that prevents from producing junk and possible corruption of files
-    /// when no <address> available and "cmd > $(page)" is invoked, because $(page) here will hold nvim UI.
-    /// [env: PAGE_REDIRECTION_PROTECT:1]
+    /// by invoking commands like "unset NVIM_LISTEN_ADDRESS && ls > $(page -E q)".
+    /// Here "$(page -E q)" will be evaluated not into "/dev/pty/*" but into {neovim UI} which consists of
+    /// bunch of characters and strings, and for each of them will be created new file, and even overwriting might occur.
+    /// To prevent that, path to directory is printed first, so "ls > directory {neovim UI}" will fail
+    /// because it's impossible to redirect into directory.
+    /// [env: PAGE_REDIRECTION_PROTECT: (0 to disable)]
     #[structopt(short="W")]
     pub page_no_protect: bool,
 
@@ -111,7 +126,7 @@ fn instance_use_arg_group() -> ArgGroup<'static> {
 }
 
 fn back_arg_group() -> ArgGroup<'static> {
-    ArgGroup::with_name("backs")
+    ArgGroup::with_name("focusing")
         .args(&["back", "back_insert"])
         .multiple(false)
 }
@@ -121,4 +136,89 @@ fn splits_arg_group() -> ArgGroup<'static> {
         .args(&["split_left", "split_right", "split_above", "split_below"])
         .args(&["split_left_cols", "split_right_cols", "split_above_rows", "split_below_rows"])
         .multiple(false)
+}
+
+
+
+// Context in which application is invoked. Contains related read-only data
+#[derive(Debug)]
+pub(crate) struct Context<'a> {
+    pub opt: &'a Options,
+    pub initial_position: (Window, Buffer),
+    pub nvim_child_process: Option<process::Child>,
+    pub switch_back_mode: Option<SwitchBackMode>,
+    pub instance_mode: Option<InstanceMode>,
+    pub creates: bool,
+    pub splits: bool,
+    pub piped: bool,
+}
+
+impl <'a> Context<'a> {
+    pub(crate) fn new (
+        opt: &'a Options,
+        nvim_child_process: Option<process::Child>,
+        initial_position: (Window, Buffer),
+        piped: bool,
+    ) -> Context<'a> {
+        let switch_back_mode = if nvim_child_process.is_none() {
+            if opt.back {
+                Some(SwitchBackMode::Normal)
+            } else if opt.back_insert {
+                Some(SwitchBackMode::Insert)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        let instance_mode = if let Some(instance) = opt.instance.as_ref() {
+            Some(InstanceMode::Replace(instance.clone()))
+        } else if let Some(instance) = opt.instance_append.as_ref() {
+            Some(InstanceMode::Append(instance.clone()))
+        } else {
+            None
+        };
+        let split_flag_provided = Self::has_split_flag_provided(&opt);
+        let creates = !Self::has_early_exit_condition(&opt, piped, split_flag_provided, switch_back_mode.is_some());
+        let splits = nvim_child_process.is_none() && split_flag_provided;
+        Context {
+            opt: &opt,
+            instance_mode,
+            initial_position,
+            nvim_child_process,
+            switch_back_mode,
+            creates,
+            splits,
+            piped,
+        }
+    }
+
+    fn has_split_flag_provided(opt: &Options) -> bool {
+        /*   */opt.split_left_cols.is_some() || opt.split_right_cols.is_some()
+            || opt.split_above_rows.is_some() || opt.split_below_rows.is_some()
+            || opt.split_left != 0 || opt.split_right != 0
+            || opt.split_above != 0 || opt.split_below != 0
+    }
+
+    fn has_early_exit_condition(opt: &Options, piped: bool, splits: bool, returns_back: bool) -> bool {
+        let early_exit_cmd = opt.instance_close.is_some() || !opt.files.is_empty();
+        early_exit_cmd && !piped && !splits && !returns_back
+            && !opt.follow
+            && !opt.pty_open && !opt.pty_print
+            && opt.instance.is_none() && opt.instance_append.is_none()
+            && opt.command.is_none() && opt.command_post.is_none()
+            && &opt.filetype == "pager"
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum SwitchBackMode {
+    Normal,
+    Insert,
+}
+
+#[derive(Debug)]
+pub(crate) enum InstanceMode {
+    Append(String),
+    Replace(String),
 }

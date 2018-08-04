@@ -1,6 +1,6 @@
 [package]
 name = "page"
-version = "1.2.0"
+version = "1.5.0"
 authors = ["160R <160R@protonmail.com>"]
 description = "A pager that utilizes neovim's terminal buffer"
 repository = "https://github.com/I60R/page"
@@ -11,8 +11,15 @@ readme = "README.md"
 rand = "0.5.1"
 libc = "0.2.42"
 notify = "4.0.3"
+atty = "0.2.11"
+
 structopt = "0.2.10"
-neovim-lib = "0.5.2"
+
+neovim-lib = "0.5.3"
+
+log = "0.4.3"
+pretty_env_logger = "0.2.4"
+
 
 [[bin]]
 name = "pty-agent"

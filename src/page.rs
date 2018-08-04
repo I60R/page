@@ -1,30 +1,43 @@
 #[macro_use]
 extern crate structopt;
 
+#[macro_use]
+extern crate log;
+extern crate pretty_env_logger as logger;
+
+extern crate atty;
 extern crate neovim_lib;
-extern crate rand;
-extern crate notify;
 
 
 mod cli;
-mod common;
+mod util;
+mod nvim;
 
-use neovim_lib::{self as nvim, neovim_api as nvim_api, NeovimApi, Value};
-use rand::{Rng, thread_rng, distributions::Alphanumeric};
+use util::IO;
+use cli::{
+    Options,
+    Context as Cx,
+    SwitchBackMode,
+    InstanceMode,
+};
+use neovim_lib::{
+    neovim_api::{
+        Window,
+        Buffer
+    },
+};
+use atty::Stream;
 use structopt::StructOpt;
 use std::{
+    io::{
+        self,
+        Write
+    },
     env,
-    fs::{self, remove_file, File, OpenOptions},
+    fs::OpenOptions,
     path::PathBuf,
-    iter,
-    io::{self, Read, Write},
     thread,
-    process::{self, Command, Stdio},
-    sync::mpsc,
     time::Duration,
-    net::SocketAddr,
-    error::Error,
-    os::unix::fs::FileTypeExt,
 };
 use notify::{
     Watcher,
@@ -291,13 +304,17 @@ struct Cx<'a> {
 
 // Handles application use cases
 struct App<'a> {
-    nvim_manager: &'a mut NvimManager<'a>,
+    nvim_manager: &'a mut nvim::Manager<'a>,
     pty_path: &'a mut Option<PathBuf>,
-    buffer: &'a mut Option<nvim_api::Buffer>,
+    buffer: &'a mut Option<Buffer>,
 }
 
 impl <'a> App<'a> {
-    fn handle_close_instance_pty(&mut self, &Cx { opt, ref nvim_child_process, .. }: &Cx) -> IO {
+    fn handle_close_instance_pty(&mut self, &Cx {
+        opt,
+        ref nvim_child_process,
+        ..
+    }: &Cx) -> IO {
         if let Some(name) = opt.instance_close.as_ref() {
             match nvim_child_process {
                 Some(_) => eprintln!("Can't close instance on newly spawned nvim process"),
@@ -307,72 +324,58 @@ impl <'a> App<'a> {
         Ok(())
     }
 
-    fn handle_open_files_provided(&mut self, &Cx { opt, ref initial_position, read_from_fifo, use_instance, .. }: &Cx) -> IO {
+    fn handle_open_provided_files(&mut self, &Cx {
+        opt,
+        ref initial_position,
+        splits,
+        ..
+    }: &Cx) -> IO {
         if !opt.files.is_empty() {
-            for file in opt.files.iter().as_ref() {
+            for file in &opt.files {
                 if let Err(e) = self.nvim_manager.open_file_buffer(file) {
-                    println!("Error opening \"{}\": {}", file, e);
+                    eprintln!("Error opening \"{}\": {}", file, e);
                 } else {
                     self.nvim_manager.set_page_default_options_to_current_buffer()?;
                     self.nvim_manager.set_current_buffer_reading_mode()?;
                 }
             }
-            if read_from_fifo || use_instance.is_some() {
+            if splits {
                 self.nvim_manager.switch_to_buffer_position(&initial_position)?;
             }
         }
         Ok(())
     }
 
-    fn should_exit_without_pty_open(&self, &Cx { opt, read_from_fifo, .. }: &Cx) -> bool {
-        let has_early_exit_command = opt.instance_close.is_some() || !opt.files.is_empty();
-        (has_early_exit_command && !opt.pty_open && !read_from_fifo) // Check for absence of other commands
-            && !opt.back && !opt.back_insert
-            && !opt.pty_print
-            && !opt.follow
-            && opt.instance.is_none() && opt.instance_append.is_none()
-            && opt.command.is_none() && opt.command_post.is_none()
-            && opt.split_left_cols.is_none() && opt.split_right_cols.is_none() && opt.split_above_rows.is_none() && opt.split_below_rows.is_none()
-            && opt.split_left == 0 && opt.split_right == 0 && opt.split_above == 0 && opt.split_below == 0
-            && &opt.filetype == "pager"
-    }
 
-    fn handle_pty_open_with_settings(&mut self, &Cx { opt, ref nvim_child_process, use_instance, read_from_fifo, .. }: &Cx) -> IO {
-        let open_page_buffer_hook = |app: &mut App| -> IO<_> {
-            if nvim_child_process.is_none() {
-                app.nvim_manager.split_current_buffer_if_required(opt)?;
-            }
-            let (buffer, pty_path) = app.nvim_manager.create_pty_with_buffer()?;
-            app.nvim_manager.set_page_default_options_to_current_buffer()?;
-            app.nvim_manager.update_buffer_filetype(&buffer, &opt.filetype)?;
-            Ok((buffer, pty_path))
-        };
-        let (buffer, pty_path) = match use_instance {
+    fn handle_open_pty_buffer(&mut self, &Cx {
+        opt,
+        ref instance_mode,
+        piped,
+        splits,
+        ..
+    }: &Cx) -> IO {
+        let (buffer, pty_path) = match instance_mode {
             None => {
-                let (buffer, pty_path) = open_page_buffer_hook(self)?;
-                let (page_icon_key, page_icon_default) = if read_from_fifo { ("page_icon_pipe", "|") } else { ("page_icon_redirect", ">") };
+                let (buffer, pty_path) = self.open_page_buffer(&opt, splits)?;
+                let (page_icon_key, page_icon_default) = if piped {
+                    ("page_icon_pipe", "|")
+                } else {
+                    ("page_icon_redirect", ">")
+                };
                 let mut buffer_title = self.nvim_manager.get_var_or_default(page_icon_key, page_icon_default)?;
                 if let Some(ref buffer_name) = opt.name {
-                    buffer_title.insert_str(0, &buffer_name);
+                    buffer_title.insert_str(0, buffer_name);
                 }
-                self.nvim_manager.update_buffer_name(&buffer, &buffer_title)?;
+                self.nvim_manager.update_buffer_title(&buffer, &buffer_title)?;
                 (buffer, pty_path)
             },
-            Some(instance_name) => {
+            Some(InstanceMode::Append(instance_name)) | Some(InstanceMode::Replace(instance_name)) => {
                 match self.nvim_manager.find_instance_buffer(&instance_name)? {
                     Some(it) => it,
                     None => {
-                        let (buffer, pty_path) = open_page_buffer_hook(self)?;
-                        self.nvim_manager.register_buffer_as_instance(instance_name, &buffer, &pty_path.to_string_lossy())?;
-                        let (page_icon_key, page_icon_default) = ("page_icon_instance", "#");
-                        let mut buffer_title = self.nvim_manager.get_var_or_default(page_icon_key, page_icon_default)?;
-                        buffer_title.insert_str(0, instance_name);
-                        if let Some(ref buffer_name) = opt.name {
-                            if buffer_name != instance_name {
-                                buffer_title.push_str(buffer_name);
-                            }
-                        }
-                        self.nvim_manager.update_buffer_name(&buffer, &buffer_title)?;
+                        let (buffer, pty_path) = self.open_page_buffer(&opt, splits)?;
+                        self.nvim_manager.register_buffer_as_instance(&buffer, instance_name, &pty_path.to_string_lossy())?;
+                        Self::set_instance_buffer_name(self.nvim_manager, &opt.name, instance_name, &buffer)?;
                         (buffer, pty_path)
                     }
                 }
@@ -383,64 +386,143 @@ impl <'a> App<'a> {
         Ok(())
     }
 
-    fn handle_user_command(&mut self, command: &Option<String>) -> IO {
+    fn set_instance_buffer_name(
+        nvim_manager: &mut nvim::Manager,
+        buffer_name: &Option<String>,
+        instance_name: &String,
+        buffer: &Buffer
+    ) -> IO {
+        let (page_icon_key, page_icon_default) = ("page_icon_instance", "$");
+        let mut buffer_title = nvim_manager.get_var_or_default(page_icon_key, page_icon_default)?;
+        buffer_title.insert_str(0, instance_name);
+        if let Some(ref buffer_name) = buffer_name {
+            if buffer_name != instance_name {
+                buffer_title.push_str(buffer_name);
+            }
+        }
+        nvim_manager.update_buffer_title(&buffer, &buffer_title)?;
+        Ok(())
+    }
+
+    fn open_page_buffer(
+        &mut self,
+        opt: &Options,
+        splits: bool
+    ) -> IO<(Buffer, PathBuf)> {
+        if splits {
+            self.nvim_manager.split_current_buffer_if_required(opt)?;
+        }
+        let (buffer, pty_path) = self.nvim_manager.create_pty_with_buffer()?;
+        self.nvim_manager.set_page_default_options_to_current_buffer()?;
+        self.nvim_manager.update_buffer_filetype(&buffer, &opt.filetype)?;
+        Ok((buffer, pty_path))
+    }
+
+
+    fn handle_user_command(
+        &mut self,
+        command: &Option<String>
+    ) -> IO {
         if let Some(command) = command {
             self.nvim_manager.execute_user_command_on_buffer(self.buffer.as_ref().unwrap(), &command)?;
         }
         Ok(())
     }
 
-    fn handle_user_command_post(&mut self, command: &Option<String>) -> IO {
+    fn handle_user_command_post(
+        &mut self,
+        command: &Option<String>
+    ) -> IO {
         if command.is_some() {
-            thread::sleep(Duration::from_millis(50)); // Fixes errors when `page` is set as `$MANPAGER`
+            thread::sleep(Duration::from_millis(50)); // Fixes errors on `MANPAGER="page -E 'syntax on'"`
             self.handle_user_command(command)?;
         }
         Ok(())
     }
 
 
-    fn handle_redirect_mode(&mut self, &Cx { opt, read_from_fifo, ref initial_position, ref nvim_child_process, use_instance, .. }: &Cx) -> IO {
-        let App { ref mut nvim_manager, pty_path, buffer, .. } = self;
-        let (pty_path, buffer) = (pty_path.as_ref().unwrap(), buffer.as_ref().unwrap());
-
-        let before_writing_hook = |nvim_manager: &mut NvimManager| -> IO {
-            if opt.follow {
-                nvim_manager.set_current_buffer_follow_output_mode()?;
-                thread::sleep(Duration::from_millis(50)); // Nvim needs time to process key
-            } else {
-                nvim_manager.set_current_buffer_reading_mode()?;
+    fn handle_redirect_mode(
+        &mut self, &Cx {
+            opt,
+            piped,
+            ref initial_position,
+            ref nvim_child_process,
+            ref switch_back_mode,
+            ref instance_mode,
+            ..
+        }: &Cx
+    ) -> IO {
+        let (ref mut nvim_manager, ref pty_path, ref buffer) = (
+            &mut self.nvim_manager,
+            self.pty_path.as_ref().unwrap(),
+            self.buffer.as_ref().unwrap()
+        );
+        if instance_mode.is_some() || piped {
+            let pty_device = &mut OpenOptions::new()
+                .append(true)
+                .open(pty_path)?;
+            if let Some(instance_mode) = instance_mode {
+                let focus_instance = switch_back_mode.is_none() || opt.follow;
+                Self::prepare_instance_to_write(
+                    nvim_manager, buffer, pty_device, &opt.name, instance_mode, focus_instance
+                )?;
             }
-            if nvim_child_process.is_some() {
-                return Ok(()); // There's no buffer to switch back
-            }
-            if opt.back_insert || opt.back {
-                thread::sleep(Duration::from_millis(50)); // To prevent sending keys into wrong buffer
-                nvim_manager.switch_to_buffer_position(&initial_position)?;
-            }
-            if opt.back_insert {
-                nvim_manager.set_current_buffer_insert_mode()?;
-            }
-            Ok(())
-        };
-        let uses_instance = use_instance.is_some();
-        if uses_instance || read_from_fifo {
-            let mut pty_device = OpenOptions::new().append(true).open(pty_path)?;
-            if uses_instance {
-                nvim_manager.nvim.set_current_buf(&buffer)?;
-                if opt.instance.is_some() {
-                    write!(&mut pty_device, "\x1B[3J\x1B[H\x1b[2J")?; // Clear screen sequence
-                }
-            }
-            before_writing_hook(nvim_manager)?;
-            if read_from_fifo {
+            Self::prepare_buffer_to_write(nvim_manager, &opt, switch_back_mode, initial_position)?;
+            if piped {
                 let stdin = io::stdin();
-                io::copy(&mut stdin.lock(), &mut pty_device).map(drop)?;
+                io::copy(&mut stdin.lock(), pty_device).map(drop)?;
             }
         } else {
-            before_writing_hook(nvim_manager)?;
+            Self::prepare_buffer_to_write(nvim_manager, &opt, switch_back_mode, initial_position)?;
         }
-        if opt.pty_print || (!read_from_fifo && nvim_child_process.is_none()) {
+        let pty_print_implied = !piped && nvim_child_process.is_none();
+        if pty_print_implied || opt.pty_print {
             println!("{}", pty_path.to_string_lossy());
+        }
+        Ok(())
+    }
+
+    fn prepare_buffer_to_write(
+        nvim_manager: &mut nvim::Manager,
+        opt: &Options,
+        switch_back_mode: &Option<SwitchBackMode>,
+        initial_position: &(Window, Buffer)
+    ) -> IO {
+        if opt.follow {
+            nvim_manager.set_current_buffer_follow_output_mode()?;
+        } else {
+            nvim_manager.set_current_buffer_reading_mode()?;
+        }
+        if switch_back_mode.is_some() {
+            thread::sleep(Duration::from_millis(200)); // To prevent sending keys into wrong buffer
+            nvim_manager.switch_to_buffer_position(&initial_position)?;
+        }
+        if let Some(SwitchBackMode::Insert) = switch_back_mode {
+            nvim_manager.set_current_buffer_insert_mode()?;
+        }
+        Ok(())
+    }
+
+    fn prepare_instance_to_write(
+        nvim_manager: &mut nvim::Manager,
+        instance_buffer: &Buffer,
+        mut pty_device: &mut impl Write,
+        buffer_name: &Option<String>,
+        instance_mode: &InstanceMode,
+        focus_instance_buffer: bool,
+    ) -> IO {
+        let (replace_content, instance_name) = match instance_mode {
+            InstanceMode::Replace(instance_name) => (true, instance_name),
+            InstanceMode::Append(instance_name) => (false, instance_name),
+        };
+        if buffer_name.is_some() {
+            Self::set_instance_buffer_name(nvim_manager, buffer_name, instance_name, instance_buffer)?;
+        }
+        if focus_instance_buffer || replace_content {
+            nvim_manager.focus_instance_buffer(&instance_buffer)?;
+        }
+        if replace_content {
+            write!(&mut pty_device, "\x1B[3J\x1B[H\x1b[2J")?; // Clear screen sequence
         }
         Ok(())
     }
@@ -456,32 +538,33 @@ impl <'a> App<'a> {
 
 
 fn main() -> IO {
-    let opt = cli::Opt::from_args();
-    let read_from_fifo = is_reading_from_fifo();
+    logger::init();
 
-    let NvimSessionConnector { mut nvim_session, nvim_child_process, } =
-        NvimSessionConnector::connect_to_parent_or_child(&opt, read_from_fifo)?;
+    let opt = Options::from_args();
+    info!("options: {:#?}", opt);
 
-    nvim_session.start_event_loop();
-    let mut nvim = nvim::Neovim::new(nvim_session);
+    let piped = atty::isnt(Stream::Stdin);
+    let prints_protection = !piped && !opt.page_no_protect && env::var_os("PAGE_REDIRECTION_PROTECT").map_or(true, |v|&v!="0");
 
-    let cx = Cx {
-        opt: &opt,
-        use_instance: opt.instance.as_ref().or_else(|| opt.instance_append.as_ref()),
-        nvim_child_process,
-        initial_position: (nvim.get_current_win()?, nvim.get_current_buf()?),
-        read_from_fifo,
-    };
+    let nvim::Connector {
+        mut nvim,
+        initial_position,
+        nvim_child_process
+    } = nvim::Connector::connect_parent_or_child(&opt.address, prints_protection)?;
+
+    let cx = Cx::new(&opt, nvim_child_process, initial_position, piped);
+    info!("context: {:#?}", cx);
+
     let mut app = App {
-        nvim_manager: &mut NvimManager { nvim: &mut nvim, },
+        nvim_manager: &mut nvim::Manager::new(&mut nvim),
         pty_path: &mut None,
         buffer: &mut None,
     };
 
     app.handle_close_instance_pty(&cx)?;
-    app.handle_open_files_provided(&cx)?;
-    if !app.should_exit_without_pty_open(&cx) {
-        app.handle_pty_open_with_settings(&cx)?;
+    app.handle_open_provided_files(&cx)?;
+    if cx.creates {
+        app.handle_open_pty_buffer(&cx)?;
         app.handle_user_command(&cx.opt.command)?;
         app.handle_redirect_mode(&cx)?;
         app.handle_user_command_post(&cx.opt.command_post)?;

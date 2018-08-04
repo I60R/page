@@ -9,11 +9,12 @@ You can set it as `$PAGER` to view logs, diffs, various command outputs.
 ANSI escape sequences will be interpreted by :term buffer, so it's noticeably faster than [vimpager](https://github.com/rkitover/vimpager) and [nvimpager](https://github.com/lucc/nvimpager).  
 Text will be displayed instantly as it arrives - no need to wait until EOF.  
 
-Also it allows to pipe/redirect from :term buffer into regular buffer, without spawning nested neovim instance for that purpose.  
-This is by utilizing `$NVIM_LISTEN_ADDRESS` (like [neovim-remote](https://github.com/mhinz/neovim-remote)) does).  
+Also it allows to pipe/redirect from :term shell into regular buffer, without spawning nested neovim instance for that purpose.  
+This is by utilizing `$NVIM_LISTEN_ADDRESS` (like [neovim-remote](https://github.com/mhinz/neovim-remote) does).  
   
-You will have all familiar neovim keybindings and all text editing+searching+navigating facilities with your settings and plugins.   
-Plus some useful options:
+You will have all familiar neovim keybindings and all text editing+searching+navigating facilities + all your settings, mappings, plugins, etc. from your neovim config.   
+
+`--help` output looks like this:
 
 ```
 USAGE:
@@ -65,9 +66,9 @@ Under nvim terminal:
 
 Appearance:
 ```viml
-    let g:page_icon_instance = '#'
-    let g:page_icon_redirect = '>§'
-    let g:page_icon_pipe = '|§'
+    let g:page_icon_instance = '$'
+    let g:page_icon_redirect = '>'
+    let g:page_icon_pipe = '|'
 ```
 
 This will be set by default on each buffer:
