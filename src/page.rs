@@ -344,7 +344,6 @@ impl<'a> App<'a> {
         Ok(())
     }
 
-
     fn handle_open_pty_buffer(&mut self, &cli::Context {
         opt,
         ref instance_mode,
@@ -483,7 +482,6 @@ impl<'a> App<'a> {
         Ok(())
     }
 
-
     fn handle_user_command_post(&mut self,
         command: &Option<String>,
         buffer: &Buffer,
@@ -494,8 +492,6 @@ impl<'a> App<'a> {
         }
         Ok(())
     }
-
-
 
     fn handle_exit(self, cli::Context {
         nvim_child_process,
