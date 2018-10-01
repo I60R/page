@@ -406,7 +406,6 @@ impl<'a> App<'a> {
         Ok((buffer, pty_path))
     }
 
-
     fn handle_user_command(&mut self,
         command: &Option<String>,
         buffer: &Buffer,
