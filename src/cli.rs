@@ -1,14 +1,6 @@
-use neovim_lib::neovim_api::{
-    Buffer,
-    Window
-};
+use neovim_lib::neovim_api::{Buffer, Window};
 use std::process;
-use structopt::{
-    clap::{
-        ArgGroup,
-        AppSettings::*
-    }
-};
+use structopt::clap::{ArgGroup, AppSettings::*};
 
 
 // Contains arguments provided by command line
@@ -146,9 +138,10 @@ pub(crate) struct Context<'a> {
     pub opt: &'a Options,
     pub initial_position: (Window, Buffer),
     pub nvim_child_process: Option<process::Child>,
-    pub switch_back_mode: Option<SwitchBackMode>,
-    pub instance_mode: Option<InstanceMode>,
+    pub switch_back_mode: SwitchBackMode,
+    pub instance_mode: InstanceMode,
     pub creates: bool,
+    pub prints: bool,
     pub splits: bool,
     pub piped: bool,
 }
@@ -160,27 +153,26 @@ impl <'a> Context<'a> {
         initial_position: (Window, Buffer),
         piped: bool,
     ) -> Context<'a> {
-        let switch_back_mode = if nvim_child_process.is_none() {
-            if opt.back {
-                Some(SwitchBackMode::Normal)
-            } else if opt.back_insert {
-                Some(SwitchBackMode::Insert)
-            } else {
-                None
-            }
+        let switch_back_mode = if nvim_child_process.is_some() {
+             SwitchBackMode::NoSwitch
+        } else if opt.back {
+             SwitchBackMode::Normal
+        } else if opt.back_insert {
+             SwitchBackMode::Insert
         } else {
-            None
+             SwitchBackMode::NoSwitch
         };
         let instance_mode = if let Some(instance) = opt.instance.as_ref() {
-            Some(InstanceMode::Replace(instance.clone()))
+            InstanceMode::Replace(instance.clone())
         } else if let Some(instance) = opt.instance_append.as_ref() {
-            Some(InstanceMode::Append(instance.clone()))
+            InstanceMode::Append(instance.clone())
         } else {
-            None
+            InstanceMode::NoInstance
         };
         let split_flag_provided = Self::has_split_flag_provided(&opt);
-        let creates = !Self::has_early_exit_condition(&opt, piped, split_flag_provided, switch_back_mode.is_some());
+        let creates = !Self::has_early_exit_condition(&opt, piped, split_flag_provided);
         let splits = nvim_child_process.is_none() && split_flag_provided;
+        let prints = opt.pty_print || !piped && nvim_child_process.is_none();
         Context {
             opt: &opt,
             instance_mode,
@@ -188,26 +180,28 @@ impl <'a> Context<'a> {
             nvim_child_process,
             switch_back_mode,
             creates,
+            prints,
             splits,
             piped,
         }
     }
 
     fn has_split_flag_provided(opt: &Options) -> bool {
-        /*   */opt.split_left_cols.is_some() || opt.split_right_cols.is_some()
-            || opt.split_above_rows.is_some() || opt.split_below_rows.is_some()
-            || opt.split_left != 0 || opt.split_right != 0
-            || opt.split_above != 0 || opt.split_below != 0
+        *& opt.split_left_cols.is_some() || opt.split_right_cols.is_some()
+        || opt.split_above_rows.is_some() || opt.split_below_rows.is_some()
+        || opt.split_left != 0 || opt.split_right != 0
+        || opt.split_above != 0 || opt.split_below != 0
     }
 
-    fn has_early_exit_condition(opt: &Options, piped: bool, splits: bool, returns_back: bool) -> bool {
-        let early_exit_cmd = opt.instance_close.is_some() || !opt.files.is_empty();
-        early_exit_cmd && !piped && !splits && !returns_back
-            && !opt.follow
-            && !opt.pty_open && !opt.pty_print
-            && opt.instance.is_none() && opt.instance_append.is_none()
-            && opt.command.is_none() && opt.command_post.is_none()
-            && &opt.filetype == "pager"
+    fn has_early_exit_condition(opt: &Options, piped: bool, splits: bool) -> bool {
+        let has_early_exit_opt = opt.instance_close.is_some() || !opt.files.is_empty();
+        *& has_early_exit_opt && !piped && !splits
+        && opt.back && opt.back_insert
+        && !opt.follow
+        && !opt.pty_open && !opt.pty_print
+        && opt.instance.is_none() && opt.instance_append.is_none()
+        && opt.command.is_none() && opt.command_post.is_none()
+        && &opt.filetype == "pager"
     }
 }
 
@@ -215,10 +209,32 @@ impl <'a> Context<'a> {
 pub(crate) enum SwitchBackMode {
     Normal,
     Insert,
+    NoSwitch,
 }
 
-#[derive(Debug)]
+impl SwitchBackMode {
+    pub(crate) fn is_no_switch(&self) -> bool {
+        if let SwitchBackMode::NoSwitch = self { true } else { false }
+    }
+}
+
+
+
+#[derive(Debug, Clone)]
 pub(crate) enum InstanceMode {
     Append(String),
     Replace(String),
+    NoInstance,
+}
+
+impl InstanceMode {
+    pub(crate) fn is_replace(&self) -> bool {
+        if let InstanceMode::Replace(_) = self { true } else { false }
+    }
+    pub(crate) fn is_any(&self) -> Option<&String> {
+        match self {
+            InstanceMode::Append(instance_name) | InstanceMode::Replace(instance_name) => Some(instance_name),
+            InstanceMode::NoInstance => None,
+        }
+    }
 }
