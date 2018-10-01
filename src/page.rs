@@ -533,8 +533,8 @@ fn main() -> IO {
     app.handle_open_provided_files(&cx)?;
     if cx.creates {
         let (buffer, pty_path) = app.handle_open_pty_buffer(&cx)?;
-        let mut pty_device = OpenOptions::new().append(true).open(&pty_path)?;
         app.handle_user_command(&cx.opt.command, &buffer)?;
+        let mut pty_device = OpenOptions::new().append(true).open(&pty_path)?;
         app.handle_instance_buffer(&cx, &buffer, &mut pty_device)?;
         app.handle_regular_buffer(&cx)?;
         app.handle_redirection(&cx, &mut pty_device, pty_path)?;
