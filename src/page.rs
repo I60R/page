@@ -312,9 +312,10 @@ impl<'a> App<'a> {
         ..
     }: &cli::Context) -> IO {
         if let Some(name) = opt.instance_close.as_ref() {
-            match nvim_child_process {
-                Some(_) => eprintln!("Can't close instance on newly spawned nvim process"),
-                None => self.nvim_manager.close_pty_instance(name)?,
+            if nvim_child_process.is_none() {
+                self.nvim_manager.close_pty_instance(name)?;
+            } else {
+                eprintln!("Can't close instance on newly spawned nvim process");
             }
         }
         Ok(())
@@ -356,8 +357,11 @@ impl<'a> App<'a> {
                 Ok(connected_buffer)
             } else {
                 let (buffer, pty_path) = self.open_page_buffer(&opt, splits)?;
-                self.nvim_manager.register_buffer_as_instance(&buffer, instance_name, &pty_path.to_string_lossy())?;
-                Self::set_instance_buffer_name(self.nvim_manager, &opt.name, instance_name, &buffer)?;
+                {
+                    let pty_path = pty_path.to_string_lossy();
+                    self.nvim_manager.register_buffer_as_instance(&buffer, instance_name, &pty_path)?;
+                    Self::set_instance_buffer_name(self.nvim_manager, &opt.name, instance_name, &buffer)?;
+                }
                 Ok((buffer, pty_path))
             }
         } else {
@@ -512,13 +516,16 @@ fn main() -> IO {
     info!("options: {:#?}", opt);
 
     let piped = atty::isnt(Stream::Stdin);
-    let prints_protection = !piped && !opt.page_no_protect && env::var_os("PAGE_REDIRECTION_PROTECT").map_or(true, |v| &v != "0");
+    let prints_protection =
+        *& !piped
+        && !opt.page_no_protect
+        && env::var_os("PAGE_REDIRECTION_PROTECT").map_or(true, |val| &val != "0");
 
-    let nvim::Connector {
+    let nvim::Connect {
         mut nvim,
         initial_position,
         nvim_child_process
-    } = nvim::Connector::connect_parent_or_child(&opt.address, prints_protection)?;
+    } = nvim::Connect::connect_parent_or_child(&opt.address, prints_protection)?;
 
     let cx = cli::Context::new(&opt, nvim_child_process, initial_position, piped);
     info!("context: {:#?}", cx);
