@@ -410,37 +410,42 @@ impl<'a> App<'a> {
 
     fn handle_user_command(&mut self,
         command: &Option<String>,
-        buffer: &ConnectedBuffer,
+        buffer: &Buffer,
     ) -> IO {
-        if let Some(command) = command {
-            self.nvim_manager.execute_user_command_on_buffer(&buffer.0, &command)?;
+        if let Some(ref command) = command {
+            self.nvim_manager.execute_user_command_on_buffer(buffer, command)?;
         }
         Ok(())
     }
 
-    fn handle_redirect_mode(&mut self,
-        &cli::Context {
-            opt,
-            piped,
-            prints,
-            ref initial_position,
-            ref switch_back_mode,
-            ref instance_mode,
-            ..
-        }: &cli::Context,
-        connected_buffer: &ConnectedBuffer,
+    fn handle_instance_buffer(&mut self, &cli::Context {
+        opt,
+        ref switch_back_mode,
+        ref instance_mode,
+        ..
+    }: &cli::Context,
+        buffer: &Buffer,
+        pty_device: &mut Write,
     ) -> IO {
-        let (buffer, pty_path) = connected_buffer;
-        let mut pty_device = OpenOptions::new().append(true).open(pty_path)?;
         if let Some(instance_name) = instance_mode.is_any() {
-            Self::set_instance_buffer_name(self.nvim_manager, &opt.name, instance_name, &buffer)?;
+            Self::set_instance_buffer_name(self.nvim_manager, &opt.name, instance_name, buffer)?;
             if instance_mode.is_replace() || switch_back_mode.is_no_switch() {
-                self.nvim_manager.focus_instance_buffer(&buffer)?;
+                self.nvim_manager.focus_instance_buffer(buffer)?;
             }
             if instance_mode.is_replace() {
-                write!(&mut pty_device, "\x1B[3J\x1B[H\x1b[2J")?; // Clear screen sequence
+                write!(pty_device, "\x1B[3J\x1B[H\x1b[2J")?; // Clear screen sequence
             }
         }
+        Ok(())
+    }
+
+    fn handle_regular_buffer(&mut self, &cli::Context {
+            opt,
+            ref initial_position,
+            ref switch_back_mode,
+            ..
+        }: &cli::Context,
+    ) -> IO {
         if opt.follow {
             self.nvim_manager.set_current_buffer_follow_output_mode()?;
         } else {
@@ -453,9 +458,20 @@ impl<'a> App<'a> {
                 self.nvim_manager.set_current_buffer_insert_mode()?;
             }
         }
+        Ok(())
+    }
+
+    fn handle_redirection(&mut self, &cli::Context {
+            piped,
+            prints,
+            ..
+        }: &cli::Context,
+        pty_device: &mut Write,
+        pty_path: BufferPtyPath,
+    ) -> IO {
         if piped {
             let stdin = io::stdin();
-            io::copy(&mut stdin.lock(), &mut pty_device).map(drop)?;
+            io::copy(&mut stdin.lock(), pty_device).map(drop)?;
         }
         if prints {
             println!("{}", pty_path.to_string_lossy());
@@ -466,11 +482,11 @@ impl<'a> App<'a> {
 
     fn handle_user_command_post(&mut self,
         command: &Option<String>,
-        buffer: &ConnectedBuffer,
+        buffer: &Buffer,
     ) -> IO {
-        if let Some(command) = command {
+        if let Some(ref command) = command {
             thread::sleep(Duration::from_millis(50)); // Fixes errors on `MANPAGER="page -E 'syntax on'"`
-            self.nvim_manager.execute_user_command_on_buffer(&buffer.0, &command)?;
+            self.nvim_manager.execute_user_command_on_buffer(buffer, command)?;
         }
         Ok(())
     }
@@ -513,10 +529,13 @@ fn main() -> IO {
     app.handle_close_instance_pty(&cx)?;
     app.handle_open_provided_files(&cx)?;
     if cx.creates {
-        let connected_buffer = app.handle_open_pty_buffer(&cx)?;
-        app.handle_user_command(&cx.opt.command, &connected_buffer)?;
-        app.handle_redirect_mode(&cx, &connected_buffer)?;
-        app.handle_user_command_post(&cx.opt.command_post, &connected_buffer)?;
+        let (buffer, pty_path) = app.handle_open_pty_buffer(&cx)?;
+        let mut pty_device = OpenOptions::new().append(true).open(&pty_path)?;
+        app.handle_user_command(&cx.opt.command, &buffer)?;
+        app.handle_instance_buffer(&cx, &buffer, &mut pty_device)?;
+        app.handle_regular_buffer(&cx)?;
+        app.handle_redirection(&cx, &mut pty_device, pty_path)?;
+        app.handle_user_command_post(&cx.opt.command_post, &buffer)?;
     }
     app.handle_exit(cx)?;
     Ok(())
