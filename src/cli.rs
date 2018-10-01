@@ -143,6 +143,7 @@ pub(crate) struct Context<'a> {
     pub creates: bool,
     pub prints: bool,
     pub splits: bool,
+    pub focuses: bool,
     pub piped: bool,
 }
 
@@ -153,26 +154,29 @@ impl <'a> Context<'a> {
         initial_position: (Window, Buffer),
         piped: bool,
     ) -> Context<'a> {
+        use self::SwitchBackMode::*;
         let switch_back_mode = if nvim_child_process.is_some() {
-             SwitchBackMode::NoSwitch
+             NoSwitch
         } else if opt.back {
-             SwitchBackMode::Normal
+             Normal
         } else if opt.back_insert {
-             SwitchBackMode::Insert
+             Insert
         } else {
-             SwitchBackMode::NoSwitch
+             NoSwitch
         };
+        use self::InstanceMode::*;
         let instance_mode = if let Some(instance) = opt.instance.as_ref() {
-            InstanceMode::Replace(instance.clone())
+            Replace(instance.clone())
         } else if let Some(instance) = opt.instance_append.as_ref() {
-            InstanceMode::Append(instance.clone())
+            Append(instance.clone())
         } else {
-            InstanceMode::NoInstance
+            NoInstance
         };
         let split_flag_provided = Self::has_split_flag_provided(&opt);
         let creates = !Self::has_early_exit_condition(&opt, piped, split_flag_provided);
         let splits = nvim_child_process.is_none() && split_flag_provided;
         let prints = opt.pty_print || !piped && nvim_child_process.is_none();
+        let focuses = opt.follow || switch_back_mode.is_no_switch() || instance_mode.is_replace();
         Context {
             opt: &opt,
             instance_mode,
@@ -182,6 +186,7 @@ impl <'a> Context<'a> {
             creates,
             prints,
             splits,
+            focuses,
             piped,
         }
     }

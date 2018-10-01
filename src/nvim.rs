@@ -20,19 +20,19 @@ use std::{
 
 /// Extends `nvim::Session` to be able to spawn new nvim process.
 /// Unlike `nvim::Session::ClientConnection::Child` stdin|stdout of new process will be not inherited.
-pub struct Connect {
+pub struct ConnectedNeovim {
     pub nvim: Neovim,
     pub nvim_child_process: Option<process::Child>,
     pub initial_position: (Window, Buffer),
 }
 
-impl Connect {
-    pub(crate) fn connect_parent_or_child(address: &Option<String>, print_protection: bool) -> IO<Connect> {
+impl ConnectedNeovim {
+    pub(crate) fn connect_parent_or_child(address: &Option<String>, print_protection: bool) -> IO<ConnectedNeovim> {
         let (mut session, nvim_child_process) = Self::connect_session(address, print_protection)?;
         session.start_event_loop();
         let mut nvim = Neovim::new(session);
         let initial_position = (nvim.get_current_win()?, nvim.get_current_buf()?);
-        Ok(Connect {
+        Ok(ConnectedNeovim {
             nvim,
             initial_position,
             nvim_child_process
@@ -51,7 +51,7 @@ impl Connect {
                 fs::create_dir_all(&directory)?;
                 println!("{}", directory.to_string_lossy());
             }
-            let (nvim_child_listen_address, nvim_child_process) = Connect::spawn_child_nvim_process()?;
+            let (nvim_child_listen_address, nvim_child_process) = ConnectedNeovim::spawn_child_nvim_process()?;
             let nvim_session = Self::session_from_address(&nvim_child_listen_address.to_string_lossy())?;
             Ok((nvim_session, Some(nvim_child_process)))
         }
@@ -108,6 +108,7 @@ impl <'a> Manager<'a> {
         instance_name: &str,
         instance_pty_path: &str
     ) -> IO {
+        trace!(target: "register instance buffer", "{:?}->{}->{}", buffer, instance_name, instance_pty_path);
         let value = Value::from(vec![Value::from(instance_name), Value::from(instance_pty_path)]);
         buffer.set_var(self.nvim, "page_instance", value)?;
         Ok(())
@@ -141,7 +142,8 @@ impl <'a> Manager<'a> {
         Ok(None)
     }
 
-    pub fn close_pty_instance(&mut self, instance_name: &str) -> IO {
+    pub fn close_instance_buffer(&mut self, instance_name: &str) -> IO {
+        trace!(target: "close instance buffer", "{}", instance_name);
         let instance_buffer = self.find_instance_buffer(&instance_name)?;
         if let Some((buffer, _)) = instance_buffer {
             let instance_buffer_id = buffer.get_number(self.nvim)?;
@@ -151,17 +153,21 @@ impl <'a> Manager<'a> {
     }
 
     pub fn focus_instance_buffer(&mut self, instance_buffer: &Buffer) -> IO {
+        trace!(target: "focus instance buffer", "{:?}", instance_buffer);
         if &self.nvim.get_current_buf()? != instance_buffer {
             for window in self.nvim.list_wins()? {
                 if &window.get_buf(self.nvim)? == instance_buffer {
                     self.nvim.set_current_win(&window)?;
+                    break;
                 }
             }
+            self.nvim.set_current_buf(instance_buffer)?;
         }
         Ok(())
     }
 
     pub fn read_pty_device_path(&mut self, agent_pipe_name: &str) -> IO<PathBuf> {
+        trace!(target: "read pty path", "{}", agent_pipe_name);
         let agent_pipe_path = util::open_agent_pipe(agent_pipe_name)?;
         let pty_path = {
             let mut pty_path = String::new();
@@ -175,6 +181,7 @@ impl <'a> Manager<'a> {
     }
 
     pub fn split_current_buffer(&mut self, opt: &Options) -> IO {
+        trace!(target: "split", "");
         if opt.split_right > 0 {
             self.nvim.command("belowright vsplit")?;
             let buf_width = self.nvim.call_function("winwidth", vec![Value::from(0)])?.as_u64().unwrap();
@@ -229,16 +236,19 @@ impl <'a> Manager<'a> {
     }
 
     pub fn update_buffer_filetype(&mut self, buffer: &Buffer, filetype: &str) -> IO {
+        trace!(target: "update filetype", "");
         buffer.set_option(self.nvim, "filetype", Value::from(filetype))?;
         Ok(())
     }
 
     pub fn set_page_default_options_to_current_buffer(&mut self) -> IO {
+        trace!(target: "set default options", "");
         self.nvim.command("setl scrollback=-1 scrolloff=999 signcolumn=no nonumber modified nomodifiable")?;
         Ok(())
     }
 
     pub fn execute_user_command_on_buffer(&mut self, buffer: &Buffer, command: &str) -> IO {
+        trace!(target: "exec command", "{}", command);
         let saved_buffer_position = self.get_current_buffer_position()?;
         if buffer != &saved_buffer_position.1 {
             self.nvim.set_current_buf(buffer)?;
@@ -262,30 +272,29 @@ impl <'a> Manager<'a> {
         Ok(())
     }
 
-    pub fn exit_term_insert_mode(&mut self) -> IO {
-        self.nvim.command(r###"exe "norm \<C-\>\<C-n>""###)?;
-        Ok(()) // feedkeys not works here
-    }
-
     pub fn set_current_buffer_insert_mode(&mut self) -> IO {
-        self.exit_term_insert_mode()?;
-        self.nvim.feedkeys("A", "n", false)?;
+        trace!(target: "set mode: INSERT", "");
+        // this fixes "can't enter normal mode from terminal mode"
+        self.nvim.command(r###"call feedkeys("\<C-\>\<C-n>A")"###)?;
         Ok(())
     }
 
     pub fn set_current_buffer_follow_output_mode(&mut self) -> IO {
-        self.exit_term_insert_mode()?;
-        self.nvim.feedkeys("G", "n", false)?;
+        trace!(target: "set mode: FOLLOW", "");
+        // this fixes "can't enter normal mode from terminal mode"
+        self.nvim.command(r###"call feedkeys("\<C-\>\<C-n>G")"###)?;
         Ok(())
     }
 
     pub fn set_current_buffer_reading_mode(&mut self) -> IO {
-        self.exit_term_insert_mode()?;
-        self.nvim.feedkeys("ggM", "n", false)?;
+        trace!(target: "set mode: SCROLL", "");
+        // this fixes "can't enter normal mode from terminal mode"
+        self.nvim.command(r###"call feedkeys("\<C-\>\<C-n>ggM")"###)?;
         Ok(())
     }
 
     pub fn open_file_buffer(&mut self, file: &str) -> IO {
+        trace!(target: "open file", "{}", file);
         self.nvim.command(&format!("e {}", fs::canonicalize(file)?.to_string_lossy()))?;
         Ok(())
     }

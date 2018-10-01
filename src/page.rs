@@ -290,9 +290,6 @@ struct Cx<'a> {
 
 
 
-type BufferPtyPath = PathBuf;
-type ConnectedBuffer = (Buffer, BufferPtyPath);
-
 
 // Handles application use cases
 struct App<'a> {
@@ -313,7 +310,7 @@ impl<'a> App<'a> {
     }: &cli::Context) -> IO {
         if let Some(name) = opt.instance_close.as_ref() {
             if nvim_child_process.is_none() {
-                self.nvim_manager.close_pty_instance(name)?;
+                self.nvim_manager.close_instance_buffer(name)?;
             } else {
                 eprintln!("Can't close instance on newly spawned nvim process");
             }
@@ -352,16 +349,15 @@ impl<'a> App<'a> {
         ..
     }: &cli::Context) -> IO<ConnectedBuffer> {
         if let Some(instance_name) = instance_mode.is_any() {
-            if let Some(connected_buffer) = self.nvim_manager.find_instance_buffer(&instance_name)? {
-                Ok(connected_buffer)
+            if let Some((buffer, pty_path)) = self.nvim_manager.find_instance_buffer(&instance_name)? {
+                Ok(ConnectedBuffer{ instance_exists: true, buffer, pty_path })
             } else {
                 let (buffer, pty_path) = self.open_page_buffer(&opt, splits)?;
                 {
                     let pty_path = pty_path.to_string_lossy();
                     self.nvim_manager.register_buffer_as_instance(&buffer, instance_name, &pty_path)?;
-                    Self::set_instance_buffer_name(self.nvim_manager, &opt.name, instance_name, &buffer)?;
                 }
-                Ok((buffer, pty_path))
+                Ok(ConnectedBuffer { instance_exists: false, buffer, pty_path })
             }
         } else {
             let (buffer, pty_path) = self.open_page_buffer(&opt, splits)?;
@@ -375,7 +371,7 @@ impl<'a> App<'a> {
                 buffer_title.insert_str(0, buffer_name);
             }
             self.nvim_manager.update_buffer_title(&buffer, &buffer_title)?;
-            Ok((buffer, pty_path))
+            Ok(ConnectedBuffer {instance_exists: false, buffer, pty_path })
         }
     }
 
@@ -385,7 +381,7 @@ impl<'a> App<'a> {
         instance_name: &String,
         buffer: &Buffer,
     ) -> IO {
-        let (page_icon_key, page_icon_default) = ("page_icon_instance", "$");
+        let (page_icon_key, page_icon_default) = ("page_icon_instance", "@ ");
         let mut buffer_title = nvim_manager.get_var_or_default(page_icon_key, page_icon_default)?;
         buffer_title.insert_str(0, instance_name);
         if let Some(ref buffer_name) = buffer_name {
@@ -423,8 +419,8 @@ impl<'a> App<'a> {
 
     fn handle_instance_buffer(&mut self, &cli::Context {
         opt,
-        ref switch_back_mode,
         ref instance_mode,
+        focuses,
         ..
     }: &cli::Context,
         buffer: &Buffer,
@@ -432,7 +428,7 @@ impl<'a> App<'a> {
     ) -> IO {
         if let Some(instance_name) = instance_mode.is_any() {
             Self::set_instance_buffer_name(self.nvim_manager, &opt.name, instance_name, buffer)?;
-            if instance_mode.is_replace() || switch_back_mode.is_no_switch() {
+            if focuses {
                 self.nvim_manager.focus_instance_buffer(buffer)?;
             }
             if instance_mode.is_replace() {
@@ -442,20 +438,24 @@ impl<'a> App<'a> {
         Ok(())
     }
 
-    fn handle_regular_buffer(&mut self, &cli::Context {
+    fn handle_switch_back(&mut self, &cli::Context {
             opt,
             ref initial_position,
             ref switch_back_mode,
+            focuses,
             ..
         }: &cli::Context,
+        instance_exists: bool,
     ) -> IO {
+        if instance_exists && !focuses {
+            return Ok(());
+        }
         if opt.follow {
             self.nvim_manager.set_current_buffer_follow_output_mode()?;
         } else {
             self.nvim_manager.set_current_buffer_reading_mode()?;
         }
         if !switch_back_mode.is_no_switch() {
-            thread::sleep(Duration::from_millis(200)); // To prevent sending keys into wrong buffer
             self.nvim_manager.switch_to_buffer_position(&initial_position)?;
             if let SwitchBackMode::Insert = switch_back_mode {
                 self.nvim_manager.set_current_buffer_insert_mode()?;
@@ -470,7 +470,7 @@ impl<'a> App<'a> {
             ..
         }: &cli::Context,
         pty_device: &mut Write,
-        pty_path: BufferPtyPath,
+        pty_path: PathBuf,
     ) -> IO {
         if piped {
             let stdin = io::stdin();
@@ -487,7 +487,6 @@ impl<'a> App<'a> {
         buffer: &Buffer,
     ) -> IO {
         if let Some(ref command) = command {
-            thread::sleep(Duration::from_millis(50)); // Fixes errors on `MANPAGER="page -E 'syntax on'"`
             self.nvim_manager.execute_user_command_on_buffer(buffer, command)?;
         }
         Ok(())
@@ -505,6 +504,13 @@ impl<'a> App<'a> {
 }
 
 
+struct ConnectedBuffer {
+    instance_exists: bool,
+    buffer: Buffer,
+    pty_path: PathBuf,
+}
+
+
 fn main() -> IO {
     logger::init();
 
@@ -517,11 +523,11 @@ fn main() -> IO {
         && !opt.page_no_protect
         && env::var_os("PAGE_REDIRECTION_PROTECT").map_or(true, |val| &val != "0");
 
-    let nvim::Connect {
+    let nvim::ConnectedNeovim {
         mut nvim,
         initial_position,
-        nvim_child_process
-    } = nvim::Connect::connect_parent_or_child(&opt.address, prints_protection)?;
+        nvim_child_process,
+    } = nvim::ConnectedNeovim::connect_parent_or_child(&opt.address, prints_protection)?;
 
     let cx = cli::Context::new(&opt, nvim_child_process, initial_position, piped);
     info!("context: {:#?}", cx);
@@ -532,11 +538,15 @@ fn main() -> IO {
     app.handle_close_instance_pty(&cx)?;
     app.handle_open_provided_files(&cx)?;
     if cx.creates {
-        let (buffer, pty_path) = app.handle_open_pty_buffer(&cx)?;
+        let ConnectedBuffer {
+            instance_exists,
+            buffer,
+            pty_path,
+        } = app.handle_open_pty_buffer(&cx)?;
         app.handle_user_command(&cx.opt.command, &buffer)?;
         let mut pty_device = OpenOptions::new().append(true).open(&pty_path)?;
         app.handle_instance_buffer(&cx, &buffer, &mut pty_device)?;
-        app.handle_regular_buffer(&cx)?;
+        app.handle_switch_back(&cx, instance_exists)?;
         app.handle_redirection(&cx, &mut pty_device, pty_path)?;
         app.handle_user_command_post(&cx.opt.command_post, &buffer)?;
     }
