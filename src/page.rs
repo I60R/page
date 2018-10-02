@@ -23,8 +23,6 @@ use std::{
     env,
     fs::OpenOptions,
     path::PathBuf,
-    thread,
-    time::Duration,
 };
 use notify::{
     Watcher,

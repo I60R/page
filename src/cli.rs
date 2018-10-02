@@ -201,7 +201,7 @@ impl <'a> Context<'a> {
     fn has_early_exit_condition(opt: &Options, piped: bool, splits: bool) -> bool {
         let has_early_exit_opt = opt.instance_close.is_some() || !opt.files.is_empty();
         *& has_early_exit_opt && !piped && !splits
-        && opt.back && opt.back_insert
+        && !opt.back && !opt.back_insert
         && !opt.follow
         && !opt.pty_open && !opt.pty_print
         && opt.instance.is_none() && opt.instance_append.is_none()
