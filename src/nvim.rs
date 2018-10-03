@@ -132,10 +132,13 @@ impl <'a> Manager<'a> {
                 instance_var
             );
             match instance_var {
-                Err(e) =>
-                    if e.to_string() != "1 - Key 'page_instance' not found" {
+                Err(e) => {
+                    let description = e.to_string();
+                    if description != "1 - Key 'page_instance' not found"
+                    || description == "1 - Key not found: page_instance" { // for new nvim version
                         return Err(e)?
                     }
+                }
                 Ok(v) =>
                     if let Some(arr) = v.as_array().map(|a|a.iter().map(Value::as_str).collect::<Vec<_>>()) {
                         if let [Some(instance_name_found), Some(instance_pty_path)] = arr[..] {
