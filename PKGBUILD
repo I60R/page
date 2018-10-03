@@ -2,7 +2,7 @@
 _pkgname=page
 pkgname=${_pkgname}-git
 pkgrel=1
-pkgver=v0.12.3.r38.g9b5b26d
+pkgver=v0.12.3.r41.gca4c5e5
 pkgdesc='pager that utilizes nvim terminal buffer'
 arch=('i686' 'x86_64')
 url="https://github.com/I60R/page"

@@ -139,7 +139,7 @@ impl <'a> Manager<'a> {
                         return Err(e)?
                     }
                 }
-                Ok(v) =>
+                Ok(v) => {
                     if let Some(arr) = v.as_array().map(|a|a.iter().map(Value::as_str).collect::<Vec<_>>()) {
                         if let [Some(instance_name_found), Some(instance_pty_path)] = arr[..] {
                             trace!(target: "found instance", "{}->{}", instance_name_found, instance_pty_path);
@@ -149,6 +149,7 @@ impl <'a> Manager<'a> {
                             }
                         }
                     }
+                }
             }
         };
         Ok(None)
