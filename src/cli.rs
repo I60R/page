@@ -12,7 +12,7 @@ use structopt::clap::{ArgGroup, AppSettings::*};
     group="instance_use_arg_group()"))]
 pub(crate) struct Options {
     /// Neovim session address
-    #[structopt(short="a", env="NVIM_LISTEN_ADDRESS")]
+    #[structopt(short="a", long="listen", env="NVIM_LISTEN_ADDRESS")]
     pub address: Option<String>,
 
     /// Neovim arguments when a new session is started
@@ -23,64 +23,65 @@ pub(crate) struct Options {
     #[structopt(short="c")]
     pub config: Option<String>,
 
-    /// Run command in pager buffer when neovim config is sourced and reading begins
+    /// Run command in a pager buffer when neovim config is sourced and reading begins
     #[structopt(short="e")]
     pub command: Option<String>,
 
-    /// Run command in pager buffer after reading was done
+    /// Run command in a pager buffer after reading was done
     #[structopt(short="E")]
     pub command_post: Option<String>,
 
-    /// Use named instance buffer if exist, or spawn new. New content will overwrite
+    /// Use named instance buffer if exist or spawn new. New overwrites previous
     #[structopt(short="i")]
     pub instance: Option<String>,
 
-    /// Use named instance buffer if exist, or spawn new. New content will be appended
+    /// Use named instance buffer if exist or spawn new. New content appends to previous
     #[structopt(short="I")]
     pub instance_append: Option<String>,
 
-    /// Closes named instance buffer if exists [revokes implied options]
+    /// Close named instance buffer if exists [revokes implied options]
     #[structopt(short="x")]
     pub instance_close: Option<String>,
 
-    /// Set buffer name
+    /// Set name for buffer that displays stdin content
     #[structopt(short="n", env="PAGE_BUFFER_NAME")]
     pub name: Option<String>,
 
-    /// Hint for syntax highlighting for text read from stdin
+    /// Set filetype for buffer that displays stdin content (for syntax highlighting)
     #[structopt(short="t", default_value="pager")]
     pub filetype: String,
 
-    /// Open new buffer [implied]
+    /// Open a new buffer to display stdin context [implied]
     #[structopt(short="o")]
     pub pty_open: bool,
 
-    /// Print /dev/pty/* path for redirecting [implied when page don't read from pipe]
+    /// Print /dev/pty/* path [implied when page don't read from pipe] (for > redirecting)
     #[structopt(short="p")]
     pub pty_print: bool,
 
-    /// Stay focused on current buffer
+    /// Focus back to current buffer
     #[structopt(short="b")]
     pub back: bool,
 
-    /// Stay focused on current buffer and keep INSERT mode
+    /// Focus back to current buffer and keep INSERT mode
     #[structopt(short="B")]
     pub back_insert: bool,
 
-    /// Follow output instead of keeping top position
+    /// Follow output instead of keeping top position (like tail -f)
     #[structopt(short="f")]
     pub follow: bool,
 
-    /// Follow output instead of keeping top position, also scrolls each <FILES> provided to the bottom
+    /// Follow output instead of keeping top position and scroll each of <FILES> provided to the bottom
     #[structopt(short="F")]
     pub follow_all: bool,
 
     /// Flush redirecting protection that prevents from producing junk and possible corruption of files
-    /// by invoking commands like "unset NVIM_LISTEN_ADDRESS && ls > $(page -E q)".
-    /// Here "$(page -E q)" will be evaluated not into "/dev/pty/*" but into {neovim UI} which consists of
-    /// bunch of characters and strings, and for each of them will be created new file, and even overwriting might occur.
-    /// To prevent that, path to directory is printed first, so "ls > directory {neovim UI}" will fail
-    /// because it's impossible to redirect into directory.
+    /// by invoking commands like "unset NVIM_LISTEN_ADDRESS && ls > $(page -E q)"  where
+    /// "$(page -E q)" or similar capture evaluates not into "/dev/pty/*" as expected but into
+    /// whole neovim UI which consists of a bunch of characters and strings.
+    /// Many useless files would be created for each word and even overwriting might occur.
+    /// To prevent that, a path to temporary directory is printed first and "ls > directory ..."
+    /// just fails, since it's impossible to redirect text into directory.
     /// [env: PAGE_REDIRECTION_PROTECT: (0 to disable)]
     #[structopt(short="W")]
     pub page_no_protect: bool,
