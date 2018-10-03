@@ -524,7 +524,7 @@ fn main() -> IO {
         mut nvim,
         initial_position,
         nvim_child_process,
-    } = nvim::ConnectedNeovim::connect_parent_or_child(&opt.address, prints_protection)?;
+    } = nvim::ConnectedNeovim::connect_parent_or_child(&opt, prints_protection)?;
 
     let cx = cli::Context::new(&opt, nvim_child_process, initial_position, piped);
     info!("context: {:#?}", cx);

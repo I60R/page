@@ -15,6 +15,14 @@ pub(crate) struct Options {
     #[structopt(short="a", env="NVIM_LISTEN_ADDRESS")]
     pub address: Option<String>,
 
+    /// Neovim arguments when a new session is started
+    #[structopt(short="A", env="NVIM_PAGE_ARGS")]
+    pub arguments: Option<String>,
+
+    /// Shorthand for neovim config argument when a new session is started
+    #[structopt(short="c")]
+    pub config: Option<String>,
+
     /// Run command in pager buffer when reading begins
     #[structopt(short="e")]
     pub command: Option<String>,
@@ -178,7 +186,7 @@ impl <'a> Context<'a> {
         let prints = opt.pty_print || !piped && nvim_child_process.is_none();
         let focuses = opt.follow || switch_back_mode.is_no_switch() || instance_mode.is_replace();
         Context {
-            opt: &opt,
+            opt,
             instance_mode,
             initial_position,
             nvim_child_process,

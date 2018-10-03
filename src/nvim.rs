@@ -1,5 +1,5 @@
+use cli;
 use util::{self, IO};
-use cli::Options;
 use neovim_lib::{
     neovim_api::{Window, Buffer},
     Value,
@@ -27,8 +27,8 @@ pub struct ConnectedNeovim {
 }
 
 impl ConnectedNeovim {
-    pub(crate) fn connect_parent_or_child(address: &Option<String>, print_protection: bool) -> IO<ConnectedNeovim> {
-        let (mut session, nvim_child_process) = Self::connect_session(address, print_protection)?;
+    pub(crate) fn connect_parent_or_child(opt: &cli::Options, print_protection: bool) -> IO<ConnectedNeovim> {
+        let (mut session, nvim_child_process) = Self::connect_session(opt, print_protection)?;
         session.start_event_loop();
         let mut nvim = Neovim::new(session);
         let initial_position = (nvim.get_current_win()?, nvim.get_current_buf()?);
@@ -39,8 +39,8 @@ impl ConnectedNeovim {
         })
     }
 
-    fn connect_session(address: &Option<String>, print_protection: bool) -> IO<(Session, Option<process::Child>)> {
-        if let Some(nvim_parent_listen_address) = address.as_ref() {
+    fn connect_session(opt: &cli::Options, print_protection: bool) -> IO<(Session, Option<process::Child>)> {
+        if let Some(nvim_parent_listen_address) = &opt.address {
             let nvim_session = Self::session_from_address(nvim_parent_listen_address)?;
             Ok((nvim_session, None))
         } else {
@@ -51,18 +51,27 @@ impl ConnectedNeovim {
                 fs::create_dir_all(&directory)?;
                 println!("{}", directory.to_string_lossy());
             }
-            let (nvim_child_listen_address, nvim_child_process) = ConnectedNeovim::spawn_child_nvim_process()?;
+            let (nvim_child_listen_address, nvim_child_process) = ConnectedNeovim::spawn_child_nvim_process(opt)?;
             let nvim_session = Self::session_from_address(&nvim_child_listen_address.to_string_lossy())?;
             Ok((nvim_session, Some(nvim_child_process)))
         }
     }
 
-    fn spawn_child_nvim_process() -> IO<(PathBuf, process::Child)> {
-        let mut nvim_child_listen_address = env::temp_dir();
-        nvim_child_listen_address.push(util::PAGE_TMP_DIR);
-        fs::create_dir_all(&nvim_child_listen_address)?;
-        nvim_child_listen_address.push(&format!("socket-{}", util::random_string()));
-        let nvim_child_process = Command::new("nvim")
+    fn spawn_child_nvim_process(opt: &cli::Options) -> IO<(PathBuf, process::Child)> {
+        let nvim_child_listen_address = {
+            let mut nvim_child_listen_address = env::temp_dir();
+            nvim_child_listen_address.push(util::PAGE_TMP_DIR);
+            fs::create_dir_all(&nvim_child_listen_address)?;
+            nvim_child_listen_address.push(&format!("socket-{}", util::random_string()));
+            nvim_child_listen_address
+        };
+        let nvim_default_arguments = String::new();
+        let nvim_arguments = opt.arguments.as_ref().unwrap_or(&nvim_default_arguments);
+        let nvim_command = match &opt.config.as_ref() {
+            Some(conf) => format!("nvim -u {} {}", conf, nvim_arguments),
+            None => format!("nvim {}", nvim_arguments),
+        };
+        let nvim_child_process = Command::new(nvim_command)
             .stdin(Stdio::null()) // Don't inherit stdin, nvim can't redirect text into terminal buffer from it
             .env("NVIM_LISTEN_ADDRESS", &nvim_child_listen_address)
             .spawn()?;
@@ -180,7 +189,7 @@ impl <'a> Manager<'a> {
         Ok(pty_path)
     }
 
-    pub fn split_current_buffer(&mut self, opt: &Options) -> IO {
+    pub fn split_current_buffer(&mut self, opt: &cli::Options) -> IO {
         trace!(target: "split", "");
         if opt.split_right > 0 {
             self.nvim.command("belowright vsplit")?;
@@ -274,21 +283,18 @@ impl <'a> Manager<'a> {
 
     pub fn set_current_buffer_insert_mode(&mut self) -> IO {
         trace!(target: "set mode: INSERT", "");
-        // this fixes "can't enter normal mode from terminal mode"
-        self.nvim.command(r###"call feedkeys("\<C-\>\<C-n>A")"###)?;
+        self.nvim.command(r###"call feedkeys("\<C-\>\<C-n>A")"###)?;// fixes "can't enter normal mode from..."
         Ok(())
     }
 
     pub fn set_current_buffer_follow_output_mode(&mut self) -> IO {
         trace!(target: "set mode: FOLLOW", "");
-        // this fixes "can't enter normal mode from terminal mode"
         self.nvim.command(r###"call feedkeys("\<C-\>\<C-n>G")"###)?;
         Ok(())
     }
 
     pub fn set_current_buffer_reading_mode(&mut self) -> IO {
         trace!(target: "set mode: SCROLL", "");
-        // this fixes "can't enter normal mode from terminal mode"
         self.nvim.command(r###"call feedkeys("\<C-\>\<C-n>ggM")"###)?;
         Ok(())
     }
@@ -301,10 +307,14 @@ impl <'a> Manager<'a> {
 
     pub fn get_var_or_default(&mut self, key: &str, default: &str) -> IO<String> {
         let var = self.nvim.get_var(key).map(|v| v.to_string())
-            .or_else(|e| if e.to_string() == format!("1 - Key '{}' not found", key) {
-                Ok(String::from(default))
-            } else {
-                Err(e)
+            .or_else(|e| {
+                let description = e.to_string();
+                if description == format!("1 - Key '{}' not found", key)
+                || description == format!("1 - Key not found: {}", key) { // for new nvim version
+                    Ok(String::from(default))
+                } else {
+                    Err(e)
+                }
             })?;
         Ok(var)
     }
