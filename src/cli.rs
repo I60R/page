@@ -23,7 +23,7 @@ pub(crate) struct Options {
     #[structopt(short="c")]
     pub config: Option<String>,
 
-    /// Run command in pager buffer when reading begins
+    /// Run command in pager buffer when neovim config is sourced and reading begins
     #[structopt(short="e")]
     pub command: Option<String>,
 
@@ -70,6 +70,10 @@ pub(crate) struct Options {
     /// Follow output instead of keeping top position
     #[structopt(short="f")]
     pub follow: bool,
+
+    /// Follow output instead of keeping top position, also scrolls each <FILES> provided to the bottom
+    #[structopt(short="F")]
+    pub follow_all: bool,
 
     /// Flush redirecting protection that prevents from producing junk and possible corruption of files
     /// by invoking commands like "unset NVIM_LISTEN_ADDRESS && ls > $(page -E q)".

@@ -329,7 +329,11 @@ impl<'a> App<'a> {
                     eprintln!("Error opening \"{}\": {}", file, e);
                 } else {
                     self.nvim_manager.set_page_default_options_to_current_buffer()?;
-                    self.nvim_manager.set_current_buffer_reading_mode()?;
+                    if opt.follow_all {
+                        self.nvim_manager.set_current_buffer_follow_output_mode()?;
+                    } else {
+                        self.nvim_manager.set_current_buffer_reading_mode()?;
+                    }
                 }
             }
             if splits {
