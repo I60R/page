@@ -65,15 +65,25 @@ impl ConnectedNeovim {
             nvim_child_listen_address.push(&format!("socket-{}", util::random_string()));
             nvim_child_listen_address
         };
-        let nvim_default_arguments = String::new();
-        let nvim_arguments = opt.arguments.as_ref().unwrap_or(&nvim_default_arguments);
-        let nvim_command = match &opt.config.as_ref() {
-            Some(conf) => format!("nvim -u {} {}", conf, nvim_arguments),
-            None => format!("nvim {}", nvim_arguments),
+        let nvim_args = {
+            let mut nvim_args = String::new();
+            nvim_args.push_str("--listen ");
+            nvim_args.push_str(&nvim_child_listen_address.to_string_lossy());
+            if let Some(config) = opt.config.as_ref() {
+                nvim_args.push(' ');
+                nvim_args.push_str(config);
+            }
+            if let Some(custom_args) = opt.arguments.as_ref() {
+                nvim_args.push(' ');
+                nvim_args.push_str(custom_args);
+            }
+            nvim_args
         };
-        let nvim_child_process = Command::new(nvim_command)
+        trace!(target: "new nvim process", "args: {}", nvim_args);
+        let nvim_args_separate = nvim_args.split(|c: char| c.is_whitespace()).collect::<Vec<_>>();
+        let nvim_child_process = Command::new("nvim")
+            .args(&nvim_args_separate)
             .stdin(Stdio::null()) // Don't inherit stdin, nvim can't redirect text into terminal buffer from it
-            .env("NVIM_LISTEN_ADDRESS", &nvim_child_listen_address)
             .spawn()?;
         util::wait_until_file_created(&nvim_child_listen_address)?;
         Ok((nvim_child_listen_address, nvim_child_process))

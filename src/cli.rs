@@ -12,7 +12,7 @@ use structopt::clap::{ArgGroup, AppSettings::*};
     group="instance_use_arg_group()"))]
 pub(crate) struct Options {
     /// Neovim session address
-    #[structopt(short="a", long="listen", env="NVIM_LISTEN_ADDRESS")]
+    #[structopt(short="a", env="NVIM_LISTEN_ADDRESS")]
     pub address: Option<String>,
 
     /// Neovim arguments when a new session is started
