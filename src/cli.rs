@@ -19,7 +19,7 @@ pub(crate) struct Options {
     #[structopt(short="A", env="NVIM_PAGE_ARGS")]
     pub arguments: Option<String>,
 
-    /// Shorthand for neovim config argument when a new session is started
+    /// Shorthand for neovim config argument (-u) when a new session is started
     #[structopt(short="c")]
     pub config: Option<String>,
 
@@ -31,47 +31,47 @@ pub(crate) struct Options {
     #[structopt(short="E")]
     pub command_post: Option<String>,
 
-    /// Use named instance buffer if exist or spawn new. New overwrites previous
+    /// Use existed named buffer to read stdin or spawn new. New content overwrites previous
     #[structopt(short="i")]
     pub instance: Option<String>,
 
-    /// Use named instance buffer if exist or spawn new. New content appends to previous
+    /// Use existed named buffer to read stdin or spawn new. New content appends to previous
     #[structopt(short="I")]
     pub instance_append: Option<String>,
 
-    /// Close named instance buffer if exists [revokes implied options]
+    /// Close named buffer if it exists and exit [revokes implied options]
     #[structopt(short="x")]
     pub instance_close: Option<String>,
 
-    /// Set name for buffer that displays stdin content
+    /// Set title for created by -o buffer
     #[structopt(short="n", env="PAGE_BUFFER_NAME")]
     pub name: Option<String>,
 
-    /// Set filetype for buffer that displays stdin content (for syntax highlighting)
+    /// Set filetype for created by -o buffer (for syntax highlighting)
     #[structopt(short="t", default_value="pager")]
     pub filetype: String,
 
-    /// Open a new buffer to display stdin context [implied]
+    /// Open a new buffer [implied] (to show text written into page stdin)
     #[structopt(short="o")]
     pub pty_open: bool,
 
-    /// Print /dev/pty/* path [implied when page don't read from pipe] (for > redirecting)
+    /// Print /dev/pty/* of created by -o buffer [implied when not piped] (to redirect later e.g. `ls > /dev/pty*`)
     #[structopt(short="p")]
     pub pty_print: bool,
 
-    /// Focus back to current buffer
+    /// Return back to current buffer
     #[structopt(short="b")]
     pub back: bool,
 
-    /// Focus back to current buffer and keep INSERT mode
+    /// Return back to current buffer and enter INSERT mode
     #[structopt(short="B")]
     pub back_insert: bool,
 
-    /// Follow output instead of keeping top position (like tail -f)
+    /// Follow output instead of keeping top position (like `tail -f` does)
     #[structopt(short="f")]
     pub follow: bool,
 
-    /// Follow output instead of keeping top position and scroll each of <FILES> provided to the bottom
+    /// Follow output instead of keeping top position plus scroll each of <FILES> provided to the bottom
     #[structopt(short="F")]
     pub follow_all: bool,
 
@@ -86,19 +86,19 @@ pub(crate) struct Options {
     #[structopt(short="W")]
     pub page_no_protect: bool,
 
-    /// Split right with ratio: window_width  * 3 / (<r provided> + 1)
+    /// Split right with ratio: window_width  * 3 / (<r-provided> + 1)
     #[structopt(short="r", parse(from_occurrences))]
     pub split_right: u8,
 
-    /// Split left  with ratio: window_width  * 3 / (<l provided> + 1)
+    /// Split left  with ratio: window_width  * 3 / (<l-provided> + 1)
     #[structopt(short="l", parse(from_occurrences))]
     pub split_left: u8,
 
-    /// Split above with ratio: window_height * 3 / (<u provided> + 1)
+    /// Split above with ratio: window_height * 3 / (<u-provided> + 1)
     #[structopt(short="u", parse(from_occurrences))]
     pub split_above: u8,
 
-    /// Split below with ratio: window_height * 3 / (<d provided> + 1)
+    /// Split below with ratio: window_height * 3 / (<d-provided> + 1)
     #[structopt(short="d", parse(from_occurrences))]
     pub split_below: u8,
 
