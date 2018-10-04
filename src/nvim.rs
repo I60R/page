@@ -71,6 +71,7 @@ impl ConnectedNeovim {
             nvim_args.push_str(&nvim_child_listen_address.to_string_lossy());
             if let Some(config) = opt.config.as_ref() {
                 nvim_args.push(' ');
+                nvim_args.push_str("-u ");
                 nvim_args.push_str(config);
             }
             if let Some(custom_args) = opt.arguments.as_ref() {
