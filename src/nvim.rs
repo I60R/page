@@ -319,6 +319,14 @@ impl <'a> Manager<'a> {
         Ok(())
     }
 
+    pub fn handle_autocmd(&mut self) -> IO {
+        Ok(self.nvim.command("silent doautocmd User PageReadPre")?)
+    }
+
+    pub fn handle_autocmd_post(&mut self) -> IO {
+        Ok(self.nvim.command("silent doautocmd User PageReadPost")?)
+    }
+
     pub fn get_var_or_default(&mut self, key: &str, default: &str) -> IO<String> {
         let var = self.nvim.get_var(key).map(|v| v.to_string())
             .or_else(|e| {

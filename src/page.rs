@@ -493,6 +493,14 @@ impl<'a> App<'a> {
         Ok(())
     }
 
+    fn handle_autocmd(&mut self) -> IO {
+        Ok(self.nvim_manager.handle_autocmd()?)
+    }
+
+    fn handle_autocmd_post(&mut self) -> IO {
+        Ok(self.nvim_manager.handle_autocmd_post()?)
+    }
+
     fn handle_exit(self, cli::Context {
         nvim_child_process,
         ..
@@ -544,12 +552,14 @@ fn main() -> IO {
             buffer,
             pty_path,
         } = app.handle_open_pty_buffer(&cx)?;
+        app.handle_autocmd()?;
         app.handle_user_command(&cx.opt.command, &buffer)?;
         let mut pty_device = OpenOptions::new().append(true).open(&pty_path)?;
         app.handle_instance_buffer(&cx, &buffer, &mut pty_device)?;
         app.handle_switch_back(&cx, instance_exists)?;
         app.handle_redirection(&cx, &mut pty_device, pty_path)?;
         app.handle_user_command_post(&cx.opt.command_post, &buffer)?;
+        app.handle_autocmd_post()?;
     }
     app.handle_exit(cx)?;
     Ok(())
