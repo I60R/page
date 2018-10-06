@@ -19,7 +19,7 @@ pub(crate) struct Options {
     #[structopt(short="A", env="NVIM_PAGE_ARGS")]
     pub arguments: Option<String>,
 
-    /// Shorthand for neovim config argument (-u) when a new session is started
+    /// Shorthand for neovim config argument (-u) when a new session is started [env: XGD_CONFIG_HOME/page/init.vim]
     #[structopt(short="c")]
     pub config: Option<String>,
 

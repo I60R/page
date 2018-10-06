@@ -69,7 +69,7 @@ impl ConnectedNeovim {
             let mut nvim_args = String::new();
             nvim_args.push_str("--listen ");
             nvim_args.push_str(&nvim_child_listen_address.to_string_lossy());
-            if let Some(config) = opt.config.as_ref() {
+            if let Some(config) = Self::find_config_path(&opt.config).as_ref() {
                 nvim_args.push(' ');
                 nvim_args.push_str("-u ");
                 nvim_args.push_str(config);
@@ -88,6 +88,24 @@ impl ConnectedNeovim {
             .spawn()?;
         util::wait_until_file_created(&nvim_child_listen_address)?;
         Ok((nvim_child_listen_address, nvim_child_process))
+    }
+
+    fn find_config_path(config_path_opt: &Option<String>) -> Option<String> {
+        if config_path_opt.is_some() {
+            return config_path_opt.clone()
+        }
+        let config_path_default = env::var("XDG_CONFIG_HOME")
+            .map(|xdg_config_home| {
+                let mut config_path_buf = PathBuf::from(xdg_config_home);
+                config_path_buf.push("page/init.vim");
+                config_path_buf
+            })
+            .unwrap_or(PathBuf::from("~/.config/page/init.vim"));
+        if config_path_default.exists() {
+            Some(config_path_default.to_string_lossy().to_string())
+        } else {
+            None
+        }
     }
 
     fn session_from_address(nvim_listen_address: impl AsRef<str>) -> IO<Session> {
