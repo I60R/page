@@ -18,6 +18,7 @@ use cli::SwitchBackMode;
 use neovim_lib::neovim_api::Buffer;
 use atty::Stream;
 use structopt::StructOpt;
+use log::LevelFilter;
 use std::{
     io::{self, Write},
     env,
@@ -287,8 +288,6 @@ struct Cx<'a> {
 }
 
 
-
-
 // Handles application use cases
 struct App<'a> {
     nvim_manager: &'a mut nvim::Manager<'a>,
@@ -520,8 +519,19 @@ struct ConnectedBuffer {
 }
 
 
+fn init_logger() -> IO {
+    let mut logger_builder = logger::formatted_builder()?;
+    if let Ok(custom_level) = env::var("RUST_LOG") {
+        logger_builder.parse(&custom_level);
+    } else {
+        logger_builder.filter_level(LevelFilter::Off); // filters useless error message from nvim_lib on :q
+    }
+    logger_builder.try_init()?;
+    Ok(())
+}
+
 fn main() -> IO {
-    logger::init();
+    init_logger()?;
 
     let opt = cli::Options::from_args();
     info!("options: {:#?}", opt);
