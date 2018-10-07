@@ -294,7 +294,7 @@ impl <'a> Manager<'a> {
 
     pub fn set_page_default_options_to_current_buffer(&mut self) -> IO {
         trace!(target: "set default options", "");
-        self.nvim.command("setl scrollback=-1 scrolloff=999 signcolumn=no nonumber modified nomodifiable")?;
+        self.nvim.command("setl scrollback=-1 scrolloff=999 signcolumn=no nonumber nomodifiable")?;
         Ok(())
     }
 
