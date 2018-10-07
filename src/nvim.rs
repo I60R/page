@@ -94,18 +94,27 @@ impl ConnectedNeovim {
         if config_path_opt.is_some() {
             return config_path_opt.clone()
         }
-        let config_path_default = env::var("XDG_CONFIG_HOME")
-            .map(|xdg_config_home| {
+        env::var("XDG_CONFIG_HOME").ok()
+            .and_then(|xdg_config_home| {
                 let mut config_path_buf = PathBuf::from(xdg_config_home);
                 config_path_buf.push("page/init.vim");
-                config_path_buf
+                if config_path_buf.exists() {
+                    Some(config_path_buf)
+                } else {
+                    None
+                }
             })
-            .unwrap_or(PathBuf::from("~/.config/page/init.vim"));
-        if config_path_default.exists() {
-            Some(config_path_default.to_string_lossy().to_string())
-        } else {
-            None
-        }
+            .or_else(|| env::var("HOME").ok()
+                .and_then(|home_dir| {
+                    let mut config_path_buf = PathBuf::from(home_dir);
+                    config_path_buf.push(".config/page/init.vim");
+                    if config_path_buf.exists() {
+                        Some(config_path_buf)
+                    } else {
+                        None
+                    }
+                }))
+            .map(|config_path_buf| config_path_buf.to_string_lossy().to_string())
     }
 
     fn session_from_address(nvim_listen_address: impl AsRef<str>) -> IO<Session> {
