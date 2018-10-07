@@ -19,7 +19,7 @@ pub(crate) struct Options {
     #[structopt(short="A", env="NVIM_PAGE_ARGS")]
     pub arguments: Option<String>,
 
-    /// Shorthand for neovim config argument (-u) when a new session is started [env: XGD_CONFIG_HOME/page/init.vim]
+    /// Neovim config (-u) for a new session [file:$XDG_CONFIG_HOME/page/init.vim]
     #[structopt(short="c")]
     pub config: Option<String>,
 
@@ -43,11 +43,11 @@ pub(crate) struct Options {
     #[structopt(short="x")]
     pub instance_close: Option<String>,
 
-    /// Set title for created by -o buffer
+    /// Set title for -o buffer
     #[structopt(short="n", env="PAGE_BUFFER_NAME")]
     pub name: Option<String>,
 
-    /// Set filetype for created by -o buffer (for syntax highlighting)
+    /// Set filetype for -o buffer (for syntax highlighting)
     #[structopt(short="t", default_value="pager")]
     pub filetype: String,
 
@@ -55,7 +55,7 @@ pub(crate) struct Options {
     #[structopt(short="o")]
     pub pty_open: bool,
 
-    /// Print /dev/pty/* of created by -o buffer [implied when not piped] (to redirect later e.g. `ls > /dev/pty*`)
+    /// Print /dev/pty/* of -o buffer [implied when not piped] (to redirect `ls > /dev/pty*`)
     #[structopt(short="p")]
     pub pty_print: bool,
 
@@ -67,22 +67,22 @@ pub(crate) struct Options {
     #[structopt(short="B")]
     pub back_insert: bool,
 
-    /// Follow output instead of keeping top position (like `tail -f` does)
+    /// Follow output instead of keeping top position (like `tail -f`)
     #[structopt(short="f")]
     pub follow: bool,
 
-    /// Follow output instead of keeping top position plus scroll each of <FILES> provided to the bottom
+    /// Follow output instead of keeping top position and scroll each of <FILES> to the bottom
     #[structopt(short="F")]
     pub follow_all: bool,
 
     /// Flush redirecting protection that prevents from producing junk and possible corruption of files
-    /// by invoking commands like "unset NVIM_LISTEN_ADDRESS && ls > $(page -E q)"  where
-    /// "$(page -E q)" or similar capture evaluates not into "/dev/pty/*" as expected but into
-    /// whole neovim UI which consists of a bunch of characters and strings.
-    /// Many useless files would be created for each word and even overwriting might occur.
-    /// To prevent that, a path to temporary directory is printed first and "ls > directory ..."
-    /// just fails, since it's impossible to redirect text into directory.
-    /// [env: PAGE_REDIRECTION_PROTECT: (0 to disable)]
+    /// by invoking commands like "unset NVIM_LISTEN_ADDRESS && ls > $(page -E q)" where "$(page -E q)"
+    /// or similar capture evaluates not into /dev/pty/* as expected but into whole neovim UI which
+    /// consists of a bunch of characters and strings.
+    /// Many useless files would be created for each word and even overwriting of files might occur.
+    /// To prevent that, a path to temporary directory is printed first, which makes "ls > directory ..."
+    /// to fail early because it's impossible to redirect text into directory.
+    /// [env:PAGE_REDIRECTION_PROTECT: (0 to disable)]
     #[structopt(short="W")]
     pub page_no_protect: bool,
 
