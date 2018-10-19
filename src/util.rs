@@ -20,13 +20,8 @@ use std::{
 pub(crate) type IO<T = ()> = Result<T, Box<Error>>;
 
 
-pub(crate) const PAGE_TMP_DIR: &str = "neovim-page";
-
-
 pub(crate) fn open_agent_pipe(nvim_agent_pipe_name: &str) -> IO<PathBuf> {
-    let mut nvim_agent_pipe_path = env::temp_dir();
-    nvim_agent_pipe_path.push(PAGE_TMP_DIR);
-    fs::create_dir_all(nvim_agent_pipe_path.as_path())?;
+    let mut nvim_agent_pipe_path = get_page_tmp_dir()?;
     nvim_agent_pipe_path.push(nvim_agent_pipe_name);
     let nvim_agent_pipe_path_c = CString::new(nvim_agent_pipe_path.as_os_str().as_bytes())?;
     unsafe {
@@ -53,6 +48,12 @@ pub(crate) fn wait_until_file_created(file_path: &PathBuf) -> IO {
     Ok(())
 }
 
+pub(crate) fn get_page_tmp_dir() -> IO<PathBuf> {
+    let mut page_tmp_dir = env::temp_dir();
+    page_tmp_dir.push("neovim-page");
+    fs::create_dir_all(&page_tmp_dir)?;
+    Ok(page_tmp_dir)
+}
 
 pub(crate) fn random_string() -> String {
     use self::rand::{Rng, distributions::Alphanumeric};

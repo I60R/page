@@ -9,6 +9,7 @@ use structopt::clap::{ArgGroup, AppSettings::*};
     global_settings="&[DisableHelpSubcommand, DeriveDisplayOrder]",
     group="splits_arg_group()",
     group="back_arg_group()",
+    group="follow_arg_group()",
     group="instance_use_arg_group()"))]
 pub(crate) struct Options {
     /// Neovim session address
@@ -23,41 +24,41 @@ pub(crate) struct Options {
     #[structopt(short="c")]
     pub config: Option<String>,
 
-    /// Run command in a pager buffer when neovim config is sourced and reading begins
+    /// Run command in a sink buffer when neovim config is sourced and reading begins
     #[structopt(short="e")]
     pub command: Option<String>,
 
-    /// Run command in a pager buffer after reading was done
+    /// Run command in a sink buffer after reading was done
     #[structopt(short="E")]
     pub command_post: Option<String>,
 
-    /// Use existed named buffer to read stdin or spawn new. New content overwrites previous
+    /// Use existed named sink buffer or spawn new. New content overwrites previous
     #[structopt(short="i")]
     pub instance: Option<String>,
 
-    /// Use existed named buffer to read stdin or spawn new. New content appends to previous
+    /// Use existed named sink buffer or spawn new. New content appends to previous
     #[structopt(short="I")]
     pub instance_append: Option<String>,
 
-    /// Close named buffer if it exists and exit [revokes implied options]
+    /// Close named sink buffer if it exist and exit [revokes implied options]
     #[structopt(short="x")]
     pub instance_close: Option<String>,
 
-    /// Set title for -o buffer
+    /// Set title for sink buffer
     #[structopt(short="n", env="PAGE_BUFFER_NAME")]
     pub name: Option<String>,
 
-    /// Set filetype for -o buffer (for syntax highlighting)
+    /// Set filetype for sink buffer (for syntax highlighting)
     #[structopt(short="t", default_value="pager")]
     pub filetype: String,
 
-    /// Open a new buffer [implied] (to show text written into page stdin)
+    /// Open a new sink buffer [implied] (to show text written into page stdin)
     #[structopt(short="o")]
-    pub pty_open: bool,
+    pub sink_open: bool,
 
-    /// Print /dev/pty/* of -o buffer [implied when not piped] (to redirect `ls > /dev/pty*`)
+    /// Print a path to sink [implied when not piped] (to redirect `command > /path/to/sink`)
     #[structopt(short="p")]
-    pub pty_print: bool,
+    pub sink_print: bool,
 
     /// Return back to current buffer
     #[structopt(short="b")]
@@ -77,11 +78,11 @@ pub(crate) struct Options {
 
     /// Flush redirecting protection that prevents from producing junk and possible corruption of files
     /// by invoking commands like "unset NVIM_LISTEN_ADDRESS && ls > $(page -E q)" where "$(page -E q)"
-    /// or similar capture evaluates not into /dev/pty/* as expected but into whole neovim UI which
+    /// or similar capture evaluates not into /path/to/sink as expected but into a whole neovim UI which
     /// consists of a bunch of characters and strings.
-    /// Many useless files would be created for each word and even overwriting of files might occur.
-    /// To prevent that, a path to temporary directory is printed first, which makes "ls > directory ..."
-    /// to fail early because it's impossible to redirect text into directory.
+    /// Many useless files would be created for each word and even overwriting of some file might occur.
+    /// To prevent that, a path to temporary directory is printed first, which causes "command > directory ..."
+    /// to fail early because it's impossible to redirect text into the directory.
     /// [env:PAGE_REDIRECTION_PROTECT: (0 to disable)]
     #[structopt(short="W")]
     pub page_no_protect: bool,
@@ -118,7 +119,7 @@ pub(crate) struct Options {
     #[structopt(short="D")]
     pub split_below_rows: Option<u8>,
 
-    /// Open provided files in separate buffers [revokes implied options]
+    /// Open provided files in separate (non-sink) buffers [revokes implied options]
     #[structopt(name="FILES")]
     pub files: Vec<String>
 }
@@ -133,6 +134,12 @@ fn instance_use_arg_group() -> ArgGroup<'static> {
 fn back_arg_group() -> ArgGroup<'static> {
     ArgGroup::with_name("focusing")
         .args(&["back", "back_insert"])
+        .multiple(false)
+}
+
+fn follow_arg_group() -> ArgGroup<'static> {
+    ArgGroup::with_name("following")
+        .args(&["follow", "follow_all"])
         .multiple(false)
 }
 
@@ -188,7 +195,7 @@ impl <'a> Context<'a> {
         let split_flag_provided = Self::has_split_flag_provided(&opt);
         let creates = !Self::has_early_exit_condition(&opt, piped, split_flag_provided);
         let splits = nvim_child_process.is_none() && split_flag_provided;
-        let prints = opt.pty_print || !piped && nvim_child_process.is_none();
+        let prints = opt.sink_print || !piped && nvim_child_process.is_none();
         let focuses = opt.follow || switch_back_mode.is_no_switch() || instance_mode.is_replace();
         Context {
             opt,
@@ -215,8 +222,8 @@ impl <'a> Context<'a> {
         let has_early_exit_opt = opt.instance_close.is_some() || !opt.files.is_empty();
         *& has_early_exit_opt && !piped && !splits
         && !opt.back && !opt.back_insert
-        && !opt.follow
-        && !opt.pty_open && !opt.pty_print
+        && !opt.follow && !opt.follow_all
+        && !opt.sink_open && !opt.sink_print
         && opt.instance.is_none() && opt.instance_append.is_none()
         && opt.command.is_none() && opt.command_post.is_none()
         && &opt.filetype == "pager"

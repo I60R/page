@@ -20,48 +20,53 @@ use std::{
 
 /// Extends `nvim::Session` to be able to spawn new nvim process.
 /// Unlike `nvim::Session::ClientConnection::Child` stdin|stdout of new process will be not inherited.
-pub struct ConnectedNeovim {
+pub struct NeovimData {
     pub nvim: Neovim,
     pub nvim_child_process: Option<process::Child>,
     pub initial_position: (Window, Buffer),
 }
 
-impl ConnectedNeovim {
-    pub(crate) fn connect_parent_or_child(opt: &cli::Options, print_protection: bool) -> IO<ConnectedNeovim> {
-        let (mut session, nvim_child_process) = Self::connect_session(opt, print_protection)?;
+impl NeovimData {
+    pub(crate) fn connect_parent_or_child(
+        opt: &cli::Options,
+        page_tmp_dir: &PathBuf,
+        print_protection: bool
+    ) -> IO<NeovimData> {
+        let (mut session, nvim_child_process) = Self::connect_session(opt, page_tmp_dir, print_protection)?;
         session.start_event_loop();
         let mut nvim = Neovim::new(session);
         let initial_position = (nvim.get_current_win()?, nvim.get_current_buf()?);
-        Ok(ConnectedNeovim {
+        Ok(NeovimData {
             nvim,
             initial_position,
             nvim_child_process
         })
     }
 
-    fn connect_session(opt: &cli::Options, print_protection: bool) -> IO<(Session, Option<process::Child>)> {
+    fn connect_session(
+        opt: &cli::Options,
+        page_tmp_dir: &PathBuf,
+        print_protection: bool,
+    ) -> IO<(Session, Option<process::Child>)> {
         if let Some(nvim_parent_listen_address) = &opt.address {
             let nvim_session = Self::session_from_address(nvim_parent_listen_address)?;
             Ok((nvim_session, None))
         } else {
             if print_protection {
-                let mut directory = env::temp_dir();
-                directory.push(util::PAGE_TMP_DIR);
+                let mut directory = page_tmp_dir.clone();
                 directory.push("DO-NOT-REDIRECT-OUTSIDE-OF-NVIM-TERM(--help[-W])");
                 fs::create_dir_all(&directory)?;
                 println!("{}", directory.to_string_lossy());
             }
-            let (nvim_child_listen_address, nvim_child_process) = ConnectedNeovim::spawn_child_nvim_process(opt)?;
+            let (nvim_child_listen_address, nvim_child_process) = NeovimData::spawn_child_nvim_process(opt, page_tmp_dir)?;
             let nvim_session = Self::session_from_address(&nvim_child_listen_address.to_string_lossy())?;
             Ok((nvim_session, Some(nvim_child_process)))
         }
     }
 
-    fn spawn_child_nvim_process(opt: &cli::Options) -> IO<(PathBuf, process::Child)> {
+    fn spawn_child_nvim_process(opt: &cli::Options, page_tmp_dir: &PathBuf) -> IO<(PathBuf, process::Child)> {
         let nvim_child_listen_address = {
-            let mut nvim_child_listen_address = env::temp_dir();
-            nvim_child_listen_address.push(util::PAGE_TMP_DIR);
-            fs::create_dir_all(&nvim_child_listen_address)?;
+            let mut nvim_child_listen_address = page_tmp_dir.clone();
             nvim_child_listen_address.push(&format!("socket-{}", util::random_string()));
             nvim_child_listen_address
         };
@@ -129,34 +134,34 @@ impl ConnectedNeovim {
 
 
 /// A helper for nvim terminal buffer creation/configuration
-pub(crate) struct Manager<'a> {
+pub(crate) struct NeovimManager<'a> {
     nvim: &'a mut Neovim,
 }
 
-impl <'a> Manager<'a> {
-    pub fn new(nvim: &mut Neovim) -> Manager {
-        Manager {
+impl <'a> NeovimManager<'a> {
+    pub fn new(nvim: &mut Neovim) -> NeovimManager {
+        NeovimManager {
             nvim
         }
     }
 
     pub fn create_pty_with_buffer(&mut self) -> IO<(Buffer, PathBuf)> {
-        let agent_pipe_name = util::random_string();
-        self.nvim.command(&format!("term pty-agent {}", agent_pipe_name))?;
+        let ipc_file_name = util::random_string();
+        self.nvim.command(&format!("term pty-agent {}", ipc_file_name))?;
         let buffer = self.nvim.get_current_buf()?;
-        let pty_path = self.read_pty_device_path(&agent_pipe_name)?;
-        trace!(target: "new pty", "{:?} => {:?}", buffer.get_number(self.nvim), pty_path);
-        Ok((buffer, pty_path))
+        let sink = self.read_pty_device_path(&ipc_file_name)?;
+        trace!(target: "new pty", "{:?} => {:?}", buffer.get_number(self.nvim), sink);
+        Ok((buffer, sink))
     }
 
     pub fn register_buffer_as_instance(
         &mut self,
         buffer: &Buffer,
         instance_name: &str,
-        instance_pty_path: &str
+        instance_sink: &str
     ) -> IO {
-        trace!(target: "register instance buffer", "{:?}->{}->{}", buffer, instance_name, instance_pty_path);
-        let value = Value::from(vec![Value::from(instance_name), Value::from(instance_pty_path)]);
+        trace!(target: "register instance buffer", "{:?}->{}->{}", buffer, instance_name, instance_sink);
+        let value = Value::from(vec![Value::from(instance_name), Value::from(instance_sink)]);
         buffer.set_var(self.nvim, "page_instance", value)?;
         Ok(())
     }
@@ -179,11 +184,11 @@ impl <'a> Manager<'a> {
                 }
                 Ok(v) => {
                     if let Some(arr) = v.as_array().map(|a|a.iter().map(Value::as_str).collect::<Vec<_>>()) {
-                        if let [Some(instance_name_found), Some(instance_pty_path)] = arr[..] {
-                            trace!(target: "found instance", "{}->{}", instance_name_found, instance_pty_path);
+                        if let [Some(instance_name_found), Some(instance_sink)] = arr[..] {
+                            trace!(target: "found instance", "{}->{}", instance_name_found, instance_sink);
                             if instance_name == &instance_name_found.to_string() {
-                                let pty_path = PathBuf::from(instance_pty_path.to_string());
-                                return Ok(Some((buffer, pty_path)))
+                                let sink = PathBuf::from(instance_sink.to_string());
+                                return Ok(Some((buffer, sink)))
                             }
                         }
                     }
@@ -220,15 +225,15 @@ impl <'a> Manager<'a> {
     pub fn read_pty_device_path(&mut self, agent_pipe_name: &str) -> IO<PathBuf> {
         trace!(target: "read pty path", "{}", agent_pipe_name);
         let agent_pipe_path = util::open_agent_pipe(agent_pipe_name)?;
-        let pty_path = {
-            let mut pty_path = String::new();
-            File::open(&agent_pipe_path)?.read_to_string(&mut pty_path)?;
-            PathBuf::from(pty_path)
+        let sink = {
+            let mut sink_path = String::new();
+            File::open(&agent_pipe_path)?.read_to_string(&mut sink_path)?;
+            PathBuf::from(sink_path)
         };
         if let Err(e) = fs::remove_file(&agent_pipe_path) {
             eprintln!("can't remove agent pipe {:?}: {:?}", &agent_pipe_path, e);
         }
-        Ok(pty_path)
+        Ok(sink)
     }
 
     pub fn split_current_buffer(&mut self, opt: &cli::Options) -> IO {
@@ -288,8 +293,8 @@ impl <'a> Manager<'a> {
 
     pub fn update_buffer_filetype(&mut self, buffer: &Buffer, filetype: &str) -> IO {
         trace!(target: "update filetype", "");
-        buffer.set_option(self.nvim, "filetype", Value::from(filetype))?;
-        Ok(())
+        let buffer_number = buffer.get_number(self.nvim)?;
+        Ok(self.nvim.command(&format!("{}bufdo set filetype={}", buffer_number, filetype))?)
     }
 
     pub fn set_page_default_options_to_current_buffer(&mut self) -> IO {
@@ -300,13 +305,19 @@ impl <'a> Manager<'a> {
 
     pub fn execute_user_command_on_buffer(&mut self, buffer: &Buffer, command: &str) -> IO {
         trace!(target: "exec command", "{}", command);
-        let saved_buffer_position = self.get_current_buffer_position()?;
-        if buffer != &saved_buffer_position.1 {
-            self.nvim.set_current_buf(buffer)?;
+        let current_buffer_position = self.get_current_buffer_position()?;
+        {
+            let current_buffer = &current_buffer_position.1;
+            if current_buffer != buffer {
+                self.nvim.set_current_buf(buffer)?;
+            }
         }
+        let saved_buffer_position = current_buffer_position;
         self.nvim.command(command)?;
         let final_buffer_position = self.get_current_buffer_position()?;
-        if final_buffer_position != saved_buffer_position {
+        if final_buffer_position != saved_buffer_position
+            && saved_buffer_position.0.is_valid(self.nvim)?
+            && saved_buffer_position.1.is_valid(self.nvim)? {
             self.switch_to_buffer_position(&saved_buffer_position)?;
         }
         Ok(())
