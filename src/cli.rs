@@ -258,7 +258,7 @@ impl InstanceMode {
     pub(crate) fn is_replace(&self) -> bool {
         if let InstanceMode::Replace(_) = self { true } else { false }
     }
-    pub(crate) fn is_any(&self) -> Option<&String> {
+    pub(crate) fn try_get_name(&self) -> Option<&String> {
         match self {
             InstanceMode::Append(instance_name) | InstanceMode::Replace(instance_name) => Some(instance_name),
             InstanceMode::NoInstance => None,

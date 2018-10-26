@@ -331,12 +331,12 @@ impl<'a> App<'a> {
                     if opt.follow_all {
                         self.nvim_manager.set_current_buffer_follow_output_mode()?;
                     } else {
-                        self.nvim_manager.set_current_buffer_reading_mode()?;
+                        self.nvim_manager.set_current_buffer_scroll_mode()?;
                     }
                 }
             }
             if splits {
-                self.nvim_manager.switch_to_buffer_position(&initial_position)?;
+                self.nvim_manager.switch_to_window_and_buffer(&initial_position)?;
             }
         }
         Ok(())
@@ -349,7 +349,7 @@ impl<'a> App<'a> {
         splits,
         ..
     }: &cli::Context) -> IO<BufferData> {
-        if let Some(instance_name) = instance_mode.is_any() {
+        if let Some(instance_name) = instance_mode.try_get_name() {
             if let Some((buffer, sink)) = self.nvim_manager.find_instance_buffer(&instance_name)? {
                 Ok(BufferData { instance_exists: true, buffer, sink })
             } else {
@@ -363,9 +363,9 @@ impl<'a> App<'a> {
         } else {
             let (buffer, sink) = self.open_page_buffer(&opt, splits)?;
             let (page_icon_key, page_icon_default) = if piped {
-                ("page_icon_pipe", "|")
+                ("page_icon_pipe", " |")
             } else {
-                ("page_icon_redirect", ">")
+                ("page_icon_redirect", " >")
             };
             let mut buffer_title = self.nvim_manager.get_var_or_default(page_icon_key, page_icon_default)?;
             if let Some(ref buffer_name) = opt.name {
@@ -407,14 +407,21 @@ impl<'a> App<'a> {
         Ok((buffer, sink))
     }
 
-    fn handle_user_command(&mut self,
-        command: &Option<String>,
+    fn handle_pre_commands(&mut self,
+        command_opt: &Option<String>,
         buffer: &Buffer,
     ) -> IO {
-        if let Some(ref command) = command {
-            self.nvim_manager.execute_user_command_on_buffer(buffer, command)?;
+        if let Some(command_string) = command_opt {
+            self.nvim_manager.execute_command_on_buffer(
+                buffer,
+                &format!("exe 'silent doautocmd User PageReadPre' | {}", command_string)
+            )
+        } else {
+            self.nvim_manager.execute_command_on_buffer(
+                buffer,
+                "silent doautocmd User PageReadPre"
+            )
         }
-        Ok(())
     }
 
     fn handle_instance_buffer(&mut self, &cli::Context {
@@ -426,7 +433,7 @@ impl<'a> App<'a> {
         buffer: &Buffer,
         sink_write: &mut Write,
     ) -> IO {
-        if let Some(instance_name) = instance_mode.is_any() {
+        if let Some(instance_name) = instance_mode.try_get_name() {
             Self::set_instance_buffer_name(self.nvim_manager, &opt.name, instance_name, buffer)?;
             if focuses {
                 self.nvim_manager.focus_instance_buffer(buffer)?;
@@ -453,10 +460,10 @@ impl<'a> App<'a> {
         if opt.follow {
             self.nvim_manager.set_current_buffer_follow_output_mode()?;
         } else {
-            self.nvim_manager.set_current_buffer_reading_mode()?;
+            self.nvim_manager.set_current_buffer_scroll_mode()?;
         }
         if !switch_back_mode.is_no_switch() {
-            self.nvim_manager.switch_to_buffer_position(&initial_position)?;
+            self.nvim_manager.switch_to_window_and_buffer(&initial_position)?;
             if let SwitchBackMode::Insert = switch_back_mode {
                 self.nvim_manager.set_current_buffer_insert_mode()?;
             }
@@ -482,31 +489,21 @@ impl<'a> App<'a> {
         Ok(())
     }
 
-    fn handle_user_command_post(&mut self,
-        command: &Option<String>,
+    fn handle_post_commands(&mut self,
+        command_opt: &Option<String>,
         buffer: &Buffer,
     ) -> IO {
-        if let Some(ref command) = command {
-            self.nvim_manager.execute_user_command_on_buffer(buffer, command)?;
+        if let Some(command_string) = command_opt {
+            self.nvim_manager.execute_command_on_buffer(
+                buffer,
+                &format!("exe 'silent doautocmd User PageReadPost' | {}", command_string)
+            )
+        } else {
+            self.nvim_manager.execute_command_on_buffer(
+                buffer,
+                "silent doautocmd User PageReadPost"
+            )
         }
-        Ok(())
-    }
-
-    fn handle_set_filetype(&mut self, &cli::Context {
-            opt,
-            ..
-        }: &cli::Context,
-        buffer: &Buffer,
-    ) -> IO {
-        self.nvim_manager.update_buffer_filetype(buffer, &opt.filetype)
-    }
-
-    fn handle_autocmd(&mut self) -> IO {
-        self.nvim_manager.handle_autocmd()
-    }
-
-    fn handle_autocmd_post(&mut self) -> IO {
-        self.nvim_manager.handle_autocmd_post()
     }
 
     fn handle_exit(self, cli::Context {
@@ -573,15 +570,12 @@ fn main() -> IO {
             buffer,
             sink,
         } = app.handle_open_pty_buffer(&cx)?;
-        app.handle_autocmd()?;
-        app.handle_user_command(&cx.opt.command, &buffer)?;
+        app.handle_pre_commands(&cx.opt.command, &buffer)?;
         let mut sink_write = OpenOptions::new().append(true).open(&sink)?;
         app.handle_instance_buffer(&cx, &buffer, &mut sink_write)?;
         app.handle_switch_back(&cx, instance_exists)?;
-        app.handle_set_filetype(&cx, &buffer)?;
         app.handle_redirection(&cx, &mut sink_write, sink)?;
-        app.handle_user_command_post(&cx.opt.command_post, &buffer)?;
-        app.handle_autocmd_post()?;
+        app.handle_post_commands(&cx.opt.command_post, &buffer)?;
     }
     app.handle_exit(cx)?;
     Ok(())

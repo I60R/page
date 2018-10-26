@@ -178,7 +178,7 @@ impl <'a> NeovimManager<'a> {
                 Err(e) => {
                     let description = e.to_string();
                     if description != "1 - Key 'page_instance' not found"
-                    || description == "1 - Key not found: page_instance" { // for new nvim version
+                    && description != "1 - Key not found: page_instance" { // for new nvim version
                         return Err(e)?
                     }
                 }
@@ -299,38 +299,39 @@ impl <'a> NeovimManager<'a> {
 
     pub fn set_page_default_options_to_current_buffer(&mut self) -> IO {
         trace!(target: "set default options", "");
-        self.nvim.command("setl scrollback=-1 scrolloff=999 signcolumn=no nonumber nomodifiable")?;
+        self.nvim.command(
+            " let g:page_scrolloff_backup = &scrolloff \
+            | setl scrollback=-1 scrolloff=999 signcolumn=no nonumber nomodifiable \
+            | exe 'autocmd BufEnter <buffer> set scrolloff=999'\
+            | exe 'autocmd BufLeave <buffer> let &scrolloff=g:page_scrolloff_backup'")?;
         Ok(())
     }
 
-    pub fn execute_user_command_on_buffer(&mut self, buffer: &Buffer, command: &str) -> IO {
-        trace!(target: "exec command", "{}", command);
-        let current_buffer_position = self.get_current_buffer_position()?;
-        {
-            let current_buffer = &current_buffer_position.1;
-            if current_buffer != buffer {
-                self.nvim.set_current_buf(buffer)?;
-            }
+    pub fn execute_command_on_buffer(&mut self, buffer: &Buffer, command: &str) -> IO {
+        trace!(target: "execute command on buffer", "{}", command);
+        let saved_window_and_buffer = self.get_current_window_and_buffer()?;
+        if &saved_window_and_buffer.1 != buffer {
+            self.nvim.set_current_buf(buffer)?;
         }
-        let saved_buffer_position = current_buffer_position;
         self.nvim.command(command)?;
-        let final_buffer_position = self.get_current_buffer_position()?;
-        if final_buffer_position != saved_buffer_position
-            && saved_buffer_position.0.is_valid(self.nvim)?
-            && saved_buffer_position.1.is_valid(self.nvim)? {
-            self.switch_to_buffer_position(&saved_buffer_position)?;
+        if saved_window_and_buffer != self.get_current_window_and_buffer()? {
+            self.switch_to_window_and_buffer(&saved_window_and_buffer)?;
         }
         Ok(())
     }
 
-    pub fn get_current_buffer_position(&mut self) -> IO<(Window, Buffer)> {
+    pub fn get_current_window_and_buffer(&mut self) -> IO<(Window, Buffer)> {
         Ok((self.nvim.get_current_win()?, self.nvim.get_current_buf()?))
     }
 
-    pub fn switch_to_buffer_position(&mut self, (win, buf): &(Window, Buffer)) -> IO {
+    pub fn switch_to_window_and_buffer(&mut self, (win, buf): &(Window, Buffer)) -> IO {
         trace!(target: "switch buffer", "win:{:?} buf:{:?}",  win.get_number(self.nvim), buf.get_number(self.nvim));
-        self.nvim.set_current_win(win)?;
-        self.nvim.set_current_buf(buf)?;
+        if let Err(e) = self.nvim.set_current_win(win) {
+            eprintln!("Can't switch to window: {}", e);
+        }
+        if let Err(e) = self.nvim.set_current_buf(buf) {
+            eprintln!("Can't switch to buffer: {}", e);
+        }
         Ok(())
     }
 
@@ -346,7 +347,7 @@ impl <'a> NeovimManager<'a> {
         Ok(())
     }
 
-    pub fn set_current_buffer_reading_mode(&mut self) -> IO {
+    pub fn set_current_buffer_scroll_mode(&mut self) -> IO {
         trace!(target: "set mode: SCROLL", "");
         self.nvim.command(r###"call feedkeys("\<C-\>\<C-n>ggM")"###)?;
         Ok(())
@@ -356,14 +357,6 @@ impl <'a> NeovimManager<'a> {
         trace!(target: "open file", "{}", file);
         self.nvim.command(&format!("e {}", fs::canonicalize(file)?.to_string_lossy()))?;
         Ok(())
-    }
-
-    pub fn handle_autocmd(&mut self) -> IO {
-        Ok(self.nvim.command("silent doautocmd User PageReadPre")?)
-    }
-
-    pub fn handle_autocmd_post(&mut self) -> IO {
-        Ok(self.nvim.command("silent doautocmd User PageReadPost")?)
     }
 
     pub fn get_var_or_default(&mut self, key: &str, default: &str) -> IO<String> {
