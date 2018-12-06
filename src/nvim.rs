@@ -214,7 +214,7 @@ impl <'a> NeovimManager<'a> {
             for window in self.nvim.list_wins()? {
                 if &window.get_buf(self.nvim)? == instance_buffer {
                     self.nvim.set_current_win(&window)?;
-                    break;
+                    return Ok(());
                 }
             }
             self.nvim.set_current_buf(instance_buffer)?;
@@ -297,13 +297,23 @@ impl <'a> NeovimManager<'a> {
         Ok(self.nvim.command(&format!("{}bufdo set filetype={}", buffer_number, filetype))?)
     }
 
-    pub fn set_page_default_options_to_current_buffer(&mut self) -> IO {
+    pub fn set_page_default_options_to_current_buffer(
+        &mut self,
+        filetype: &str,
+        command: &str,
+    ) -> IO {
         trace!(target: "set default options", "");
-        self.nvim.command(
+        let options = &format!(
             " let g:page_scrolloff_backup = &scrolloff \
-            | setl scrollback=-1 scrolloff=999 signcolumn=no nonumber nomodifiable \
-            | exe 'autocmd BufEnter <buffer> set scrolloff=999'\
-            | exe 'autocmd BufLeave <buffer> let &scrolloff=g:page_scrolloff_backup'")?;
+            | setl scrollback=-1 scrolloff=999 signcolumn=no nonumber nomodifiable filetype={} \
+            | exe 'autocmd BufEnter <buffer> set scrolloff=999' \
+            | exe 'autocmd BufLeave <buffer> let &scrolloff=g:page_scrolloff_backup' \
+            | exe 'silent doautocmd User PageOpen' \
+            | {}",
+            filetype,
+            command,
+        );
+        self.nvim.command(options)?;
         Ok(())
     }
 

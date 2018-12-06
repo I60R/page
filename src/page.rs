@@ -3,7 +3,7 @@ extern crate structopt;
 
 #[macro_use]
 extern crate log;
-extern crate pretty_env_logger as logger;
+extern crate env_logger;
 
 extern crate atty;
 extern crate neovim_lib;
@@ -18,7 +18,6 @@ use cli::SwitchBackMode;
 use neovim_lib::neovim_api::Buffer;
 use atty::Stream;
 use structopt::StructOpt;
-use log::LevelFilter;
 use std::{
     io::{self, Write},
     env,
@@ -327,7 +326,10 @@ impl<'a> App<'a> {
                 if let Err(e) = buffer_open_result {
                     eprintln!("Error opening \"{}\": {}", file, e);
                 } else {
-                    self.nvim_manager.set_page_default_options_to_current_buffer()?;
+                    self.nvim_manager.set_page_default_options_to_current_buffer(
+                        &opt.filetype,
+                        if let Some(ref command) = opt.command { command } else { "" }
+                    )?;
                     if opt.follow_all {
                         self.nvim_manager.set_current_buffer_follow_output_mode()?;
                     } else {
@@ -402,26 +404,12 @@ impl<'a> App<'a> {
             self.nvim_manager.split_current_buffer(opt)?;
         }
         let (buffer, sink) = self.nvim_manager.create_pty_with_buffer()?;
-        self.nvim_manager.set_page_default_options_to_current_buffer()?;
+        self.nvim_manager.set_page_default_options_to_current_buffer(
+            &opt.filetype,
+            if let Some(ref command) = opt.command { command } else { "" }
+        )?;
         self.nvim_manager.update_buffer_filetype(&buffer, &opt.filetype)?;
         Ok((buffer, sink))
-    }
-
-    fn handle_pre_commands(&mut self,
-        command_opt: &Option<String>,
-        buffer: &Buffer,
-    ) -> IO {
-        if let Some(command_string) = command_opt {
-            self.nvim_manager.execute_command_on_buffer(
-                buffer,
-                &format!("exe 'silent doautocmd User PageReadPre' | {}", command_string)
-            )
-        } else {
-            self.nvim_manager.execute_command_on_buffer(
-                buffer,
-                "silent doautocmd User PageReadPre"
-            )
-        }
     }
 
     fn handle_instance_buffer(&mut self, &cli::Context {
@@ -489,22 +477,6 @@ impl<'a> App<'a> {
         Ok(())
     }
 
-    fn handle_post_commands(&mut self,
-        command_opt: &Option<String>,
-        buffer: &Buffer,
-    ) -> IO {
-        if let Some(command_string) = command_opt {
-            self.nvim_manager.execute_command_on_buffer(
-                buffer,
-                &format!("exe 'silent doautocmd User PageReadPost' | {}", command_string)
-            )
-        } else {
-            self.nvim_manager.execute_command_on_buffer(
-                buffer,
-                "silent doautocmd User PageReadPost"
-            )
-        }
-    }
 
     fn handle_exit(self, cli::Context {
         nvim_child_process,
@@ -526,13 +498,10 @@ struct BufferData {
 
 
 fn init_logger() -> IO {
-    let mut logger_builder = logger::formatted_builder()?;
-    if let Ok(custom_level) = env::var("RUST_LOG") {
-        logger_builder.parse(&custom_level);
-    } else {
-        logger_builder.filter_level(LevelFilter::Off); // filters useless error message from nvim_lib on :q
-    }
-    logger_builder.try_init()?;
+    let logger_env = env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "");
+    let mut logger_builder = env_logger::Builder::from_env(logger_env);
+    logger_builder.default_format_timestamp_nanos(true);
+    logger_builder.init();
     Ok(())
 }
 
@@ -550,11 +519,8 @@ fn main() -> IO {
         && !opt.page_no_protect
         && env::var_os("PAGE_REDIRECTION_PROTECT").map_or(true, |val| &val != "0");
 
-    let nvim::NeovimData {
-        mut nvim,
-        initial_position,
-        nvim_child_process,
-    } = nvim::NeovimData::connect_parent_or_child(&opt, &page_tmp_dir, prints_protection)?;
+    let nvim::NeovimData { mut nvim, initial_position, nvim_child_process } =
+        nvim::NeovimData::connect_parent_or_child(&opt, &page_tmp_dir, prints_protection)?;
 
     let cx = cli::Context::new(&opt, nvim_child_process, initial_position, piped);
     info!("context: {:#?}", cx);
@@ -565,17 +531,12 @@ fn main() -> IO {
     app.handle_close_instance_pty(&cx)?;
     app.handle_open_provided_files(&cx)?;
     if cx.creates {
-        let BufferData {
-            instance_exists,
-            buffer,
-            sink,
-        } = app.handle_open_pty_buffer(&cx)?;
-        app.handle_pre_commands(&cx.opt.command, &buffer)?;
+        let BufferData { instance_exists, buffer, sink } = app.handle_open_pty_buffer(&cx)?;
         let mut sink_write = OpenOptions::new().append(true).open(&sink)?;
         app.handle_instance_buffer(&cx, &buffer, &mut sink_write)?;
         app.handle_switch_back(&cx, instance_exists)?;
+
         app.handle_redirection(&cx, &mut sink_write, sink)?;
-        app.handle_post_commands(&cx.opt.command_post, &buffer)?;
     }
     app.handle_exit(cx)?;
     Ok(())
