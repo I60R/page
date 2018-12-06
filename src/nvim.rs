@@ -188,7 +188,7 @@ impl <'a> NeovimManager<'a> {
                     if let Some(arr) = v.as_array().map(|a|a.iter().map(Value::as_str).collect::<Vec<_>>()) {
                         if let [Some(instance_name_found), Some(instance_sink)] = arr[..] {
                             trace!(target: "found instance", "{}->{}", instance_name_found, instance_sink);
-                            if instance_name == &instance_name_found.to_string() {
+                            if instance_name == instance_name_found {
                                 let sink = PathBuf::from(instance_sink.to_string());
                                 return Ok(Some((buffer, sink)))
                             }
@@ -296,7 +296,8 @@ impl <'a> NeovimManager<'a> {
     pub fn update_buffer_filetype(&mut self, buffer: &Buffer, filetype: &str) -> IO {
         trace!(target: "update filetype", "");
         let buffer_number = buffer.get_number(self.nvim)?;
-        Ok(self.nvim.command(&format!("{}bufdo set filetype={}", buffer_number, filetype))?)
+        self.nvim.command(&format!("{}bufdo set filetype={}", buffer_number, filetype))?;
+        Ok(())
     }
 
     pub fn set_page_default_options_to_current_buffer(

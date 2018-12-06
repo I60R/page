@@ -371,7 +371,7 @@ impl<'a> App<'a> {
     fn set_instance_buffer_name(
         nvim_manager: &mut nvim::NeovimManager,
         buffer_name: &Option<String>,
-        instance_name: &String,
+        instance_name: &str,
         buffer: &Buffer,
     ) -> IO {
         let (page_icon_key, page_icon_default) = ("page_icon_instance", "@ ");
@@ -455,7 +455,7 @@ impl<'a> App<'a> {
             ..
         }: &cli::Context,
         sink_write: &mut Write,
-        sink: PathBuf,
+        sink: &PathBuf,
     ) -> IO {
         if piped {
             let stdin = io::stdin();
@@ -504,9 +504,7 @@ fn main() -> IO {
     let page_tmp_dir = util::get_page_tmp_dir()?;
 
     let piped = atty::isnt(Stream::Stdin);
-    let prints_protection =
-        *& !piped
-        && !opt.page_no_protect
+    let prints_protection = !piped && !opt.page_no_protect
         && env::var_os("PAGE_REDIRECTION_PROTECT").map_or(true, |val| &val != "0");
 
     let nvim::NeovimData { mut nvim, initial_position, nvim_child_process } =
@@ -526,7 +524,7 @@ fn main() -> IO {
         app.handle_instance_buffer(&cx, &buffer, &mut sink_write)?;
         app.handle_switch_back(&cx, instance_exists)?;
 
-        app.handle_redirection(&cx, &mut sink_write, sink)?;
+        app.handle_redirection(&cx, &mut sink_write, &sink)?;
     }
     app.handle_exit(cx)?;
     Ok(())

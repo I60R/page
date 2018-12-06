@@ -215,7 +215,7 @@ impl <'a> Context<'a> {
     }
 
     fn has_split_flag_provided(opt: &Options) -> bool {
-        *& opt.split_left_cols.is_some() || opt.split_right_cols.is_some()
+        opt.split_left_cols.is_some() || opt.split_right_cols.is_some()
         || opt.split_above_rows.is_some() || opt.split_below_rows.is_some()
         || opt.split_left != 0 || opt.split_right != 0
         || opt.split_above != 0 || opt.split_below != 0
@@ -223,7 +223,7 @@ impl <'a> Context<'a> {
 
     fn has_early_exit_condition(opt: &Options, piped: bool, splits: bool) -> bool {
         let has_early_exit_opt = opt.instance_close.is_some() || !opt.files.is_empty();
-        *& has_early_exit_opt && !piped && !splits
+        has_early_exit_opt && !piped && !splits
         && !opt.back && !opt.back_insert
         && !opt.follow && !opt.follow_all
         && !opt.sink_open && !opt.sink_print
