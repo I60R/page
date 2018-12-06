@@ -6,16 +6,17 @@ description = "A pager that utilizes neovim's terminal buffer"
 repository = "https://github.com/I60R/page"
 license = "MIT"
 readme = "README.md"
+edition = "2018"
 
 [dependencies]
-rand = "0.5.5"
-libc = "0.2.43"
+rand = "0.6.1"
+libc = "0.2.44"
 notify = "4.0.6"
 atty = "0.2.11"
-structopt = "0.2.10"
+structopt = "0.2.13"
 neovim-lib = "0.5.4"
-log = "0.4.5"
-env_logger = "0.5.13"
+log = "0.4.6"
+env_logger = "0.6.0"
 
 
 [[bin]]

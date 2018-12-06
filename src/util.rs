@@ -1,8 +1,3 @@
-extern crate libc;
-extern crate notify;
-extern crate rand;
-
-
 use std::{
     path::PathBuf,
     env,
@@ -17,7 +12,7 @@ use std::{
 
 /// A typealias to clarify signatures a bit.
 /// Used only when Input/Output is involved
-pub(crate) type IO<T = ()> = Result<T, Box<Error>>;
+pub(crate) type IO<T = ()> = Result<T, Box<dyn Error>>;
 
 
 pub(crate) fn open_agent_pipe(nvim_agent_pipe_name: &str) -> IO<PathBuf> {
@@ -31,7 +26,7 @@ pub(crate) fn open_agent_pipe(nvim_agent_pipe_name: &str) -> IO<PathBuf> {
 }
 
 pub(crate) fn wait_until_file_created(file_path: &PathBuf) -> IO {
-    use self::notify::{Watcher, RecursiveMode, RawEvent, op};
+    use notify::{Watcher, RecursiveMode, RawEvent, op};
     let (tx, rx) = ::std::sync::mpsc::channel();
     let mut watcher = notify::raw_watcher(tx)?;
     let file_dir = file_path.parent().expect("invalid file path");
@@ -56,7 +51,7 @@ pub(crate) fn get_page_tmp_dir() -> IO<PathBuf> {
 }
 
 pub(crate) fn random_string() -> String {
-    use self::rand::{Rng, distributions::Alphanumeric};
+    use rand::{Rng, distributions::Alphanumeric};
     rand::thread_rng()
         .sample_iter(&Alphanumeric)
         .take(32)

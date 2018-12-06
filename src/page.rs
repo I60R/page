@@ -1,20 +1,10 @@
-#[macro_use]
-extern crate structopt;
-
-#[macro_use]
-extern crate log;
-extern crate env_logger;
-
-extern crate atty;
-extern crate neovim_lib;
-
-
 mod cli;
 mod util;
 mod nvim;
 
-use util::IO;
-use cli::SwitchBackMode;
+use crate::util::IO;
+use crate::cli::SwitchBackMode;
+
 use neovim_lib::neovim_api::Buffer;
 use atty::Stream;
 use structopt::StructOpt;

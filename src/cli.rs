@@ -1,6 +1,9 @@
 use neovim_lib::neovim_api::{Buffer, Window};
 use std::process;
-use structopt::clap::{ArgGroup, AppSettings::*};
+use structopt::{
+    clap::{ArgGroup, AppSettings::*},
+    StructOpt,
+};
 
 
 // Contains arguments provided by command line

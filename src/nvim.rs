@@ -1,5 +1,6 @@
-use cli;
-use util::{self, IO};
+use crate::cli;
+use crate::util::{self, IO};
+
 use neovim_lib::{
     neovim_api::{Window, Buffer},
     Value,
@@ -16,6 +17,7 @@ use std::{
     env,
     path::PathBuf,
 };
+use log::trace;
 
 
 /// Extends `nvim::Session` to be able to spawn new nvim process.
