@@ -20,8 +20,8 @@ main() {
     cross rustc --bin page --target $TARGET --release -- -C lto
     cp target/$TARGET/release/page $stage/
 
-    cross rustc --bin pty-agent --target $TARGET --release -- -C lto
-    cp target/$TARGET/release/pty-agent $stage/
+    cross rustc --bin page-term-agent --target $TARGET --release -- -C lto
+    cp target/$TARGET/release/page-term-agent $stage/
 
     cd $stage
     tar czf $src/$CRATE_NAME-$TRAVIS_TAG-$TARGET.tar.gz *

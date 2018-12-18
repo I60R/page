@@ -1,6 +1,6 @@
 [package]
 name = "page"
-version = "1.7.0"
+version = "1.8.0"
 authors = ["160R <160R@protonmail.com>"]
 description = "A pager that utilizes neovim's terminal buffer"
 repository = "https://github.com/I60R/page"
@@ -10,18 +10,18 @@ edition = "2018"
 
 [dependencies]
 rand = "0.6.1"
-libc = "0.2.44"
+libc = "0.2.45"
 notify = "4.0.6"
 atty = "0.2.11"
-structopt = "0.2.13"
+structopt = "0.2.14"
 neovim-lib = "0.5.4"
 log = "0.4.6"
-env_logger = "0.6.0"
+simplelog = "0.5.3"
 
 
 [[bin]]
-name = "pty-agent"
-path = "src/pty-agent.rs"
+name = "page-term-agent"
+path = "src/page-term-agent.rs"
 
 [[bin]]
 name = "page"

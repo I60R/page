@@ -2,7 +2,7 @@
 _pkgname=page
 pkgname=${_pkgname}-git
 pkgrel=1
-pkgver=v0.12.3.r41.gca4c5e5
+pkgver=v0.12.3.r57.gcdfb05d
 pkgdesc='pager that utilizes nvim terminal buffer'
 arch=('i686' 'x86_64')
 url="https://github.com/I60R/page"
@@ -23,7 +23,7 @@ pkgver() {
 package() {
     cd "$srcdir"
     cd "$_pkgname" > /dev/null 2>&1 || cd ..
-    cargo install --force --bins --root $pkgdir/usr
+    cargo install --force --bins --root $pkgdir/usr --path .
     if [[ -f $pkgdir/usr/.crates.toml ]]; then
         rm $pkgdir/usr/.crates.toml
     fi

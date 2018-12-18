@@ -117,8 +117,8 @@ preexec() {
 ## How it works
 
 * `page` connects to parent (or spawned) `nvim` process through `$NVIM_LISTEN_ADDRESS`
-* Command `:term pty-agent {pipe}` is invoked through nvim's MessagePack-RPC
-* `pty-agent` reveals (through *{pipe}*) path to PTY device associated with current terminal buffer and blocks it's own thread to keep that buffer open
+* Command `:term page-term-agent {pipe}` is invoked through nvim's MessagePack-RPC
+* `page-term-agent` reveals (through *{pipe}*) path to PTY device associated with current terminal buffer and blocks it's own thread to keep that buffer open
 * `page` redirects all data from STDIN into PTY device (opened from path read from {pipe})
 * When `page` is'nt piped, PTY device path will be printed, user then can redirect into it manually
 
