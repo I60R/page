@@ -7,6 +7,7 @@ repository = "https://github.com/I60R/page"
 license = "MIT"
 readme = "README.md"
 edition = "2018"
+build = "build_shell_completions.rs"
 
 [dependencies]
 rand = "0.6.1"
@@ -18,6 +19,8 @@ neovim-lib = "0.5.4"
 log = "0.4.6"
 simplelog = "0.5.3"
 
+[build-dependencies]
+structopt = "0.2.14"
 
 [[bin]]
 name = "page-term-agent"
