@@ -17,47 +17,47 @@ pub(crate) struct Options {
     #[structopt(short="a", env="NVIM_LISTEN_ADDRESS")]
     pub address: Option<String>,
 
-    /// Neovim arguments when a new session is started
+    /// Neovim arguments passed to neovim child process
     #[structopt(short="A", env="NVIM_PAGE_ARGS")]
     pub arguments: Option<String>,
 
-    /// Neovim config (-u) for a new session [file:$XDG_CONFIG_HOME/page/init.vim]
+    /// Neovim config used by neovim child process [file:$XDG_CONFIG_HOME/page/init.vim]
     #[structopt(short="c")]
     pub config: Option<String>,
 
-    /// Run command in output buffer only when it's created
+    /// Run command in output buffer after it's created
     #[structopt(short="e")]
     pub command: Option<String>,
 
-    /// Run command in output buffer always (alwo when page connects to instance buffer)
+    /// Run command in output buffer after it's created or connected as instance
     #[structopt(short="E")]
     pub command_post: Option<String>,
 
-    /// Use existed named output buffer or spawn new. New content overwrites previous
+    /// Connect or create named output buffer. When connected, new content overwrites previous
     #[structopt(short="i")]
     pub instance: Option<String>,
 
-    /// Use existed named output buffer or spawn new. New content appends to previous
+    /// Connect or create named output buffer. When connected, new content appends to previous
     #[structopt(short="I")]
     pub instance_append: Option<String>,
 
-    /// Close named output buffer if it exist and exit [revokes implied options]
+    /// Close instance buffer with this name if exist [revokes implied options]
     #[structopt(short="x")]
     pub instance_close: Option<String>,
 
-    /// Set title for output buffer
+    /// Set output buffer name (displayed in statusline)
     #[structopt(short="n", env="PAGE_BUFFER_NAME")]
     pub name: Option<String>,
 
-    /// Set filetype for output buffer (for syntax highlighting). Not applies to <FILES>
+    /// Set output buffer filetype (for syntax highlighting)
     #[structopt(short="t", default_value="pager")]
     pub filetype: String,
 
-    /// Open a new output buffer [implied] (to show text written into page stdin)
+    /// Create and use new output buffer (to display text from page stdin) [implied] 
     #[structopt(short="o")]
     pub sink_open: bool,
 
-    /// Print a path to output [implied when not piped] (to redirect `command > /path/to/output`)
+    /// Print path to buffer pty (to redirect `command > /path/to/output`) [implied when page not piped] 
     #[structopt(short="p")]
     pub sink_print: bool,
 
@@ -65,7 +65,7 @@ pub(crate) struct Options {
     #[structopt(short="b")]
     pub back: bool,
 
-    /// Return back to current buffer restoring previous mode
+    /// Return back to current buffer and enter INSERT mode
     #[structopt(short="B")]
     pub back_restore: bool,
 
@@ -73,17 +73,17 @@ pub(crate) struct Options {
     #[structopt(short="f")]
     pub follow: bool,
 
-    /// Follow output instead of keeping top position and scroll each of <FILES> to the bottom
+    /// Follow output instead of keeping top position also for each of <FILES>
     #[structopt(short="F")]
     pub follow_all: bool,
 
     /// Flush redirecting protection that prevents from producing junk and possible corruption of files
     /// by invoking commands like "unset NVIM_LISTEN_ADDRESS && ls > $(page -E q)" where "$(page -E q)"
-    /// or similar capture evaluates not into /path/to/output as expected but into a whole neovim UI which
-    /// consists of a bunch of characters and strings.
-    /// Many useless files would be created for each word and even overwriting of some file might occur.
+    /// part not evaluates into /path/to/sink as expected but instead into neovim UI, which consists of 
+    /// a bunch of escape characters and strings. Many useless files could be created then and even 
+    /// overwriting of existed file might occur. 
     /// To prevent that, a path to temporary directory is printed first, which causes "command > directory ..."
-    /// to fail early because it's impossible to redirect text into the directory.
+    /// to fail early as it's impossible to redirect text into directory.
     /// [env:PAGE_REDIRECTION_PROTECT: (0 to disable)]
     #[structopt(short="W")]
     pub page_no_protect: bool,
@@ -120,7 +120,7 @@ pub(crate) struct Options {
     #[structopt(short="D")]
     pub split_below_rows: Option<u8>,
 
-    /// Open provided files in separate (non-output) buffers [revokes implied options]
+    /// Open provided files in separate buffers [revokes implied options]
     #[structopt(name="FILES")]
     pub files: Vec<String>
 }
