@@ -276,22 +276,17 @@ struct Cx<'a> {
 
 fn main() -> IO {
     init_logger()?;
-
     let opt = cli::get_options();
     info!("options: {:#?}", opt);
-
     let page_tmp_dir = common::util::get_page_tmp_dir()?;
     let piped = atty::isnt(Stream::Stdin);
     let prints_protection = !piped && !opt.page_no_protect && env::var_os("PAGE_REDIRECTION_PROTECT").map_or(true, |v| v != "0");
-
     let (mut nvim_actions, nvim_child_process) = nvim::connection::get_nvim_connection(&opt, &page_tmp_dir, prints_protection)?;
     let context = context::create(opt, nvim_child_process, &mut nvim_actions, piped)?;
     info!("context: {:#?}", context);
-
     let mut app_actions = app::create_app(nvim_actions, &context);
     app_actions.handle_close_page_instance_buffer()?;
     app_actions.handle_display_plain_files()?;
-
     if context.creates {
         let mut output_buffer_actions = app_actions.get_output_buffer()?;
         output_buffer_actions.handle_instance_state()?;
@@ -299,18 +294,23 @@ fn main() -> IO {
         output_buffer_actions.handle_switch_back()?;
         output_buffer_actions.handle_redirection()?;
     }
-
     app::exit(context.nvim_child_process)
 }
 
 pub(crate) fn init_logger() -> IO {
-    SimpleLogger::init(LevelFilter::from_str(env::var("RUST_LOG").as_ref().map(String::as_ref).unwrap_or("ERROR"))?, Config { 
-        time: Some(Level::Trace),
-        level: Some(Level::Trace),
-        target: Some(Level::Trace),
-        location: Some(Level::Trace),
-        time_format: Some("%T %f"),
-    })?;
+    Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "[{}][{}] {}",
+                record.level(),
+                record.target(),
+                message
+            ))
+        })
+        .level(LevelFilter::from_str(env::var("RUST_LOG").as_ref().map(String::as_ref).unwrap_or("warn"))?)
+        .level_for("neovim_lib", LevelFilter::Off)
+        .chain(std::io::stderr())
+        .apply()?;
     Ok(())
 }
 

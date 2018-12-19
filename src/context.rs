@@ -31,7 +31,6 @@ pub(crate) fn create(
 ) -> IO<Context> {
     use self::SwitchBackMode::*;
     let switch_back_mode = if nvim_child_process.is_some() {
-        eprintln!("can't switch back from new neovim instance");
         NoSwitch
     } else if opt.back {
         Normal

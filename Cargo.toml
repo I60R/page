@@ -17,7 +17,7 @@ atty = "0.2.11"
 structopt = "0.2.14"
 neovim-lib = "0.5.4"
 log = "0.4.6"
-simplelog = "0.5.3"
+fern = "0.5.7"
 
 [build-dependencies]
 structopt = "0.2.14"
