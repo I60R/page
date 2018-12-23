@@ -26,6 +26,10 @@ impl<'a> NeovimActions {
         Ok((self.nvim.get_current_win()?, self.nvim.get_current_buf()?))
     }
 
+    pub(crate) fn get_current_buffer(&mut self) -> IO<Buffer> {
+        Ok(self.nvim.get_current_buf()?)
+    }
+
     pub(crate) fn create_output_buffer_with_pty(&mut self) -> IO<(Buffer, PathBuf)> {
         let term_agent_pipe_unique_name = common::util::random_unique_string();
         self.nvim.command(&format!("term page-term-agent {}", term_agent_pipe_unique_name))?;
@@ -93,13 +97,17 @@ impl<'a> NeovimActions {
         trace!(target: "focus instance buffer", "{:?}", instance_buffer);
         if &self.nvim.get_current_buf()? != instance_buffer {
             for window in self.nvim.list_wins()? {
+                trace!(target: "focus instance buffer", "check window {:?}", window.get_number(&mut self.nvim));
                 if &window.get_buf(&mut self.nvim)? == instance_buffer {
+                    trace!(target: "focus instance buffer", "set last window");
                     self.nvim.set_current_win(&window)?;
-                    return Ok(());
+                    return Ok(())
                 }
             }
-            self.nvim.set_current_buf(instance_buffer)?;
+        } else {
+            trace!(target: "focus instance buffer", "not from window");
         }
+        self.nvim.set_current_buf(instance_buffer)?;
         Ok(())
     }
 
@@ -183,8 +191,7 @@ impl<'a> NeovimActions {
             | exe 'autocmd BufEnter <buffer> set scrolloff=999' \
             | exe 'autocmd BufLeave <buffer> let &scrolloff=g:page_scrolloff_backup' \
             | exe 'silent doautocmd User PageOpen' \
-            | exe '{}' \
-            | exe 'silent doautocmd User PageRead'",
+            | exe '{}'",
             filetype,
             &command.replace("'", "''"), // Ecranizes viml literal string
         );
@@ -193,10 +200,17 @@ impl<'a> NeovimActions {
         Ok(())
     }
 
-    pub(crate) fn execute_page_read_autocmd_on_buffer(&mut self, buffer: &Buffer) -> IO {
+    pub(crate) fn execute_page_connect_autocmd_on_buffer(&mut self, buffer: &Buffer) -> IO {
         let buffer_number = buffer.get_number(&mut self.nvim)?;
-        trace!(target: "exec autocmd PageRead", "{}", buffer_number);
-        self.nvim.command(&format!("{}bufdo silent doautocmd User PageRead", buffer_number))?;
+        trace!(target: "autocmd PageConnect", "{}", buffer_number);
+        self.nvim.command(&format!("{}bufdo silent doautocmd User PageConnect", buffer_number))?;
+        Ok(())
+    }
+
+    pub(crate) fn execute_page_disconnect_autocmd_on_buffer(&mut self, buffer: &Buffer) -> IO {
+        let buffer_number = buffer.get_number(&mut self.nvim)?;
+        trace!(target: "autocmd PageDisconnect", "{}", buffer_number);
+        self.nvim.command(&format!("{}bufdo silent doautocmd User PageDisconnect", buffer_number))?;
         Ok(())
     }
 
@@ -207,13 +221,19 @@ impl<'a> NeovimActions {
     }
 
     pub(crate) fn switch_to_window_and_buffer(&mut self, (win, buf): &(Window, Buffer)) -> IO {
-        trace!(target: "switch buffer", "win:{:?} buf:{:?}",  win.get_number(&mut self.nvim), buf.get_number(&mut self.nvim));
+        trace!(target: "switch window and buffer", "win:{:?} buf:{:?}",  win.get_number(&mut self.nvim), buf.get_number(&mut self.nvim));
         if let Err(e) = self.nvim.set_current_win(win) {
             eprintln!("Can't switch to window: {}", e);
         }
         if let Err(e) = self.nvim.set_current_buf(buf) {
             eprintln!("Can't switch to buffer: {}", e);
         }
+        Ok(())
+    }
+
+    pub(crate) fn switch_to_buffer(&mut self, buf: &Buffer) -> IO {
+        trace!(target: "switch buffer", "buf:{:?}", buf.get_number(&mut self.nvim));
+        self.nvim.set_current_buf(buf)?;
         Ok(())
     }
 

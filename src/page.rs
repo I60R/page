@@ -279,20 +279,21 @@ fn main() -> IO {
     let opt = cli::get_options();
     info!("options: {:#?}", opt);
     let page_tmp_dir = common::util::get_page_tmp_dir()?;
-    let piped = atty::isnt(Stream::Stdin);
-    let prints_protection = !piped && !opt.page_no_protect && env::var_os("PAGE_REDIRECTION_PROTECT").map_or(true, |v| v != "0");
+    let input_from_pipe = atty::isnt(Stream::Stdin);
+    let prints_protection = !input_from_pipe && !opt.page_no_protect && env::var_os("PAGE_REDIRECTION_PROTECT").map_or(true, |v| v != "0");
     let (mut nvim_actions, nvim_child_process) = nvim::connection::get_nvim_connection(&opt, &page_tmp_dir, prints_protection)?;
-    let context = context::create(opt, nvim_child_process, &mut nvim_actions, piped)?;
+    let context = context::create(opt, nvim_child_process, &mut nvim_actions, input_from_pipe)?;
     info!("context: {:#?}", context);
     let mut app_actions = app::create_app(nvim_actions, &context);
     app_actions.handle_close_page_instance_buffer()?;
     app_actions.handle_display_plain_files()?;
-    if context.creates {
+    if context.creates_output_buffer {
         let mut output_buffer_actions = app_actions.get_output_buffer()?;
         output_buffer_actions.handle_instance_state()?;
-        output_buffer_actions.handle_mandatory_command()?;
-        output_buffer_actions.handle_switch_back()?;
-        output_buffer_actions.handle_redirection()?;
+        output_buffer_actions.handle_commands()?;
+        output_buffer_actions.handle_scroll_and_switch_back()?;
+        output_buffer_actions.handle_output()?;
+        output_buffer_actions.handle_disconnect()?;
     }
     app::exit(context.nvim_child_process)
 }
@@ -366,7 +367,7 @@ pub(crate) mod app {
                     }
                 }
             }
-            if !context.opt.files.is_empty() && context.splits {
+            if !context.opt.files.is_empty() && context.creates_in_split {
                 nvim_actions.switch_to_window_and_buffer(&context.initial_window_and_buffer)?;
             }
             Ok(())
@@ -395,20 +396,18 @@ pub(crate) mod app {
         fn get_oneoff_output_buffer(mut self) -> IO<OutputActions<'a>> {
             let (buffer, buffer_pty_path) = self.open_new_output_buffer()?;
             let Self { mut nvim_actions, context, .. } = self;
-            let (page_icon_key, page_icon_default) = if context.piped { ("page_icon_pipe", " |") } else { ("page_icon_redirect", " >") };
+            let (page_icon_key, page_icon_default) = if context.input_from_pipe { ("page_icon_pipe", " |") } else { ("page_icon_redirect", " >") };
             let mut buffer_title = nvim_actions.get_var_or_default(page_icon_key, page_icon_default)?;
             if let Some(ref buffer_name) = context.opt.name {
                 buffer_title.insert_str(0, buffer_name);
             }
             nvim_actions.update_buffer_title(&buffer, &buffer_title)?;
-            Ok(OutputActions {
-                existed_instance: false, sink: None, nvim_actions, context, buffer, buffer_pty_path,
-            })
+            Ok(OutputActions { existed_instance: false, sink: None, nvim_actions, context, buffer, buffer_pty_path })
         }
 
         fn open_new_output_buffer(&mut self) -> IO<(Buffer, PathBuf)> {
             let Self { nvim_actions, context, .. } = self;
-            if context.splits {
+            if context.creates_in_split {
                 nvim_actions.split_current_buffer(&context.opt)?;
             }
             let (buffer, buffer_pty_path) = nvim_actions.create_output_buffer_with_pty()?;
@@ -437,8 +436,8 @@ pub(crate) mod app {
         pub(crate) fn handle_instance_state(&mut self) -> IO {
             let Self { nvim_actions, context, sink, buffer_pty_path, buffer, .. } = self;
             if let Some(instance_name) = context.instance_mode.try_get_name() {
-                Self::update_instance_buffer_name(nvim_actions, &context.opt.name, instance_name, &buffer)?;
-                if context.focuses {
+                Self::update_instance_buffer_title(nvim_actions, &context.opt.name, instance_name, &buffer)?;
+                if context.focuses_on_existed_instance {
                     nvim_actions.focus_instance_buffer(&buffer)?;
                 }
                 if context.instance_mode.is_replace() {
@@ -449,7 +448,7 @@ pub(crate) mod app {
             Ok(())
         }
 
-        fn update_instance_buffer_name(
+        fn update_instance_buffer_title(
             nvim_actions: &mut NeovimActions,
             buffer_name: &Option<String>,
             instance_name: &str,
@@ -477,19 +476,19 @@ pub(crate) mod app {
             })
         }
 
-        pub(crate) fn handle_mandatory_command(&mut self) -> IO {
+        pub(crate) fn handle_commands(&mut self) -> IO {
+            if self.context.opt.command_auto {
+                self.nvim_actions.execute_page_connect_autocmd_on_buffer(&self.buffer)?;
+            }
             if let Some(ref command) = self.context.opt.command_post {
                 self.nvim_actions.execute_command_post(&command)?;
-            }
-            if self.existed_instance {
-                self.nvim_actions.execute_page_read_autocmd_on_buffer(&self.buffer)?;
             }
             Ok(())
         }
 
-        pub(crate) fn handle_switch_back(&mut self) -> IO {
+        pub(crate) fn handle_scroll_and_switch_back(&mut self) -> IO {
             let Self { nvim_actions, context, .. } = self;
-            if self.existed_instance && !context.focuses {
+            if self.existed_instance && !context.focuses_on_existed_instance {
                 return Ok(());
             }
             if context.opt.follow {
@@ -506,15 +505,30 @@ pub(crate) mod app {
             Ok(())
         }
 
-        pub(crate) fn handle_redirection(&mut self) -> IO {
-            let Self { sink, buffer_pty_path, .. } = self;
-            if self.context.piped {
+        pub(crate) fn handle_output(&mut self) -> IO {
+            let Self { context, sink, buffer_pty_path, .. } = self;
+            if context.input_from_pipe {
                 let stdin = io::stdin();
                 let opened_sink = Self::get_opened_sink(sink, buffer_pty_path)?;
                 io::copy(&mut stdin.lock(), opened_sink).map(drop)?;
             }
-            if self.context.prints {
+            if context.prints_output_buffer_pty {
                 println!("{}", buffer_pty_path.to_string_lossy());
+            }
+            Ok(())
+        }
+
+        pub(crate) fn handle_disconnect(&mut self) -> IO {
+            let Self { nvim_actions, buffer, context, .. } = self;
+            if context.opt.command_auto {
+                let temp_switch_buffer = buffer != &nvim_actions.get_current_buffer()?;
+                if temp_switch_buffer {
+                    nvim_actions.switch_to_buffer(&buffer)?;
+                }
+                nvim_actions.execute_page_disconnect_autocmd_on_buffer(&buffer)?;
+                if temp_switch_buffer {
+                    nvim_actions.switch_to_buffer(&context.initial_window_and_buffer.1)?;
+                }
             }
             Ok(())
         }

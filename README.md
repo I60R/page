@@ -15,13 +15,11 @@ This is by utilizing `$NVIM_LISTEN_ADDRESS` as [neovim-remote](https://github.co
 All neovims text editing+searching+navigating facilities, all settings, mappings, plugins, etc. from your neovim config will be effectively reused.   
 
 
+## Interface
 
-<details><summary/>Click to expand `page --help`<summary/>
+<details><summary> (click here to expand `page --help`)</summary>
+
 ```
-page 1.7.0
-160R <160R@protonmail.com>
-A pager that utilizes neovim's terminal buffer
-
 USAGE:
     page [FLAGS] [OPTIONS] [FILES]...
 
@@ -67,6 +65,9 @@ ARGS:
 ```
 </details>
 
+## Usage
+
+
 
 ## Customizations
 
@@ -79,16 +80,23 @@ let g:page_icon_pipe = '|'
 
 Default settings set for each page buffer:
 ```viml
-let g:page_scrolloff_backup = &scrolloff " to restore this global option on other buffer
-setl scrollback=-1 scrolloff=999 signcolumn=no nonumber nomodifiable
-autocmd BufEnter <buffer> set scrolloff=999
-autocmd BufLeave <buffer> let &scrolloff=g:page_scrolloff_backup
+let g:page_scrolloff_backup = &scrolloff 
+" -f filetype not applies for buffers created for <FILES> 
+setl scrollback=-1 scrolloff=999 signcolumn=no nonumber nomodifiable filetype=${-f value}
+exe 'autocmd BufEnter <buffer> set scrolloff=999'
+exe 'autocmd BufLeave <buffer> let &scrolloff=g:page_scrolloff_backup'
+exe 'silent doautocmd User PageOpen'
+" -e command not runs in buffers created for <FILES> 
+exe '${-e value}'
 ```
 
-Autocommands that will be invoked:
+Autocommands documentation:
 ```viml
-silent doautocmd User PageOpen "once when buffer created
-silent doautocmd User PageRead "before write from page stdin
+ "first time when buffer created
+silent doautocmd User PageOpen
+" when -C command enabled (works on connected instance buffer)
+silent doautocmd User PageConnect
+silent doautocmd User PageDisconnect
 ```
 
 ## Shell hacks
@@ -96,7 +104,7 @@ silent doautocmd User PageRead "before write from page stdin
 To set as `$MANPAGER`:
 
 ```
-export MANPAGER="page -E 'sleep 100m|%y p|enew!|bd! #|pu p|set ft=man'"
+export MANPAGER="page -C -e 'au User PageDisconnect sleep 100m|%y p|enew! |bd! #|pu p|set ft=man'"
 ```
 
 To override default neovim config use this file:

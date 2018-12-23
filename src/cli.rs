@@ -21,7 +21,7 @@ pub(crate) struct Options {
     #[structopt(short="A", env="NVIM_PAGE_ARGS")]
     pub arguments: Option<String>,
 
-    /// Neovim config used by neovim child process [file:$XDG_CONFIG_HOME/page/init.vim]
+    /// Neovim config override for neovim child process [file:$XDG_CONFIG_HOME/page/init.vim]
     #[structopt(short="c")]
     pub config: Option<String>,
 
@@ -87,6 +87,10 @@ pub(crate) struct Options {
     /// [env:PAGE_REDIRECTION_PROTECT: (0 to disable)]
     #[structopt(short="W")]
     pub page_no_protect: bool,
+
+    /// Enable PageConnect PageDisconnect autocommands
+    #[structopt(short="C")]
+    pub command_auto: bool,
 
     /// Split right with ratio: window_width  * 3 / (<r-provided> + 1)
     #[structopt(short="r", parse(from_occurrences))]

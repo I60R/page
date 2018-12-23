@@ -16,18 +16,18 @@ pub(crate) struct Context {
     pub nvim_child_process: Option<process::Child>,
     pub switch_back_mode: SwitchBackMode,
     pub instance_mode: InstanceMode,
-    pub creates: bool,
-    pub prints: bool,
-    pub splits: bool,
-    pub focuses: bool,
-    pub piped: bool,
+    pub focuses_on_existed_instance: bool,
+    pub creates_output_buffer: bool,
+    pub creates_in_split: bool,
+    pub prints_output_buffer_pty: bool,
+    pub input_from_pipe: bool,
 }
     
 pub(crate) fn create(
     opt: Options,
     nvim_child_process: Option<process::Child>,
     nvim_actions: &mut NeovimActions,
-    piped: bool,
+    input_from_pipe: bool,
 ) -> IO<Context> {
     use self::SwitchBackMode::*;
     let switch_back_mode = if nvim_child_process.is_some() {
@@ -48,10 +48,10 @@ pub(crate) fn create(
         NoInstance
     };
     let split_flag_provided = has_split_flag_provided(&opt);
-    let creates = !has_early_exit_condition(&opt, piped, split_flag_provided);
-    let splits = nvim_child_process.is_none() && split_flag_provided;
-    let prints = opt.sink_print || !piped && nvim_child_process.is_none();
-    let focuses = should_focus_existed_instance_buffer(&opt, &instance_mode);
+    let creates_output_buffer = !has_early_exit_condition(&opt, input_from_pipe, split_flag_provided);
+    let creates_in_split = nvim_child_process.is_none() && split_flag_provided;
+    let prints_output_buffer_pty = opt.sink_print || !input_from_pipe && nvim_child_process.is_none();
+    let focuses_on_existed_instance = should_focus_existed_instance_buffer(&opt, &instance_mode);
     let initial_window_and_buffer = nvim_actions.get_current_window_and_buffer()?;
     Ok(Context {
         opt,
@@ -59,16 +59,16 @@ pub(crate) fn create(
         initial_window_and_buffer,
         nvim_child_process,
         switch_back_mode,
-        creates,
-        prints,
-        splits,
-        focuses,
-        piped,
+        creates_output_buffer,
+        prints_output_buffer_pty,
+        creates_in_split,
+        focuses_on_existed_instance,
+        input_from_pipe,
     })
 }
 
 fn should_focus_existed_instance_buffer(opt: &Options, instance_mode: &InstanceMode) -> bool {
-    opt.follow || opt.command_post.is_some() || instance_mode.is_replace()
+    opt.follow || opt.command_auto || opt.command_post.is_some() || instance_mode.is_replace()
 }
 
 fn has_split_flag_provided(opt: &Options) -> bool {
@@ -78,9 +78,9 @@ fn has_split_flag_provided(opt: &Options) -> bool {
     || opt.split_above != 0 || opt.split_below != 0
 }
 
-fn has_early_exit_condition(opt: &Options, piped: bool, splits: bool) -> bool {
+fn has_early_exit_condition(opt: &Options, input_from_pipe: bool, creates_in_split: bool) -> bool {
     let has_early_exit_opt = opt.instance_close.is_some() || !opt.files.is_empty();
-    has_early_exit_opt && !piped && !splits
+    has_early_exit_opt && !input_from_pipe && !creates_in_split
     && !opt.back && !opt.back_restore
     && !opt.follow && !opt.follow_all
     && !opt.sink_open && !opt.sink_print
