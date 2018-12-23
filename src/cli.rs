@@ -17,11 +17,11 @@ pub(crate) struct Options {
     #[structopt(short="a", env="NVIM_LISTEN_ADDRESS")]
     pub address: Option<String>,
 
-    /// Neovim arguments passed to neovim child process
+    /// Neovim arguments for new child process
     #[structopt(short="A", env="NVIM_PAGE_ARGS")]
     pub arguments: Option<String>,
 
-    /// Neovim config override for neovim child process [file:$XDG_CONFIG_HOME/page/init.vim]
+    /// Neovim config path for new child process [file:$XDG_CONFIG_HOME/page/init.vim]
     #[structopt(short="c")]
     pub config: Option<String>,
 
@@ -53,11 +53,11 @@ pub(crate) struct Options {
     #[structopt(short="t", default_value="pager")]
     pub filetype: String,
 
-    /// Create and use new output buffer (to display text from page stdin) [implied] 
+    /// Create and use new output buffer (to display text from page stdin) [implied]
     #[structopt(short="o")]
     pub sink_open: bool,
 
-    /// Print path to buffer pty (to redirect `command > /path/to/output`) [implied when page not piped] 
+    /// Print path to buffer pty (to redirect `command > /path/to/output`) [implied when page not piped]
     #[structopt(short="p")]
     pub sink_print: bool,
 
@@ -79,9 +79,9 @@ pub(crate) struct Options {
 
     /// Flush redirecting protection that prevents from producing junk and possible corruption of files
     /// by invoking commands like "unset NVIM_LISTEN_ADDRESS && ls > $(page -E q)" where "$(page -E q)"
-    /// part not evaluates into /path/to/sink as expected but instead into neovim UI, which consists of 
-    /// a bunch of escape characters and strings. Many useless files could be created then and even 
-    /// overwriting of existed file might occur. 
+    /// part not evaluates into /path/to/sink as expected but instead into neovim UI, which consists of
+    /// a bunch of escape characters and strings. Many useless files could be created then and even
+    /// overwriting of existed file might occur.
     /// To prevent that, a path to temporary directory is printed first, which causes "command > directory ..."
     /// to fail early as it's impossible to redirect text into directory.
     /// [env:PAGE_REDIRECTION_PROTECT: (0 to disable)]

@@ -103,7 +103,7 @@ exe '${-e value}'
 Autocommands invoked:
 
 ```viml
- "first time when buffer created
+" first time when buffer created
 silent doautocmd User PageOpen
 " when -C command enabled (this also works on connected instance buffer)
 silent doautocmd User PageConnect
