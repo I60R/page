@@ -12,10 +12,21 @@ Text will be displayed instantly as it arrives - no need to wait until EOF.
 Also, it allows you to redirect text from shell running in :term buffer into a new buffer in parent neovim instance instead of spawning a nested instance for that purpose.  
 This is by utilizing `$NVIM_LISTEN_ADDRESS` as [neovim-remote](https://github.com/mhinz/neovim-remote) does.  
   
-All neovims text editing+searching+navigating facilities, all settings, mappings, plugins, etc. from your neovim config will be effectively reused.   
+All neovims text editing+searching+navigating facilities, all settings, mappings, plugins, etc. from your neovim config will be effectively reused.
 
+## Usage
 
-## Interface
+* *under regular terminal*
+
+![](https://imgur.com/lxDCPpn.gif)
+
+* *under neovim's terminal*
+
+![](https://i.imgur.com/rcLEM6X.gif)
+
+---
+
+## CLI options
 
 <details><summary> (click here to expand `page --help`)</summary>
 
@@ -24,19 +35,20 @@ USAGE:
     page [FLAGS] [OPTIONS] [FILES]...
 
 FLAGS:
-    -o               Open a new buffer [implied] (to show text written into page stdin)
-    -p               Print /dev/pty/* of -o buffer [implied when not piped] (to redirect `ls > /dev/pty*`)
+    -o               Create and use new output buffer (to display text from page stdin) [implied]
+    -p               Print path to buffer pty (to redirect `command > /path/to/output`) [implied when page not piped]
     -b               Return back to current buffer
     -B               Return back to current buffer and enter INSERT mode
     -f               Follow output instead of keeping top position (like `tail -f`)
-    -F               Follow output instead of keeping top position and scroll each of <FILES> to the bottom
+    -F               Follow output instead of keeping top position also for each of <FILES>
     -W               Flush redirecting protection that prevents from producing junk and possible corruption of files by
-                     invoking commands like "unset NVIM_LISTEN_ADDRESS && ls > $(page -E q)" where "$(page -E q)" or
-                     similar capture evaluates not into /dev/pty/* as expected but into whole neovim UI which consists
-                     of a bunch of characters and strings. Many useless files would be created for each word and even
-                     overwriting of files might occur. To prevent that, a path to temporary directory is printed first,
-                     which makes "ls > directory ..." to fail early because it's impossible to redirect text into
-                     directory. [env:PAGE_REDIRECTION_PROTECT: (0 to disable)]
+                     invoking commands like "unset NVIM_LISTEN_ADDRESS && ls > $(page -E q)" where "$(page -E q)" part
+                     not evaluates into /path/to/sink as expected but instead into neovim UI, which consists of a bunch
+                     of escape characters and strings. Many useless files could be created then and even overwriting of
+                     existed file might occur. To prevent that, a path to temporary directory is printed first, which
+                     causes "command > directory ..." to fail early as it's impossible to redirect text into directory.
+                     [env:PAGE_REDIRECTION_PROTECT: (0 to disable)]
+    -C               Enable PageConnect PageDisconnect autocommands
     -r               Split right with ratio: window_width  * 3 / (<r-provided> + 1)
     -l               Split left  with ratio: window_width  * 3 / (<l-provided> + 1)
     -u               Split above with ratio: window_height * 3 / (<u-provided> + 1)
@@ -45,16 +57,16 @@ FLAGS:
     -V, --version    Prints version information
 
 OPTIONS:
-    -a <address>                 Neovim session address [env:NVIM_LISTEN_ADDRESS: ]
-    -A <arguments>               Neovim arguments when a new session is started [env:NVIM_PAGE_ARGS: ]
-    -c <config>                  Neovim config (-u) for a new session [file:$XDG_CONFIG_HOME/page/init.vim]
-    -e <command>                 Run command in a pager buffer when neovim config is sourced and reading begins
-    -E <command_post>            Run command in a pager buffer after reading was done
-    -i <instance>                Use existed named buffer to read stdin or spawn new. New content overwrites previous
-    -I <instance_append>         Use existed named buffer to read stdin or spawn new. New content appends to previous
-    -x <instance_close>          Close named buffer if it exists and exit [revokes implied options]
-    -n <name>                    Set title for -o buffer [env:PAGE_BUFFER_NAME: page -h]
-    -t <filetype>                Set filetype for -o buffer (for syntax highlighting) [default: pager]
+    -a <address>                 Neovim session address [env: NVIM_LISTEN_ADDRESS=/tmp/nvimUbj1Sg/0]
+    -A <arguments>               Neovim arguments for new child process [env: NVIM_PAGE_ARGS=]
+    -c <config>                  Neovim config path for new child process [file:$XDG_CONFIG_HOME/page/init.vim]
+    -e <command>                 Run command in output buffer after it's created
+    -E <command_post>            Run command in output buffer after it's created or connected as instance
+    -i <instance>                Connect or create named output buffer. When connected, new content overwrites previous
+    -I <instance_append>         Connect or create named output buffer. When connected, new content appends to previous
+    -x <instance_close>          Close instance buffer with this name if exist [revokes implied options]
+    -n <name>                    Set output buffer name (displayed in statusline) [env: PAGE_BUFFER_NAME=page --help]
+    -t <filetype>                Set output buffer filetype (for syntax highlighting) [default: pager]
     -R <split_right_cols>        Split right and resize to <split_right_cols> columns
     -L <split_left_cols>         Split left  and resize to <split_left_cols>  columns
     -U <split_above_rows>        Split above and resize to <split_above_rows> rows
@@ -65,36 +77,35 @@ ARGS:
 ```
 </details>
 
-## Usage
+## Viml
 
+Change statusline appearance:
 
-
-## Customizations
-
-Available `init.vim` settings:
 ```viml
 let g:page_icon_instance = '$'
 let g:page_icon_redirect = '>'
 let g:page_icon_pipe = '|'
 ```
 
-Default settings set for each page buffer:
+Defaults for output buffer:
+
 ```viml
-let g:page_scrolloff_backup = &scrolloff 
-" -f filetype not applies for buffers created for <FILES> 
+let g:page_scrolloff_backup = &scrolloff
+" -f filetype not applies for buffers created for <FILES>
 setl scrollback=-1 scrolloff=999 signcolumn=no nonumber nomodifiable filetype=${-f value}
 exe 'autocmd BufEnter <buffer> set scrolloff=999'
 exe 'autocmd BufLeave <buffer> let &scrolloff=g:page_scrolloff_backup'
 exe 'silent doautocmd User PageOpen'
-" -e command not runs in buffers created for <FILES> 
+" -e command not runs on buffers created for <FILES>
 exe '${-e value}'
 ```
 
-Autocommands documentation:
+Autocommands invoked:
+
 ```viml
  "first time when buffer created
 silent doautocmd User PageOpen
-" when -C command enabled (works on connected instance buffer)
+" when -C command enabled (this also works on connected instance buffer)
 silent doautocmd User PageConnect
 silent doautocmd User PageDisconnect
 ```
@@ -103,21 +114,22 @@ silent doautocmd User PageDisconnect
 
 To set as `$MANPAGER`:
 
-```
+```zsh
 export MANPAGER="page -C -e 'au User PageDisconnect sleep 100m|%y p|enew! |bd! #|pu p|set ft=man'"
 ```
 
-To override default neovim config use this file:
-```
+To override default neovim config create this file (or use -c option):
+
+```zsh
 $XDG_CONFIG_HOME/page/init.vim
 ```
 
-To display buffer name as first two words from invoked command (zsh only):
+To set output buffer name as first two words from invoked command (zsh only):
 
-```
-preexec() { 
-    echo "${1// *|*}" | read -A words 
-    export PAGE_BUFFER_NAME="${words[@]:0:2}" 
+```zsh
+preexec() {
+    echo "${1// *|*}" | read -A words
+    export PAGE_BUFFER_NAME="${words[@]:0:2}"
 }
 ```
 
@@ -134,7 +146,7 @@ preexec() {
 ## Limitations
 
 * Only ~100000 lines can be displayed (this is neovim terminal limit)
-* `MANPAGER=page -t man` not works because `set ft=man` fails on :term buffer (might affect other filetypes)
+* `MANPAGER=page -t man` not works because `set ft=man` fails on :term buffer (other filetypes may be affected as well)
 
 
 ## Installation
