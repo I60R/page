@@ -300,14 +300,7 @@ fn main() -> IO {
 
 pub(crate) fn init_logger() -> IO {
     Dispatch::new()
-        .format(|out, message, record| {
-            out.finish(format_args!(
-                "[{}][{}] {}",
-                record.level(),
-                record.target(),
-                message
-            ))
-        })
+        .format(|out, message, record| out.finish(format_args!("[{}][{}] {}", record.level(), record.target(), message)))
         .level(LevelFilter::from_str(env::var("RUST_LOG").as_ref().map(String::as_ref).unwrap_or("warn"))?)
         .level_for("neovim_lib", LevelFilter::Off)
         .chain(std::io::stderr())
@@ -478,7 +471,7 @@ pub(crate) mod app {
 
         pub(crate) fn handle_commands(&mut self) -> IO {
             if self.context.opt.command_auto {
-                self.nvim_actions.execute_page_connect_autocmd_on_buffer(&self.buffer)?;
+                self.nvim_actions.execute_connect_autocmd_on_current_buffer()?;
             }
             if let Some(ref command) = self.context.opt.command_post {
                 self.nvim_actions.execute_command_post(&command)?;
@@ -521,13 +514,17 @@ pub(crate) mod app {
         pub(crate) fn handle_disconnect(&mut self) -> IO {
             let Self { nvim_actions, buffer, context, .. } = self;
             if context.opt.command_auto {
-                let temp_switch_buffer = buffer != &nvim_actions.get_current_buffer()?;
+                let final_buffer = nvim_actions.get_current_buffer()?;
+                let temp_switch_buffer = &final_buffer != buffer;
                 if temp_switch_buffer {
                     nvim_actions.switch_to_buffer(&buffer)?;
                 }
-                nvim_actions.execute_page_disconnect_autocmd_on_buffer(&buffer)?;
+                nvim_actions.execute_disconnect_autocmd_on_current_buffer()?;
                 if temp_switch_buffer {
-                    nvim_actions.switch_to_buffer(&context.initial_window_and_buffer.1)?;
+                    nvim_actions.switch_to_buffer(&final_buffer)?;
+                    if context.initial_window_and_buffer.1 == final_buffer && context.switch_back_mode.is_insert() {
+                        nvim_actions.set_current_buffer_insert_mode()?;
+                    }
                 }
             }
             Ok(())

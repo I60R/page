@@ -200,17 +200,15 @@ impl<'a> NeovimActions {
         Ok(())
     }
 
-    pub(crate) fn execute_page_connect_autocmd_on_buffer(&mut self, buffer: &Buffer) -> IO {
-        let buffer_number = buffer.get_number(&mut self.nvim)?;
-        trace!(target: "autocmd PageConnect", "{}", buffer_number);
-        self.nvim.command(&format!("{}bufdo silent doautocmd User PageConnect", buffer_number))?;
+    pub(crate) fn execute_connect_autocmd_on_current_buffer(&mut self) -> IO {
+        trace!(target: "autocmd PageConnect", "");
+        self.nvim.command("silent doautocmd User PageConnect")?;
         Ok(())
     }
 
-    pub(crate) fn execute_page_disconnect_autocmd_on_buffer(&mut self, buffer: &Buffer) -> IO {
-        let buffer_number = buffer.get_number(&mut self.nvim)?;
-        trace!(target: "autocmd PageDisconnect", "{}", buffer_number);
-        self.nvim.command(&format!("{}bufdo silent doautocmd User PageDisconnect", buffer_number))?;
+    pub(crate) fn execute_disconnect_autocmd_on_current_buffer(&mut self) -> IO {
+        trace!(target: "autocmd PageDisconnect", "");
+        self.nvim.command("silent doautocmd User PageDisconnect")?;
         Ok(())
     }
 
