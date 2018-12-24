@@ -352,9 +352,9 @@ pub(crate) mod connection {
             nvim_args
         };
         trace!(target: "new nvim process", "args: {}", nvim_args);
-        let nvim_args_separate = nvim_args.split(|c: char| c.is_whitespace()).collect::<Vec<_>>();
+        let nvim_args_split = shell_words::split(&nvim_args)?;
         let nvim_child_process = Command::new("nvim")
-            .args(&nvim_args_separate)
+            .args(&nvim_args_split)
             .stdin(Stdio::null()) // Don't inherit stdin, nvim can't redirect text into terminal buffer from it
             .spawn()?;
         common::util::wait_until_file_created(&nvim_child_listen_address)?;
