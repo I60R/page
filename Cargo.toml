@@ -23,6 +23,9 @@ fern = "0.5.7"
 [build-dependencies]
 structopt = "0.2.14"
 
+[profile.release]
+lto = true
+
 [[bin]]
 name = "page-term-agent"
 path = "src/page-term-agent.rs"

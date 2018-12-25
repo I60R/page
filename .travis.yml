@@ -2,6 +2,7 @@ dist: trusty
 language: rust
 rust: stable
 cache: cargo
+services: docker
 
 branches:
   only:
@@ -85,19 +86,23 @@ matrix:
     # - env: TARGET=thumbv7m-none-eabi
 
 
-install:
-  - rustup target add $TARGET
+install: |
+  set -e
+  rustup target add $TARGET
+  cargo install cross
 
+script: |
+  cross check --target=$TARGET
+  cross test --target=$TARGET
 
 before_deploy: |
-    set -ex
-    local src=$PWD temp=$(mktemp -d)
-    cargo build --verbose --release --target=$TARGET -- -C lto
-    cp -r target/{$TARGET/release/{page,page-term-agent},shell_completions} $temp
-    cd $temp
-    tar czf $src/$CRATE_NAME-$TRAVIS_TAG-$TARGET.tar.gz *
-    cd $src
-    rm -rf $temp
+  local src=$PWD temp=$(mktemp -d)
+  cross build --verbose --release --target=$TARGET
+  cp -r target/{$TARGET/release/{page,page-term-agent},shell_completions} $temp
+  cd $temp
+  tar czf $src/$CRATE_NAME-$TRAVIS_TAG-$TARGET.tar.gz *
+  cd $src
+  rm -rf $temp
 
 
 deploy:
