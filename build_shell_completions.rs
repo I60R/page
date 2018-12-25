@@ -8,7 +8,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let completions_dir = {
         let mut completions_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
         completions_dir.push("target");
-        completions_dir.push(env::var("PROFILE")?);
         completions_dir.push("shell_completions");
         completions_dir
     };

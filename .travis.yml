@@ -85,11 +85,15 @@ matrix:
     # - env: TARGET=thumbv7m-none-eabi
 
 
+install:
+  - rustup target add $TARGET
+
+
 before_deploy: |
     set -ex
     local src=$PWD temp=$(mktemp -d)
-    cargo build --verbose --release --target=$TARGET
-    cp -r target/release/{page,page-term-agent,shell_completions} $temp
+    cargo build --verbose --release --target=$TARGET -- -C lto
+    cp -r target/{$TARGET/release/{page,page-term-agent},shell_completions} $temp
     cd $temp
     tar czf $src/$CRATE_NAME-$TRAVIS_TAG-$TARGET.tar.gz *
     cd $src
@@ -99,7 +103,7 @@ before_deploy: |
 deploy:
   provider: releases
   on:
-    condition: $TRAVIS_RUST_VERSION = stable
+    condition: $TRAVIS_RUST_VERSION = stable && ! -z $TARGET
     tags: true
   file: $CRATE_NAME-$TRAVIS_TAG-$TARGET.*
   file_glob: true
