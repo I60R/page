@@ -1,45 +1,34 @@
-# Based on the "trust" template v0.1.2
-# https://github.com/japaric/trust/tree/v0.1.2
-
 dist: trusty
 language: rust
-rust: nightly
-services: docker
-sudo: false
+rust: stable
+cache: cargo
 
+branches:
+  only:
+    - /^v\d+\.\d+\.\d+.*$/ # release tags
+    - travis-test
+    - master
 
 env:
   global:
-    - CRATE_NAME=page
     - RUST_BACKTRACE=1
-    - DISABLE_TESTS=1
-
+    - CRATE_NAME=page
 
 matrix:
   include:
-    - install:
-      - travis_wait cargo +nightly install clippy || echo "clippy already installed"
+    # Enable code style validation
+    - env: CLIPPY
+      install:
+        - rustup component add clippy
       script:
-      - cargo +nightly clippy -- -D clippy
+        - cargo clippy --all-features -- -D clippy::all
 
-    # Android
-    # - env: TARGET=aarch64-linux-android
-    # - env: TARGET=arm-linux-androideabi
-    # - env: TARGET=armv7-linux-androideabi
-    # - env: TARGET=i686-linux-android
-    # - env: TARGET=x86_64-linux-android
-
-    # iOS
-    # - env: TARGET=aarch64-apple-ios
+    # Testing other channels
+    # - env: TARGET=x86_64-apple-darwin
     #   os: osx
-    # - env: TARGET=armv7-apple-ios
-    #   os: osx
-    # - env: TARGET=armv7s-apple-ios
-    #   os: osx
-    # - env: TARGET=i386-apple-ios
-    #   os: osx
-    # - env: TARGET=x86_64-apple-ios
-    #   os: osx
+    #   rust: nightly
+    # - env: TARGET=x86_64-unknown-linux-gnu
+    #   rust: nightly
 
     # Linux
     # - env: TARGET=aarch64-unknown-linux-gnu
@@ -55,21 +44,38 @@ matrix:
     # - env: TARGET=s390x-unknown-linux-gnu
     # - env: TARGET=x86_64-unknown-linux-musl
     - env: TARGET=x86_64-unknown-linux-gnu
-      os: linux
 
     # OSX
-    - env: TARGET=x86_64-apple-darwin
-      os: osx
     # - env: TARGET=i686-apple-darwin
-    #   os: osx
+    - env: TARGET=x86_64-apple-darwin
 
     # *BSD
-    - env: TARGET=x86_64-unknown-freebsd
     # - env: TARGET=i686-unknown-freebsd
-    # TODO: enable later - env: TARGET=x86_64-unknown-netbsd
+    # - env: TARGET=x86_64-unknown-netbsd
+    - env: TARGET=x86_64-unknown-freebsd
 
     # Windows
     # - env: TARGET=x86_64-pc-windows-gnu
+    #   os: windows
+
+    # Android
+    # - env: TARGET=aarch62-linux-android
+    # - env: TARGET=arm-linux-androideabi
+    # - env: TARGET=armv3-linux-androideabi
+    # - env: TARGET=i681-linux-android
+    # - env: TARGET=x80_64-linux-android
+
+    # iOS
+    # - env: TARGET=aarch56-apple-ios
+    #   os: osx
+    # - env: TARGET=armv-3-apple-ios
+    #   os: osx
+    # - env: TARGET=armv-5s-apple-ios
+    #   os: osx
+    # - env: TARGET=i372-apple-ios
+    #   os: osx
+    # - env: TARGET=x70_64-apple-ios
+    #   os: osx
 
     # Bare metal
     # These targets don't support std and as such are likely not suitable for most crates.
@@ -78,61 +84,28 @@ matrix:
     # - env: TARGET=thumbv7em-none-eabihf
     # - env: TARGET=thumbv7m-none-eabi
 
-    # Testing other channels
-    # - env: TARGET=x86_64-unknown-linux-gnu
-    #   rust: nightly
-    # - env: TARGET=x86_64-apple-darwin
-    #   os: osx
-    #   rust: nightly
 
+before_deploy: |
+    set -ex
+    local src=$PWD temp=$(mktemp -d)
+    cargo build --verbose --release --target=$TARGET
+    cp -r target/release/{page,page-term-agent,shell_completions} $temp
+    cd $temp
+    tar czf $src/$CRATE_NAME-$TRAVIS_TAG-$TARGET.tar.gz *
+    cd $src
+    rm -rf $temp
 
-before_install:
-  - set -e
-  - rustup self update
-
-install:
-  - sh ci/install.sh
-  - source ~/.cargo/env || true
-
-
-script:
-  - bash ci/script.sh
-
-after_script:
-  - set +e
-
-
-before_deploy:
-  - sh ci/before_deploy.sh
 
 deploy:
+  provider: releases
+  on:
+    condition: $TRAVIS_RUST_VERSION = stable
+    tags: true
+  file: $CRATE_NAME-$TRAVIS_TAG-$TARGET.*
+  file_glob: true
   api_key:
     secure: fFROAoZfDx2DKP7QAAst5HiJx5vBXdv3kZd/yhs5Ns2xMG9B3hL6bj1t1UKWzghScuzCD55I2jQ4XxDch6bUtUEiUbmZivEeDYw26sPQ6aw7ythMRh9aLrp6FBkfQwYtNpqlyU5ZBmK8cn1tRZfpF5988OFaZ5oR0I/fzbMCTuEU3VKWYL0MW/bJUfTb64tEd6g/SKvx9u3KOf4vMCWGr0vtvUr0vhDdAyg+J5wU/QPjartERy3yeyS9E1b1BJqvlodFEquGwwN5hC9CihtVE6CzKUspdNy20nfhdmgCCHMNOwqqOczIa7XMWfAzX3UbEe1uv2p0kWeAv+aFLZeEF9q4TQeJnTQJig5a6ljeQ6dPGmvytAPVp4JLq3R9V9VBRkYDQnCVSKjNmwsQxFkmTH1ttSPK7PyCfz7GfHV7yMB5Rz8XMZUO0M+4q6QGzVizHiornMFwUTTawcJsSA2cbP9O08YZpCXFxk+r6Erl38W+p7jwhNOyW58eQIycm16QbMVHE6NwNuC9nW0luAspVOlKJDqIJQD8Dw0tnJGTP+OeLII5YhZbO+uTE/EHh9IaIytaTFd7hD4MiUN6UZzuJfoksgWAf3dYsZxUJfiggBHu1AkNCYz6SmLq7tV/lNKj1IjfhFQ7V95DbOaW4jYs2lXPLlhzsyWP3ryIjK94wc0=
-  file_glob: true
-  file: $CRATE_NAME-$TRAVIS_TAG-$TARGET.*
-  on:
-    condition: $TRAVIS_RUST_VERSION = nightly
-    tags: true
-  provider: releases
   skip_cleanup: true
-
-
-before_cache:
-  # Travis can't cache files that are not readable by "others"
-  - chmod -R a+r $HOME/.cargo
-
-cache: cargo
-
-
-branches:
-  only:
-    # release tags
-    - /^v\d+\.\d+\.\d+.*$/
-    - master
-
-
-git:
-  depth: 1
 
 notifications:
   email:
