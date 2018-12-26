@@ -5,18 +5,13 @@ include!("src/cli.rs");
 
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let completions_dir = {
-        let mut completions_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
-        completions_dir.push("target");
-        completions_dir.push(env::var("PROFILE")?);
-        completions_dir.push("shell_completions");
-        completions_dir
-    };
-    println!("output dir for shell completions: {:?}", completions_dir);
-    fs::create_dir_all(&completions_dir)?;
+    let mut out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    out_dir.push("shell_completions");
+    eprintln!("Shell completions would be generated in the following dir: {:?}", out_dir);
+    fs::create_dir_all(&out_dir)?;
     let mut app = Options::clap();
-    app.gen_completions("page", Shell::Zsh, &completions_dir);
-    app.gen_completions("page", Shell::Bash, &completions_dir);
-    app.gen_completions("page", Shell::Fish, &completions_dir);
+    app.gen_completions("page", Shell::Zsh, &out_dir);
+    app.gen_completions("page", Shell::Bash, &out_dir);
+    app.gen_completions("page", Shell::Fish, &out_dir);
     Ok(())
 }
