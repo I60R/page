@@ -338,6 +338,7 @@ pub(crate) mod connection {
         };
         let nvim_args = {
             let mut nvim_args = String::new();
+            nvim_args.push_str("--cmd 'set shortmess+=I' ");
             nvim_args.push_str("--listen ");
             nvim_args.push_str(&nvim_child_listen_address.to_string_lossy());
             if let Some(config) = opt.config.clone().or_else(default_config_path) {
