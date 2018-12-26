@@ -100,13 +100,13 @@ script: |
   # cross test --target=$TARGET TODO: uncomment; currently fails on freebsd
 
 before_deploy: |
-  set -e
   local src=$PWD temp=$([[ $TRAVIS_OS_NAME = "osx" ]] && mktemp -d -t tmp || mktemp -d)
   cp -r target/$TARGET/release/{page,page-term-agent} $temp
   cd $temp
   tar czf $src/$CRATE_NAME-$TRAVIS_TAG-$TARGET.tar.gz *
   cd $src
   rm -rf $temp
+  set +e
 
 
 deploy:
