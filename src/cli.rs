@@ -1,80 +1,110 @@
-use structopt::{clap::{ ArgGroup, AppSettings::* }};
+use structopt::{
+    clap::{ArgGroup, AppSettings::*},
+    StructOpt,
+};
 
 
-#[derive(StructOpt)]
+// Contains arguments provided by command line
+#[derive(StructOpt, Debug)]
 #[structopt(raw(
     global_settings="&[DisableHelpSubcommand, DeriveDisplayOrder]",
     group="splits_arg_group()",
     group="back_arg_group()",
+    group="follow_arg_group()",
     group="instance_use_arg_group()"))]
-pub struct Opt {
+pub(crate) struct Options {
     /// Neovim session address
     #[structopt(short="a", env="NVIM_LISTEN_ADDRESS")]
     pub address: Option<String>,
 
-    /// Run command in pager buffer when reading begins
+    /// Neovim arguments for new child process
+    #[structopt(short="A", env="NVIM_PAGE_ARGS")]
+    pub arguments: Option<String>,
+
+    /// Neovim config path for new child process [file:$XDG_CONFIG_HOME/page/init.vim]
+    #[structopt(short="c")]
+    pub config: Option<String>,
+
+    /// Run command in output buffer after it's created
     #[structopt(short="e")]
     pub command: Option<String>,
 
-    /// Run command in pager buffer after reading was done
+    /// Run command in output buffer after it's created or connected as instance
     #[structopt(short="E")]
     pub command_post: Option<String>,
 
-    /// Use named instance buffer if exist, or spawn new. New content will overwrite
+    /// Connect or create named output buffer. When connected, new content overwrites previous
     #[structopt(short="i")]
     pub instance: Option<String>,
 
-    /// Use named instance buffer if exist, or spawn new. New content will be appended
+    /// Connect or create named output buffer. When connected, new content appends to previous
     #[structopt(short="I")]
     pub instance_append: Option<String>,
 
-    /// Only closes named instance buffer if exists
+    /// Close instance buffer with this name if exist [revokes implied options]
     #[structopt(short="x")]
     pub instance_close: Option<String>,
 
-    /// Hint for syntax highlighting when reads from stdin
+    /// Set output buffer name (displayed in statusline)
+    #[structopt(short="n", env="PAGE_BUFFER_NAME")]
+    pub name: Option<String>,
+
+    /// Set output buffer filetype (for syntax highlighting)
     #[structopt(short="t", default_value="pager")]
     pub filetype: String,
 
-    /// Open new buffer [set by default, unless only <instance_close> or <FILES> provided]
+    /// Create and use new output buffer (to display text from page stdin) [implied]
     #[structopt(short="o")]
-    pub pty_open: bool,
+    pub sink_open: bool,
 
-    /// Print path to /dev/pty/* for redirecting [set by default when don't reads from pipe]
+    /// Print path to buffer pty (to redirect `command > /path/to/output`) [implied when page not piped]
     #[structopt(short="p")]
-    pub pty_print: bool,
+    pub sink_print: bool,
 
-    /// Stay focused on current buffer
+    /// Return back to current buffer
     #[structopt(short="b")]
     pub back: bool,
 
-    /// Stay focused on current buffer and keep INSERT mode
+    /// Return back to current buffer and enter INSERT mode
     #[structopt(short="B")]
-    pub back_insert: bool,
+    pub back_restore: bool,
 
-    /// Follow output instead of keeping position
+    /// Follow output instead of keeping top position (like `tail -f`)
     #[structopt(short="f")]
     pub follow: bool,
 
-    /// Flush redirecting protection, that prevents from producing junk and possible corruption of files
-    /// when no <address> available and "cmd > $(page)" is invoked, because $(page) here will hold nvim UI.
-    /// [env: PAGE_REDIRECTION_PROTECT:1]
+    /// Follow output instead of keeping top position also for each of <FILES>
+    #[structopt(short="F")]
+    pub follow_all: bool,
+
+    /// Flush redirecting protection that prevents from producing junk and possible corruption of files
+    /// by invoking commands like "unset NVIM_LISTEN_ADDRESS && ls > $(page -E q)" where "$(page -E q)"
+    /// part not evaluates into /path/to/sink as expected but instead into neovim UI, which consists of
+    /// a bunch of escape characters and strings. Many useless files could be created then and even
+    /// overwriting of existed file might occur.
+    /// To prevent that, a path to temporary directory is printed first, which causes "command > directory ..."
+    /// to fail early as it's impossible to redirect text into directory.
+    /// [env:PAGE_REDIRECTION_PROTECT: (0 to disable)]
     #[structopt(short="W")]
     pub page_no_protect: bool,
 
-    /// Split right with ratio: window_width  * 3 / (<r provided> + 1)
+    /// Enable PageConnect PageDisconnect autocommands
+    #[structopt(short="C")]
+    pub command_auto: bool,
+
+    /// Split right with ratio: window_width  * 3 / (<r-provided> + 1)
     #[structopt(short="r", parse(from_occurrences))]
     pub split_right: u8,
 
-    /// Split left  with ratio: window_width  * 3 / (<l provided> + 1)
+    /// Split left  with ratio: window_width  * 3 / (<l-provided> + 1)
     #[structopt(short="l", parse(from_occurrences))]
     pub split_left: u8,
 
-    /// Split above with ratio: window_height * 3 / (<u provided> + 1)
+    /// Split above with ratio: window_height * 3 / (<u-provided> + 1)
     #[structopt(short="u", parse(from_occurrences))]
     pub split_above: u8,
 
-    /// Split below with ratio: window_height * 3 / (<d provided> + 1)
+    /// Split below with ratio: window_height * 3 / (<d-provided> + 1)
     #[structopt(short="d", parse(from_occurrences))]
     pub split_below: u8,
 
@@ -94,7 +124,7 @@ pub struct Opt {
     #[structopt(short="D")]
     pub split_below_rows: Option<u8>,
 
-    /// Additionally open these files in separate buffers
+    /// Open provided files in separate buffers [revokes implied options]
     #[structopt(name="FILES")]
     pub files: Vec<String>
 }
@@ -107,8 +137,14 @@ fn instance_use_arg_group() -> ArgGroup<'static> {
 }
 
 fn back_arg_group() -> ArgGroup<'static> {
-    ArgGroup::with_name("backs")
-        .args(&["back", "back_insert"])
+    ArgGroup::with_name("focusing")
+        .args(&["back", "back_restore"])
+        .multiple(false)
+}
+
+fn follow_arg_group() -> ArgGroup<'static> {
+    ArgGroup::with_name("following")
+        .args(&["follow", "follow_all"])
         .multiple(false)
 }
 
@@ -117,4 +153,9 @@ fn splits_arg_group() -> ArgGroup<'static> {
         .args(&["split_left", "split_right", "split_above", "split_below"])
         .args(&["split_left_cols", "split_right_cols", "split_above_rows", "split_below_rows"])
         .multiple(false)
+}
+
+
+pub(crate) fn get_options() -> Options {
+    Options::from_args()
 }
