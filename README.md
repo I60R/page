@@ -152,14 +152,13 @@ preexec() {
 ## Installation
 
 * From binaries
-  * Grab binary for your platform from [releases](https://github.com/I60R/page/releases)
+    * Grab binary for your platform from [releases](https://github.com/I60R/page/releases)
 
 * Arch Linux:
-  * Make package: `git clone git@github.com:I60R/page.git && cd page && makepkg -ef`
-  * Install: `sudo pacman -U page-git*.pkg.tar.xz`
+    * Package [page-git](https://aur.archlinux.org/packages/page-git/) available in AUR
+    * Or:` git clone git@github.com:I60R/page.git && cd page && makepkg -ef && sudo pacman -U page-git*.pkg.tar.xz`
 
 * Manually:
-  * Install `rustup` from your distribution package manager
-  * Configure toolchain: `rustup install stable && rustup default stable`
-  * `git clone git@github.com:I60R/page.git && cd page`
-  * `cargo install --root / --force` (if that requires permission you must configure toolchain as root (or system wide) and re-run with `sudo`)
+    * Install `rustup` from your distribution package manager
+    * Configure toolchain: `rustup install stable && rustup default stable`
+    * `git clone git@github.com:I60R/page.git && cd page && cargo install`
