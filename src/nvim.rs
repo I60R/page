@@ -17,7 +17,10 @@ use std::{
     iter,
     path::PathBuf,
 };
-use log::trace;
+use log::{
+    trace,
+    warn,
+};
 
 
 /// A facade for neovim, provides common actions 
@@ -124,7 +127,7 @@ impl NeovimActions {
             PathBuf::from(buffer_pty_path)
         };
         if let Err(e) = fs::remove_file(&term_agent_pipe_path) {
-            eprintln!("can't remove agent pipe {:?}: {:?}", term_agent_pipe_path, e);
+            warn!(target: "remove agent pipe", "failed {:?}: {:?}", term_agent_pipe_path, e);
         }
         Ok(buffer_pty_path)
     }
@@ -231,10 +234,10 @@ impl NeovimActions {
     pub fn switch_to_window_and_buffer(&mut self, (win, buf): &(Window, Buffer)) -> IO {
         trace!(target: "switch window and buffer", "win:{:?} buf:{:?}",  win.get_number(&mut self.nvim), buf.get_number(&mut self.nvim));
         if let Err(e) = self.nvim.set_current_win(win) {
-            eprintln!("Can't switch to window: {}", e);
+            warn!("Can't switch to window: {}", e);
         }
         if let Err(e) = self.nvim.set_current_buf(buf) {
-            eprintln!("Can't switch to buffer: {}", e);
+            warn!("Can't switch to buffer: {}", e);
         }
         Ok(())
     }
@@ -322,7 +325,7 @@ pub mod listen {
 
     impl Handler for ResponseReceiver {
         fn handle_notify(&mut self, name: &str, args: Vec<Value>) { 
-            trace!("got response: {} => {:?} ", name, args);
+            trace!("Got response: {} => {:?} ", name, args);
             let id_matches = || args.get(0).and_then(|v|v.as_str()).map_or(false, |v| v == self.page_id);
             match name {
                 "page_fetch_lines" if id_matches() => {
@@ -336,13 +339,13 @@ pub mod listen {
                     self.sender.send(PageCommand::BufferClosed).unwrap();
                 }
                 _ => {
-                    warn!(target: "unknown response", "");
+                    warn!(target: "Unknown response", "");
                 }
             }
         }
         fn handle_request(&mut self, name: &str, args: Vec<Value>) -> Result<Value, Value> { 
             trace!("got request: {} => {:?} ", name, args);
-            warn!(target: "unknown request", "");
+            warn!(target: "Unknown request", "");
             Ok(Value::from(0))
         }
     }

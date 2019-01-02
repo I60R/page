@@ -7,7 +7,7 @@ use crate::common::IO;
 
 use atty::Stream;
 use std::{env, str::FromStr};
-use log::{info, LevelFilter};
+use log::{info, warn, LevelFilter};
 use fern::Dispatch;
 
 
@@ -19,7 +19,7 @@ fn main() -> IO {
     let page_tmp_dir = common::util::get_page_tmp_dir()?;
     let input_from_pipe = atty::isnt(Stream::Stdin);
     if opt.lines_in_query != 0 && !input_from_pipe {
-        eprintln!("Query works only when page reads from pipe");
+        warn!("Query works only when page reads from pipe");
     }
     let prints_protection = !input_from_pipe && !opt.page_no_protect && env::var_os("PAGE_REDIRECTION_PROTECT").map_or(true, |v| v != "0");
     let (mut nvim_actions, nvim_child_process) = nvim::connection::get_nvim_connection(&opt, &page_tmp_dir, prints_protection)?;
@@ -64,6 +64,7 @@ pub(crate) mod app {
         process,
     };    
     use neovim_lib::neovim_api::Buffer;
+    use log::warn;
 
 
 
@@ -80,7 +81,7 @@ pub(crate) mod app {
                 if context.nvim_child_process.is_none() {
                     nvim_actions.close_instance_buffer(name)?;
                 } else {
-                    eprintln!("Newly spawned neovim process cannot contain any instances")
+                    warn!("Newly spawned neovim process cannot contain any instances")
                 }
             }
             Ok(())
@@ -90,7 +91,7 @@ pub(crate) mod app {
             let Self { nvim_actions, context, .. } = self;
             for file in &context.opt.files {
                 if let Err(e) = nvim_actions.open_file_buffer(file) {
-                    eprintln!("Error opening \"{}\": {}", file, e);
+                    warn!("Error opening \"{}\": {}", file, e);
                 } else {
                     let command_or_empty = &context.opt.command.as_ref().map(String::as_ref).unwrap_or_default();
                     nvim_actions.set_page_options_to_current_buffer("&filetype", command_or_empty, "", "")?; // The same filetype
@@ -273,7 +274,7 @@ pub(crate) mod app {
                         match stdin_lines.next() {
                             Some(Ok(line)) => writeln!(opened_sink, "{}", line)?,
                             Some(Err(err)) => {
-                                eprintln!("error reading stdin line: {}", err);
+                                warn!("Error reading line from stdin: {}", err);
                                 break;
                             },
                             None => {
