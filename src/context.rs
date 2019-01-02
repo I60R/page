@@ -89,6 +89,7 @@ fn has_early_exit_condition(opt: &Options, input_from_pipe: bool, creates_in_spl
     && !opt.back && !opt.back_restore
     && !opt.follow && !opt.follow_all
     && !opt.sink_open && !opt.sink_print
+    && !opt.lines_in_query != 0
     && opt.instance.is_none() && opt.instance_append.is_none()
     && opt.command.is_none() && opt.command_post.is_none()
     && &opt.filetype == "pager"

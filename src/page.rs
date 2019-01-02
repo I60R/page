@@ -18,6 +18,9 @@ fn main() -> IO {
     info!("options: {:#?}", opt);
     let page_tmp_dir = common::util::get_page_tmp_dir()?;
     let input_from_pipe = atty::isnt(Stream::Stdin);
+    if opt.lines_in_query != 0 && !input_from_pipe {
+        eprintln!("Query works only when page reads from pipe");
+    }
     let prints_protection = !input_from_pipe && !opt.page_no_protect && env::var_os("PAGE_REDIRECTION_PROTECT").map_or(true, |v| v != "0");
     let (mut nvim_actions, nvim_child_process) = nvim::connection::get_nvim_connection(&opt, &page_tmp_dir, prints_protection)?;
     let context = context::create(opt, nvim_child_process, &mut nvim_actions, input_from_pipe)?;

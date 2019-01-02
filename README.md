@@ -14,6 +14,7 @@ This is by utilizing `$NVIM_LISTEN_ADDRESS` as [neovim-remote](https://github.co
   
 All neovims text editing+searching+navigating facilities, all settings, mappings, plugins, etc. from your neovim config will be effectively reused.
 
+
 ## Usage
 
 * *under regular terminal*
@@ -25,6 +26,7 @@ All neovims text editing+searching+navigating facilities, all settings, mappings
 ![](https://i.imgur.com/rcLEM6X.gif)
 
 ---
+
 
 ## CLI options
 
@@ -77,6 +79,7 @@ ARGS:
 ```
 </details>
 
+
 ## Viml
 
 Change statusline appearance:
@@ -110,9 +113,22 @@ silent doautocmd User PageConnect
 silent doautocmd User PageDisconnect
 ```
 
+
+## Limitations
+
+* Only ~100000 lines can be displayed (this is neovim terminal limit)
+* `MANPAGER=page -t man` not works because `set ft=man` fails on :term buffer (other filetypes may be affected as well)
+
+
 ## Shell hacks
 
-To set as `$MANPAGER`:
+To use as `$PAGER` without scrollback overflow:
+
+```zsh
+export PAGER="page -q 90000"
+```
+
+To use as `$MANPAGER` without error:
 
 ```zsh
 export MANPAGER="page -C -e 'au User PageDisconnect sleep 100m|%y p|enew! |bd! #|pu p|set ft=man'"
@@ -141,12 +157,6 @@ preexec() {
 * `page-term-agent` reveals (through *{pipe}*) path to PTY device associated with current terminal buffer and blocks it's own thread to keep that buffer open
 * `page` redirects all data from STDIN into PTY device (opened from path read from {pipe})
 * When `page` is'nt piped, PTY device path will be printed, user then can redirect into it manually
-
-
-## Limitations
-
-* Only ~100000 lines can be displayed (this is neovim terminal limit)
-* `MANPAGER=page -t man` not works because `set ft=man` fails on :term buffer (other filetypes may be affected as well)
 
 
 ## Installation
