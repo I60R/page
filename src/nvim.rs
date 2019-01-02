@@ -1,5 +1,8 @@
-use crate::cli::Options;
-use crate::common::{self, IO};
+use crate::{
+    cli::Options,
+    common::{self, IO},
+    nvim::listen::{PageCommand, ResponseReceiver},
+};
 
 use neovim_lib::{
     neovim_api::{Window, Buffer},
@@ -9,6 +12,7 @@ use neovim_lib::{
 };
 use std::{
     fs::{self, File},
+    sync::mpsc::{Receiver, sync_channel},
     io::Read,
     iter,
     path::PathBuf,
@@ -181,19 +185,25 @@ impl<'a> NeovimActions {
     }
 
     pub(crate) fn set_page_options_to_current_buffer(
-        &mut self,
-        filetype: &str,
-        command: &str,
+        &mut self, 
+        filetype: &str, 
+        command: &str, 
+        define_page_command: &str,
+        define_page_command_disconnect: &str,
     ) -> IO {
         let options = &format!(
             " let g:page_scrolloff_backup = &scrolloff \
-            | setl scrollback=-1 scrolloff=999 signcolumn=no nonumber nomodifiable filetype={} \
-            | exe 'autocmd BufEnter <buffer> set scrolloff=999' \
+            | setl scrollback=-1 scrolloff=999 signcolumn=no nonumber nomodifiable filetype={filetype} \
+            | exe 'autocmd BufEnter <buffer> set scrolloff=999 | {page_command}' \
             | exe 'autocmd BufLeave <buffer> let &scrolloff=g:page_scrolloff_backup' \
+            | exe '{page_command}' \
+            | exe '{page_command_disconnect}' \
             | exe 'silent doautocmd User PageOpen' \
-            | exe '{}'",
-            filetype,
-            &command.replace("'", "''"), // Ecranizes viml literal string
+            | exe '{user_command}'",
+            filetype = filetype,
+            page_command = define_page_command,
+            page_command_disconnect = define_page_command_disconnect,
+            user_command = command.replace("'", "''"), // Ecranizes viml literal string,
         );
         trace!(target: "set default options", "{}", &options);
         self.nvim.command(options)?;
@@ -259,6 +269,25 @@ impl<'a> NeovimActions {
         Ok(())
     }
 
+    pub(crate) fn notify_query_finished(&mut self, lines_read: u64) -> IO {
+        self.nvim.command(&format!("echom '{} lines read'", lines_read))?;
+        Ok(())
+    }
+    
+    pub(crate) fn notify_page_read(&mut self) -> IO {
+        self.nvim.command("echom 'End of input'")?;
+        Ok(())
+    }
+
+    pub(crate) fn subscribe_to_page_commands(&mut self, page_id: &str) -> IO<Receiver<PageCommand>> {
+        trace!(target: "wait for next page", "");
+        let (sender, receiver) = sync_channel(16);
+        self.nvim.session.start_event_loop_handler(ResponseReceiver { sender, page_id: page_id.to_string() });
+        self.nvim.subscribe("page_fetch_lines")?;
+        self.nvim.subscribe("page_buffer_closed")?;
+        Ok(receiver)
+    }
+
     pub(crate) fn get_var_or_default(&mut self, key: &str, default: &str) -> IO<String> {
         let var = self.nvim.get_var(key).map(|v| v.to_string())
             .or_else(|e| {
@@ -274,6 +303,50 @@ impl<'a> NeovimActions {
     }
 }
 
+
+pub(crate) mod listen {
+    use std::sync::mpsc::SyncSender;
+    use neovim_lib::{Value, Handler};
+    use log::{trace, warn};
+
+    pub(crate) enum PageCommand {
+        FetchPart,
+        FetchLines(u64),
+        BufferClosed,
+    }
+
+    pub(super) struct ResponseReceiver { 
+        pub(super) sender: SyncSender<PageCommand>,
+        pub(super) page_id: String
+    }
+
+    impl Handler for ResponseReceiver {
+        fn handle_notify(&mut self, name: &str, args: Vec<Value>) { 
+            trace!("got response: {} => {:?} ", name, args);
+            let id_matches = || args.get(0).and_then(|v|v.as_str()).map_or(false, |v| v == self.page_id);
+            match name {
+                "page_fetch_lines" if id_matches() => {
+                    if let Some(lines_count) = args.get(1).and_then(|v|v.as_u64()) {
+                        self.sender.send(PageCommand::FetchLines(lines_count)).unwrap();
+                    } else {
+                        self.sender.send(PageCommand::FetchPart).unwrap();
+                    }
+                }
+                "page_buffer_closed" if id_matches() => { 
+                    self.sender.send(PageCommand::BufferClosed).unwrap();
+                }
+                _ => {
+                    warn!(target: "unknown response", "");
+                }
+            }
+        }
+        fn handle_request(&mut self, name: &str, args: Vec<Value>) -> Result<Value, Value> { 
+            trace!("got request: {} => {:?} ", name, args);
+            warn!(target: "unknown request", "");
+            Ok(Value::from(0))
+        }
+    }
+}
 
 
 pub(crate) mod connection {
@@ -301,8 +374,7 @@ pub(crate) mod connection {
         page_tmp_dir: &PathBuf,
         print_protection: bool
     ) -> IO<(NeovimActions, Option<process::Child>)> {
-        let (mut session, nvim_child_process) = create_session(opt, page_tmp_dir, print_protection)?;
-        session.start_event_loop();
+        let (session, nvim_child_process) = create_session(opt, page_tmp_dir, print_protection)?;
         Ok((NeovimActions { nvim: Neovim::new(session) }, nvim_child_process))
     }
 

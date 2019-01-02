@@ -6,14 +6,8 @@ mod context;
 use crate::common::IO;
 
 use atty::Stream;
-use std::{
-    env,
-    str::FromStr,
-};
-use log::{
-    info,
-    LevelFilter,
-};
+use std::{env, str::FromStr};
+use log::{info, LevelFilter};
 use fern::Dispatch;
 
 
@@ -57,11 +51,11 @@ pub(crate) fn init_logger() -> IO {
 pub(crate) mod app {
     use crate::{
         common::IO,
-        nvim::NeovimActions,
+        nvim::{NeovimActions, listen::PageCommand},
         context::Context,
     };
     use std::{
-        io::{self, Write},
+        io::{self, Write, BufReader, BufRead},
         fs::{OpenOptions, File},
         path::PathBuf,
         process,
@@ -95,8 +89,8 @@ pub(crate) mod app {
                 if let Err(e) = nvim_actions.open_file_buffer(file) {
                     eprintln!("Error opening \"{}\": {}", file, e);
                 } else {
-                    let command = &context.opt.command.as_ref().map(String::as_ref).unwrap_or_default();
-                    nvim_actions.set_page_options_to_current_buffer("&filetype", command)?; // The same filetype
+                    let command_or_empty = &context.opt.command.as_ref().map(String::as_ref).unwrap_or_default();
+                    nvim_actions.set_page_options_to_current_buffer("&filetype", command_or_empty, "", "")?; // The same filetype
                     if context.opt.follow_all {
                         nvim_actions.set_current_buffer_follow_output_mode()?;
                     } else {
@@ -149,7 +143,18 @@ pub(crate) mod app {
             }
             let (buffer, buffer_pty_path) = nvim_actions.create_output_buffer_with_pty()?;
             let (filetype, command) = (&context.opt.filetype, &context.opt.command);
-            nvim_actions.set_page_options_to_current_buffer(filetype, command.as_ref().map(String::as_ref).unwrap_or_default())?;
+            let command_or_emtpy = command.as_ref().map(String::as_ref).unwrap_or_default();
+            let page_command = if context.opt.lines_in_query != 0 { 
+                format!(r#"command! -nargs=? Page call rpcnotify(0, "page_fetch_lines", "{}", <args>)"#, context.page_id)
+            } else {
+                String::new()
+            };
+            let page_command_disconnect = if context.opt.lines_in_query != 0 {
+                format!(r#"autocmd BufDelete <buffer> call rpcnotify(0, "page_buffer_closed", "{}")"#, context.page_id)
+            } else { 
+                String::new()
+            };
+            nvim_actions.set_page_options_to_current_buffer(filetype, command_or_emtpy, &page_command, &page_command_disconnect)?;
             Ok((buffer, buffer_pty_path))
         }
     }
@@ -243,11 +248,40 @@ pub(crate) mod app {
         }
 
         pub(crate) fn handle_output(&mut self) -> IO {
-            let Self { context, sink, buffer_pty_path, .. } = self;
+            let Self { nvim_actions, context, sink, buffer_pty_path, .. } = self;
             if context.input_from_pipe {
                 let stdin = io::stdin();
                 let opened_sink = Self::get_opened_sink(sink, buffer_pty_path)?;
-                io::copy(&mut stdin.lock(), opened_sink).map(drop)?;
+                let mut lines_to_read = context.opt.lines_in_query;
+                if lines_to_read == 0 {
+                    io::copy(&mut stdin.lock(), opened_sink).map(drop)?;
+                } else {
+                    let mut lines_to_read_in_last_query = lines_to_read;
+                    let mut stdin_lines = BufReader::new(stdin.lock()).lines();
+                    loop {
+                        if lines_to_read == 0 {
+                            nvim_actions.notify_query_finished(lines_to_read_in_last_query)?;
+                            match context.receiver.recv() {
+                                Ok(PageCommand::FetchLines(number)) => { lines_to_read = number; lines_to_read_in_last_query = number },
+                                Ok(PageCommand::FetchPart) => lines_to_read = context.opt.lines_in_query,
+                                _ => break,
+                            }
+                        }
+                        match stdin_lines.next() {
+                            Some(Ok(line)) => writeln!(opened_sink, "{}", line)?,
+                            Some(Err(err)) => {
+                                eprintln!("error reading stdin line: {}", err);
+                                break;
+                            },
+                            None => {
+                                nvim_actions.notify_query_finished(lines_to_read_in_last_query - lines_to_read)?;
+                                break;
+                            }
+                        }
+                        lines_to_read -= 1;
+                    }
+                }
+                nvim_actions.notify_page_read()?;
             }
             if context.prints_output_buffer_pty {
                 println!("{}", buffer_pty_path.to_string_lossy());

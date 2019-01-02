@@ -1,12 +1,12 @@
 
 use crate::{
-    nvim::NeovimActions,
-    common::IO,
+    nvim::{NeovimActions, listen::PageCommand},
+    common::{self, IO},
     cli::Options,
 };
 
 use neovim_lib::neovim_api::{Buffer, Window};
-use std::process;
+use std::{process, sync::mpsc::Receiver};
 
 // Contains data used globally through application
 #[derive(Debug)]
@@ -21,6 +21,8 @@ pub(crate) struct Context {
     pub creates_in_split: bool,
     pub prints_output_buffer_pty: bool,
     pub input_from_pipe: bool,
+    pub page_id: String,
+    pub receiver: Receiver<PageCommand>,
 }
     
 pub(crate) fn create(
@@ -47,11 +49,13 @@ pub(crate) fn create(
     } else {
         NoInstance
     };
+    let page_id = common::util::random_unique_string();
     let split_flag_provided = has_split_flag_provided(&opt);
     let creates_output_buffer = !has_early_exit_condition(&opt, input_from_pipe, split_flag_provided);
     let creates_in_split = nvim_child_process.is_none() && split_flag_provided;
     let prints_output_buffer_pty = opt.sink_print || !input_from_pipe && nvim_child_process.is_none();
     let focuses_on_existed_instance = should_focus_existed_instance_buffer(&opt, &instance_mode);
+    let receiver = nvim_actions.subscribe_to_page_commands(&page_id)?;
     let initial_window_and_buffer = nvim_actions.get_current_window_and_buffer()?;
     Ok(Context {
         opt,
@@ -64,6 +68,8 @@ pub(crate) fn create(
         creates_in_split,
         focuses_on_existed_instance,
         input_from_pipe,
+        page_id,
+        receiver,
     })
 }
 

@@ -77,6 +77,10 @@ pub(crate) struct Options {
     #[structopt(short="F")]
     pub follow_all: bool,
 
+    /// Enables on-demand stdin reading by querying :Page <optional_lines_in_query> command 
+    #[structopt(short="q", default_value="0")]
+    pub lines_in_query: u64,
+
     /// Flush redirecting protection that prevents from producing junk and possible corruption of files
     /// by invoking commands like "unset NVIM_LISTEN_ADDRESS && ls > $(page -E q)" where "$(page -E q)"
     /// part not evaluates into /path/to/sink as expected but instead into neovim UI, which consists of
