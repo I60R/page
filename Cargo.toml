@@ -1,8 +1,8 @@
 [package]
 name = "page"
-version = "1.8.0"
+version = "1.9.0"
 authors = ["160R <160R@protonmail.com>"]
-description = "A pager that utilizes neovim's terminal buffer"
+description = "Advanced, fast pager powered by neovim and inspired by neovim-remote"
 repository = "https://github.com/I60R/page"
 license = "MIT"
 readme = "README.md"

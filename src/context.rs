@@ -1,4 +1,3 @@
-
 use crate::{
     nvim::{NeovimActions, listen::PageCommand},
     common::{self, IO},
@@ -10,7 +9,7 @@ use std::{process, sync::mpsc::Receiver};
 
 // Contains data used globally through application
 #[derive(Debug)]
-pub(crate) struct Context {
+pub struct Context {
     pub opt: Options,
     pub initial_window_and_buffer: (Window, Buffer),
     pub nvim_child_process: Option<process::Child>,
@@ -25,7 +24,7 @@ pub(crate) struct Context {
     pub receiver: Receiver<PageCommand>,
 }
     
-pub(crate) fn create(
+pub fn create(
     opt: Options,
     nvim_child_process: Option<process::Child>,
     nvim_actions: &mut NeovimActions,
@@ -97,35 +96,35 @@ fn has_early_exit_condition(opt: &Options, input_from_pipe: bool, creates_in_spl
 
 
 #[derive(Debug)] 
-pub(crate) enum SwitchBackMode {
+pub enum SwitchBackMode {
     Normal,
     Insert,
     NoSwitch,
 }
 
 impl SwitchBackMode {
-    pub(crate) fn is_provided(&self) -> bool {
-        !if let SwitchBackMode::NoSwitch = self { true } else { false }
+    pub fn is_provided(&self) -> bool {
+        if let SwitchBackMode::NoSwitch = self { false } else { true }
     }
 
-    pub(crate) fn is_insert(&self) -> bool {
+    pub fn is_insert(&self) -> bool {
         if let SwitchBackMode::Insert = self { true } else { false }
     }
 }
 
 
 #[derive(Debug, Clone)]
-pub(crate) enum InstanceMode {
+pub enum InstanceMode {
     Append(String),
     Replace(String),
     NoInstance,
 }
 
 impl InstanceMode {
-    pub(crate) fn is_replace(&self) -> bool {
+    pub fn is_replace(&self) -> bool {
         if let InstanceMode::Replace(_) = self { true } else { false }
     }
-    pub(crate) fn try_get_name(&self) -> Option<&String> {
+    pub fn try_get_name(&self) -> Option<&String> {
         match self {
             InstanceMode::Append(instance_name) | InstanceMode::Replace(instance_name) => Some(instance_name),
             InstanceMode::NoInstance => None,

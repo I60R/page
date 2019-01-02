@@ -21,20 +21,20 @@ use log::trace;
 
 
 /// A facade for neovim, provides common actions 
-pub(crate) struct NeovimActions {
+pub struct NeovimActions {
     nvim: Neovim,
 }
 
-impl<'a> NeovimActions {
-    pub(crate) fn get_current_window_and_buffer(&mut self) -> IO<(Window, Buffer)> {
+impl NeovimActions {
+    pub fn get_current_window_and_buffer(&mut self) -> IO<(Window, Buffer)> {
         Ok((self.nvim.get_current_win()?, self.nvim.get_current_buf()?))
     }
 
-    pub(crate) fn get_current_buffer(&mut self) -> IO<Buffer> {
+    pub fn get_current_buffer(&mut self) -> IO<Buffer> {
         Ok(self.nvim.get_current_buf()?)
     }
 
-    pub(crate) fn create_output_buffer_with_pty(&mut self) -> IO<(Buffer, PathBuf)> {
+    pub fn create_output_buffer_with_pty(&mut self) -> IO<(Buffer, PathBuf)> {
         let term_agent_pipe_unique_name = common::util::random_unique_string();
         self.nvim.command(&format!("term page-term-agent {}", term_agent_pipe_unique_name))?;
         let buffer = self.nvim.get_current_buf()?;
@@ -43,7 +43,7 @@ impl<'a> NeovimActions {
         Ok((buffer, buffer_pty_path))
     }
 
-    pub(crate) fn register_buffer_as_instance(
+    pub fn register_buffer_as_instance(
         &mut self,
         buffer: &Buffer,
         instance_name: &str,
@@ -55,7 +55,7 @@ impl<'a> NeovimActions {
         Ok(())
     }
 
-    pub(crate) fn find_instance_buffer(&mut self, instance_name: &str) -> IO<Option<(Buffer, PathBuf)>> {
+    pub fn find_instance_buffer(&mut self, instance_name: &str) -> IO<Option<(Buffer, PathBuf)>> {
         for buffer in self.nvim.list_bufs()? {
             let instance_var = buffer.get_var(&mut self.nvim, "page_instance");
             trace!(target: "find instance", "{:?} => {}: {:?}",
@@ -87,7 +87,7 @@ impl<'a> NeovimActions {
         Ok(None)
     }
 
-    pub(crate) fn close_instance_buffer(&mut self, instance_name: &str) -> IO {
+    pub fn close_instance_buffer(&mut self, instance_name: &str) -> IO {
         trace!(target: "close instance buffer", "{}", instance_name);
         let instance_buffer = self.find_instance_buffer(&instance_name)?;
         if let Some((buffer, _)) = instance_buffer {
@@ -97,7 +97,7 @@ impl<'a> NeovimActions {
         Ok(())
     }
 
-    pub(crate) fn focus_instance_buffer(&mut self, instance_buffer: &Buffer) -> IO {
+    pub fn focus_instance_buffer(&mut self, instance_buffer: &Buffer) -> IO {
         trace!(target: "focus instance buffer", "{:?}", instance_buffer);
         if &self.nvim.get_current_buf()? != instance_buffer {
             for window in self.nvim.list_wins()? {
@@ -115,7 +115,7 @@ impl<'a> NeovimActions {
         Ok(())
     }
 
-    pub(crate) fn read_output_buffer_pty_path(&mut self, term_agent_pipe_unique_name: &str) -> IO<PathBuf> {
+    pub fn read_output_buffer_pty_path(&mut self, term_agent_pipe_unique_name: &str) -> IO<PathBuf> {
         trace!(target: "read pty path", "{}", term_agent_pipe_unique_name);
         let term_agent_pipe_path = common::util::open_term_agent_pipe(term_agent_pipe_unique_name)?;
         let buffer_pty_path = {
@@ -129,7 +129,7 @@ impl<'a> NeovimActions {
         Ok(buffer_pty_path)
     }
 
-    pub(crate) fn split_current_buffer(&mut self, opt: &Options) -> IO {
+    pub fn split_current_buffer(&mut self, opt: &Options) -> IO {
         trace!(target: "split", "");
         if opt.split_right > 0 {
             self.nvim.command("belowright vsplit")?;
@@ -163,7 +163,7 @@ impl<'a> NeovimActions {
         Ok(())
     }
 
-    pub(crate) fn update_buffer_title(&mut self, buffer: &Buffer, buffer_title: &str) -> IO {
+    pub fn update_buffer_title(&mut self, buffer: &Buffer, buffer_title: &str) -> IO {
         trace!(target: "set title", "{:?} => {}", buffer.get_number(&mut self.nvim), buffer_title);
         let first_attempt = iter::once((0, buffer_title.to_string()));
         let next_attempts = (1..99).map(|i| (i, format!("{}({})", buffer_title, i)));
@@ -184,7 +184,7 @@ impl<'a> NeovimActions {
         Err("Can't update buffer title")?
     }
 
-    pub(crate) fn set_page_options_to_current_buffer(
+    pub fn set_page_options_to_current_buffer(
         &mut self, 
         filetype: &str, 
         command: &str, 
@@ -210,25 +210,25 @@ impl<'a> NeovimActions {
         Ok(())
     }
 
-    pub(crate) fn execute_connect_autocmd_on_current_buffer(&mut self) -> IO {
+    pub fn execute_connect_autocmd_on_current_buffer(&mut self) -> IO {
         trace!(target: "autocmd PageConnect", "");
         self.nvim.command("silent doautocmd User PageConnect")?;
         Ok(())
     }
 
-    pub(crate) fn execute_disconnect_autocmd_on_current_buffer(&mut self) -> IO {
+    pub fn execute_disconnect_autocmd_on_current_buffer(&mut self) -> IO {
         trace!(target: "autocmd PageDisconnect", "");
         self.nvim.command("silent doautocmd User PageDisconnect")?;
         Ok(())
     }
 
-    pub(crate) fn execute_command_post(&mut self, command: &str) -> IO {
+    pub fn execute_command_post(&mut self, command: &str) -> IO {
         trace!(target: "exec command_post", "{}", command);
         self.nvim.command(command)?;
         Ok(())
     }
 
-    pub(crate) fn switch_to_window_and_buffer(&mut self, (win, buf): &(Window, Buffer)) -> IO {
+    pub fn switch_to_window_and_buffer(&mut self, (win, buf): &(Window, Buffer)) -> IO {
         trace!(target: "switch window and buffer", "win:{:?} buf:{:?}",  win.get_number(&mut self.nvim), buf.get_number(&mut self.nvim));
         if let Err(e) = self.nvim.set_current_win(win) {
             eprintln!("Can't switch to window: {}", e);
@@ -239,47 +239,47 @@ impl<'a> NeovimActions {
         Ok(())
     }
 
-    pub(crate) fn switch_to_buffer(&mut self, buf: &Buffer) -> IO {
+    pub fn switch_to_buffer(&mut self, buf: &Buffer) -> IO {
         trace!(target: "switch buffer", "buf:{:?}", buf.get_number(&mut self.nvim));
         self.nvim.set_current_buf(buf)?;
         Ok(())
     }
 
-    pub(crate) fn set_current_buffer_insert_mode(&mut self) -> IO {
+    pub fn set_current_buffer_insert_mode(&mut self) -> IO {
         trace!(target: "set mode: INSERT", "");
         self.nvim.command(r###"call feedkeys("\<C-\>\<C-n>A", 'n')"###)?;// Fixes "can't enter normal mode from..."
         Ok(())
     }
 
-    pub(crate) fn set_current_buffer_follow_output_mode(&mut self) -> IO {
+    pub fn set_current_buffer_follow_output_mode(&mut self) -> IO {
         trace!(target: "set mode: FOLLOW", "");
         self.nvim.command(r###"call feedkeys("\<C-\>\<C-n>G, 'n'")"###)?;
         Ok(())
     }
 
-    pub(crate) fn set_current_buffer_scroll_mode(&mut self) -> IO {
+    pub fn set_current_buffer_scroll_mode(&mut self) -> IO {
         trace!(target: "set mode: SCROLL", "");
         self.nvim.command(r###"call feedkeys("\<C-\>\<C-n>ggM, 'n'")"###)?;
         Ok(())
     }
 
-    pub(crate) fn open_file_buffer(&mut self, file: &str) -> IO {
+    pub fn open_file_buffer(&mut self, file: &str) -> IO {
         trace!(target: "open file", "{}", file);
         self.nvim.command(&format!("e {}", fs::canonicalize(file)?.to_string_lossy()))?;
         Ok(())
     }
 
-    pub(crate) fn notify_query_finished(&mut self, lines_read: u64) -> IO {
+    pub fn notify_query_finished(&mut self, lines_read: u64) -> IO {
         self.nvim.command(&format!("echom '{} lines read'", lines_read))?;
         Ok(())
     }
     
-    pub(crate) fn notify_page_read(&mut self) -> IO {
+    pub fn notify_page_read(&mut self) -> IO {
         self.nvim.command("echom 'End of input'")?;
         Ok(())
     }
 
-    pub(crate) fn subscribe_to_page_commands(&mut self, page_id: &str) -> IO<Receiver<PageCommand>> {
+    pub fn subscribe_to_page_commands(&mut self, page_id: &str) -> IO<Receiver<PageCommand>> {
         trace!(target: "wait for next page", "");
         let (sender, receiver) = sync_channel(16);
         self.nvim.session.start_event_loop_handler(ResponseReceiver { sender, page_id: page_id.to_string() });
@@ -288,7 +288,7 @@ impl<'a> NeovimActions {
         Ok(receiver)
     }
 
-    pub(crate) fn get_var_or_default(&mut self, key: &str, default: &str) -> IO<String> {
+    pub fn get_var_or_default(&mut self, key: &str, default: &str) -> IO<String> {
         let var = self.nvim.get_var(key).map(|v| v.to_string())
             .or_else(|e| {
                 let description = e.to_string();
@@ -304,20 +304,20 @@ impl<'a> NeovimActions {
 }
 
 
-pub(crate) mod listen {
+pub mod listen {
     use std::sync::mpsc::SyncSender;
     use neovim_lib::{Value, Handler};
     use log::{trace, warn};
 
-    pub(crate) enum PageCommand {
+    pub enum PageCommand {
         FetchPart,
         FetchLines(u64),
         BufferClosed,
     }
 
     pub(super) struct ResponseReceiver { 
-        pub(super) sender: SyncSender<PageCommand>,
-        pub(super) page_id: String
+        pub sender: SyncSender<PageCommand>,
+        pub page_id: String
     }
 
     impl Handler for ResponseReceiver {
@@ -349,7 +349,7 @@ pub(crate) mod listen {
 }
 
 
-pub(crate) mod connection {
+pub mod connection {
     use crate::{
         cli::Options,
         common::{self, IO},
@@ -369,7 +369,7 @@ pub(crate) mod connection {
 
     /// Connects to parrent neovim session if possible or spawns new child neovim process and connects to it through socket.
     /// Replacement for `neovim_lib::Session::new_child()` which uses --embed and inherits stdin.
-    pub(crate) fn get_nvim_connection(
+    pub fn get_nvim_connection(
         opt: &Options,
         page_tmp_dir: &PathBuf,
         print_protection: bool

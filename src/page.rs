@@ -1,7 +1,7 @@
-mod common;
-mod cli;
-mod nvim;
-mod context;
+pub(crate) mod common;
+pub(crate) mod cli;
+pub(crate) mod nvim;
+pub(crate) mod context;
 
 use crate::common::IO;
 
@@ -36,7 +36,7 @@ fn main() -> IO {
     app::exit(context.nvim_child_process)
 }
 
-pub(crate) fn init_logger() -> IO {
+fn init_logger() -> IO {
     Dispatch::new()
         .format(|out, message, record| out.finish(format_args!("[{}][{}] {}", record.level(), record.target(), message)))
         .level(LevelFilter::from_str(env::var("RUST_LOG").as_ref().map(String::as_ref).unwrap_or("warn"))?)
@@ -65,13 +65,13 @@ pub(crate) mod app {
 
 
     /// A manager for `page` application action
-    pub(crate) struct AppActions<'a> {
+    pub struct AppActions<'a> {
         nvim_actions: NeovimActions,
         context: &'a Context,
     }
 
     impl<'a> AppActions<'a> {
-        pub(crate) fn handle_close_page_instance_buffer(&mut self) -> IO {
+        pub fn handle_close_page_instance_buffer(&mut self) -> IO {
             let Self { nvim_actions, context, .. } = self;
             if let Some(ref name) = context.opt.instance_close {
                 if context.nvim_child_process.is_none() {
@@ -83,7 +83,7 @@ pub(crate) mod app {
             Ok(())
         }
 
-        pub(crate) fn handle_display_plain_files(&mut self) -> IO {
+        pub fn handle_display_plain_files(&mut self) -> IO {
             let Self { nvim_actions, context, .. } = self;
             for file in &context.opt.files {
                 if let Err(e) = nvim_actions.open_file_buffer(file) {
@@ -104,7 +104,7 @@ pub(crate) mod app {
             Ok(())
         }
 
-        pub(crate) fn get_output_buffer(self) -> IO<OutputActions<'a>> {
+        pub fn get_output_buffer(self) -> IO<OutputActions<'a>> {
             if let Some(instance_name) = self.context.instance_mode.try_get_name() {
                 self.get_instance_output_buffer(instance_name)
             } else {
@@ -113,15 +113,15 @@ pub(crate) mod app {
         }
 
         fn get_instance_output_buffer(mut self, instance_name: &'a str) -> IO<OutputActions<'a>> {
-            Ok(if let Some((buffer, buffer_pty_path)) = self.nvim_actions.find_instance_buffer(instance_name)? {
+            if let Some((buffer, buffer_pty_path)) = self.nvim_actions.find_instance_buffer(instance_name)? {
                 let Self { nvim_actions, context, .. } = self;
-                OutputActions { existed_instance: true, sink: None, nvim_actions, context, buffer, buffer_pty_path }
+                Ok(OutputActions { existed_instance: true, sink: None, nvim_actions, context, buffer, buffer_pty_path })
             } else {
                 let (buffer, buffer_pty_path) = self.open_new_output_buffer()?;
                 self.nvim_actions.register_buffer_as_instance(&buffer, instance_name, &buffer_pty_path.to_string_lossy())?;
                 let Self { nvim_actions, context, .. } = self;
-                OutputActions { existed_instance: false, sink: None, nvim_actions, context, buffer, buffer_pty_path }
-            })
+                Ok(OutputActions { existed_instance: false, sink: None, nvim_actions, context, buffer, buffer_pty_path })
+            }
         }
 
         fn get_oneoff_output_buffer(mut self) -> IO<OutputActions<'a>> {
@@ -159,13 +159,13 @@ pub(crate) mod app {
         }
     }
 
-    pub(crate) fn create_app(nvim_actions: NeovimActions, context: &Context) -> AppActions {
+    pub fn create_app(nvim_actions: NeovimActions, context: &Context) -> AppActions {
         AppActions { nvim_actions, context, }
     }
 
 
     /// A manager for output buffer actions 
-    pub(crate) struct OutputActions<'a> {
+    pub struct OutputActions<'a> {
         nvim_actions: NeovimActions,
         context: &'a Context,
         existed_instance: bool,
@@ -175,7 +175,7 @@ pub(crate) mod app {
     }
 
     impl<'a> OutputActions<'a> {
-        pub(crate) fn handle_instance_state(&mut self) -> IO {
+        pub fn handle_instance_state(&mut self) -> IO {
             let Self { nvim_actions, context, sink, buffer_pty_path, buffer, .. } = self;
             if let Some(instance_name) = context.instance_mode.try_get_name() {
                 Self::update_instance_buffer_title(nvim_actions, &context.opt.name, instance_name, &buffer)?;
@@ -218,7 +218,7 @@ pub(crate) mod app {
             })
         }
 
-        pub(crate) fn handle_commands(&mut self) -> IO {
+        pub fn handle_commands(&mut self) -> IO {
             if self.context.opt.command_auto {
                 self.nvim_actions.execute_connect_autocmd_on_current_buffer()?;
             }
@@ -228,7 +228,7 @@ pub(crate) mod app {
             Ok(())
         }
 
-        pub(crate) fn handle_scroll_and_switch_back(&mut self) -> IO {
+        pub fn handle_scroll_and_switch_back(&mut self) -> IO {
             let Self { nvim_actions, context, .. } = self;
             if self.existed_instance && !context.focuses_on_existed_instance {
                 return Ok(());
@@ -247,7 +247,7 @@ pub(crate) mod app {
             Ok(())
         }
 
-        pub(crate) fn handle_output(&mut self) -> IO {
+        pub fn handle_output(&mut self) -> IO {
             let Self { nvim_actions, context, sink, buffer_pty_path, .. } = self;
             if context.input_from_pipe {
                 let stdin = io::stdin();
@@ -289,7 +289,7 @@ pub(crate) mod app {
             Ok(())
         }
 
-        pub(crate) fn handle_disconnect(&mut self) -> IO {
+        pub fn handle_disconnect(&mut self) -> IO {
             let Self { nvim_actions, buffer, context, .. } = self;
             if context.opt.command_auto {
                 let final_buffer = nvim_actions.get_current_buffer()?;
@@ -309,7 +309,7 @@ pub(crate) mod app {
         }
     }
 
-    pub(crate) fn exit(nvim_child_process: Option<process::Child>) -> IO {
+    pub fn exit(nvim_child_process: Option<process::Child>) -> IO {
         if let Some(mut process) = nvim_child_process {
             process.wait().map(drop)?;
         }

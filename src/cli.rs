@@ -12,7 +12,7 @@ use structopt::{
     group="back_arg_group()",
     group="follow_arg_group()",
     group="instance_use_arg_group()"))]
-pub(crate) struct Options {
+pub struct Options {
     /// Neovim session address
     #[structopt(short="a", env="NVIM_LISTEN_ADDRESS")]
     pub address: Option<String>,
@@ -77,7 +77,7 @@ pub(crate) struct Options {
     #[structopt(short="F")]
     pub follow_all: bool,
 
-    /// Enables on-demand stdin reading by querying :Page <optional_lines_in_query> command 
+    /// Enable on-demand stdin reading with :Page <optional_lines_in_query> command 
     #[structopt(short="q", default_value="0")]
     pub lines_in_query: u64,
 
@@ -160,6 +160,6 @@ fn splits_arg_group() -> ArgGroup<'static> {
 }
 
 
-pub(crate) fn get_options() -> Options {
+pub fn get_options() -> Options {
     Options::from_args()
 }

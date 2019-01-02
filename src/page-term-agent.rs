@@ -3,7 +3,7 @@
 //!     * determines path to PTY device created by its buffer and returns it to `page` through pipe
 //!     * blocks its thread which prevents its buffer to close early
 
-mod common;
+pub(crate) mod common;
 
 
 use crate::common::IO;
