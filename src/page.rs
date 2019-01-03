@@ -18,7 +18,7 @@ fn main() -> IO {
     info!("options: {:#?}", opt);
     let page_tmp_dir = common::util::get_page_tmp_dir()?;
     let input_from_pipe = atty::isnt(Stream::Stdin);
-    if opt.lines_in_query != 0 && !input_from_pipe {
+    if opt.query_lines != 0 && !input_from_pipe {
         warn!("Query works only when page reads from pipe");
     }
     let prints_protection = !input_from_pipe && !opt.page_no_protect && env::var_os("PAGE_REDIRECTION_PROTECT").map_or(true, |v| v != "0");
@@ -148,14 +148,14 @@ pub(crate) mod app {
             let (buffer, buffer_pty_path) = nvim_actions.create_output_buffer_with_pty()?;
             let filetype = &context.opt.filetype;
             let command = &context.opt.command.as_ref().map(String::as_ref).unwrap_or_default();
-            let command_query = Self::get_query_commands(context.opt.lines_in_query, &context.page_id);
+            let command_query = Self::get_query_commands(context.opt.query_lines, &context.page_id);
             nvim_actions.prepare_current_buffer(filetype, command, &command_query, context.initial_buffer_number)?;
             Ok((buffer, buffer_pty_path))
         }
 
-        fn get_query_commands(lines_in_query: u64, page_id: &str) -> String {
+        fn get_query_commands(query_lines: u64, page_id: &str) -> String {
             let mut commands = String::new();
-            if lines_in_query != 0 { 
+            if query_lines != 0 { 
                 commands.push_str(&format!("\
                     | exe 'command! -nargs=? Page call rpcnotify(0, ''page_fetch_lines'', ''{page_id}'', <args>)' \
                     | exe 'autocmd BufEnter <buffer> command! -nargs=? Page call rpcnotify(0, ''page_fetch_lines'', ''{page_id}'', <args>)' \
@@ -261,7 +261,7 @@ pub(crate) mod app {
             if context.input_from_pipe {
                 let stdin = io::stdin();
                 let opened_sink = Self::get_opened_sink(sink, buffer_pty_path)?;
-                let mut lines_to_read = context.opt.lines_in_query;
+                let mut lines_to_read = context.opt.query_lines;
                 if lines_to_read == 0 {
                     io::copy(&mut stdin.lock(), opened_sink).map(drop)?;
                 } else {
@@ -272,7 +272,7 @@ pub(crate) mod app {
                             nvim_actions.notify_query_finished(lines_to_read_in_last_query)?;
                             match context.receiver.recv() {
                                 Ok(PageCommand::FetchLines(number)) => { lines_to_read = number; lines_to_read_in_last_query = number },
-                                Ok(PageCommand::FetchPart) => lines_to_read = context.opt.lines_in_query,
+                                Ok(PageCommand::FetchPart) => lines_to_read = context.opt.query_lines,
                                 _ => break,
                             }
                         }

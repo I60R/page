@@ -77,9 +77,9 @@ pub struct Options {
     #[structopt(short="F")]
     pub follow_all: bool,
 
-    /// Enable on-demand stdin reading with :Page <optional_lines_in_query> command 
+    /// Enable on-demand stdin reading with :Page <query_lines> command  
     #[structopt(short="q", default_value="0")]
-    pub lines_in_query: u64,
+    pub query_lines: u64,
 
     /// Flush redirecting protection that prevents from producing junk and possible corruption of files
     /// by invoking commands like "unset NVIM_LISTEN_ADDRESS && ls > $(page -E q)" where "$(page -E q)"
