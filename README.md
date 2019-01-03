@@ -82,7 +82,7 @@ ARGS:
 
 ## Viml
 
-Change statusline appearance:
+Statusline appearance settings:
 
 ```viml
 let g:page_icon_instance = '$'
@@ -90,27 +90,45 @@ let g:page_icon_redirect = '>'
 let g:page_icon_pipe = '|'
 ```
 
-Defaults for output buffer:
+Commands run by `page` on created buffers:
 
 ```viml
+let b:page_alternate_bufnr={number of parent :term buffer}
 let g:page_scrolloff_backup = &scrolloff
-" -f filetype not applies for buffers created for <FILES>
-setl scrollback=-1 scrolloff=999 signcolumn=no nonumber nomodifiable filetype=${-f value}
+setl scrollback=-1 scrolloff=999 signcolumn=no nonumber nomodifiable filetype={-f provided value}
 exe 'autocmd BufEnter <buffer> set scrolloff=999'
 exe 'autocmd BufLeave <buffer> let &scrolloff=g:page_scrolloff_backup'
 exe 'silent doautocmd User PageOpen'
-" -e command not runs on buffers created for <FILES>
-exe '${-e value}'
+redraw
+exe '{-e provided value}'
+" NOTE:
+" 1) b:page_alternate_bufnr would be -1 if `page` invoked from regular terminal
+" 2) filetype provided with -f not applies to <FILES> buffers
+" 3) command provided with -E not applies to <FILES> buffer
 ```
 
 Autocommands invoked:
 
 ```viml
-" first time when buffer created
+" Only once when output buffer is created:
 silent doautocmd User PageOpen
-" when -C command enabled (this also works on connected instance buffer)
+" When -C option provided (also works when `page` connects to instance `-i, -I` buffers):
 silent doautocmd User PageConnect
 silent doautocmd User PageDisconnect
+```
+
+Hotkey for closing `page` buffer:
+
+```viml
+function! PageClose(page_alternate_bufnr)
+    bd!
+    if bufnr('%') == a:page_alternate_bufnr && mode('%') == 'n'
+        norm a
+    endif
+endfunction
+autocmd User PageOpen
+    \| exe 'map  <buffer> <C-c> :call PageClose(b:page_alternate_bufnr)<CR>'
+    \| exe 'tmap <buffer> <C-c> :call PageClose(b:page_alternate_bufnr)<CR>'
 ```
 
 

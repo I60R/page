@@ -93,8 +93,8 @@ pub(crate) mod app {
                 if let Err(e) = nvim_actions.open_file_buffer(file) {
                     warn!("Error opening \"{}\": {}", file, e);
                 } else {
-                    let command_or_empty = &context.opt.command.as_ref().map(String::as_ref).unwrap_or_default();
-                    nvim_actions.set_page_options_to_current_buffer("&filetype", command_or_empty, "", "")?; // The same filetype
+                    let command = &context.opt.command.as_ref().map(String::as_ref).unwrap_or_default();
+                    nvim_actions.prepare_current_buffer("&filetype", command, "", context.initial_buffer_number)?; // Same ft
                     if context.opt.follow_all {
                         nvim_actions.set_current_buffer_follow_output_mode()?;
                     } else {
@@ -146,20 +146,25 @@ pub(crate) mod app {
                 nvim_actions.split_current_buffer(&context.opt)?;
             }
             let (buffer, buffer_pty_path) = nvim_actions.create_output_buffer_with_pty()?;
-            let (filetype, command) = (&context.opt.filetype, &context.opt.command);
-            let command_or_emtpy = command.as_ref().map(String::as_ref).unwrap_or_default();
-            let page_command = if context.opt.lines_in_query != 0 { 
-                format!(r#"command! -nargs=? Page call rpcnotify(0, "page_fetch_lines", "{}", <args>)"#, context.page_id)
-            } else {
-                String::new()
-            };
-            let page_command_disconnect = if context.opt.lines_in_query != 0 {
-                format!(r#"autocmd BufDelete <buffer> call rpcnotify(0, "page_buffer_closed", "{}")"#, context.page_id)
-            } else { 
-                String::new()
-            };
-            nvim_actions.set_page_options_to_current_buffer(filetype, command_or_emtpy, &page_command, &page_command_disconnect)?;
+            let filetype = &context.opt.filetype;
+            let command = &context.opt.command.as_ref().map(String::as_ref).unwrap_or_default();
+            let command_query = Self::get_query_commands(context.opt.lines_in_query, &context.page_id);
+            nvim_actions.prepare_current_buffer(filetype, command, &command_query, context.initial_buffer_number)?;
             Ok((buffer, buffer_pty_path))
+        }
+
+        fn get_query_commands(lines_in_query: u64, page_id: &str) -> String {
+            let mut commands = String::new();
+            if lines_in_query != 0 { 
+                commands.push_str(&format!("\
+                    | exe 'command! -nargs=? Page call rpcnotify(0, ''page_fetch_lines'', ''{page_id}'', <args>)' \
+                    | exe 'autocmd BufEnter <buffer> command! -nargs=? Page call rpcnotify(0, ''page_fetch_lines'', ''{page_id}'', <args>)' \
+                    | exe 'autocmd BufDelete <buffer> call rpcnotify(0, ''page_buffer_closed'', ''{page_id}'')' \
+                ", 
+                    page_id = page_id,
+                ));
+            }
+            commands
         }
     }
 

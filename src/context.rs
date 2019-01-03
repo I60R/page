@@ -12,6 +12,7 @@ use std::{process, sync::mpsc::Receiver};
 pub struct Context {
     pub opt: Options,
     pub initial_window_and_buffer: (Window, Buffer),
+    pub initial_buffer_number: u64,
     pub nvim_child_process: Option<process::Child>,
     pub switch_back_mode: SwitchBackMode,
     pub instance_mode: InstanceMode,
@@ -56,10 +57,12 @@ pub fn create(
     let focuses_on_existed_instance = should_focus_existed_instance_buffer(&opt, &instance_mode);
     let receiver = nvim_actions.subscribe_to_page_commands(&page_id)?;
     let initial_window_and_buffer = nvim_actions.get_current_window_and_buffer()?;
+    let initial_buffer_number = nvim_actions.get_buffer_number(&initial_window_and_buffer.1)?;
     Ok(Context {
         opt,
         instance_mode,
         initial_window_and_buffer,
+        initial_buffer_number,
         nvim_child_process,
         switch_back_mode,
         creates_output_buffer,

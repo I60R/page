@@ -37,6 +37,10 @@ impl NeovimActions {
         Ok(self.nvim.get_current_buf()?)
     }
 
+    pub fn get_buffer_number(&mut self, buffer: &Buffer) -> IO<u64> {
+        Ok(buffer.get_number(&mut self.nvim)?)
+    }
+
     pub fn create_output_buffer_with_pty(&mut self) -> IO<(Buffer, PathBuf)> {
         let term_agent_pipe_unique_name = common::util::random_unique_string();
         self.nvim.command(&format!("term page-term-agent {}", term_agent_pipe_unique_name))?;
@@ -187,28 +191,24 @@ impl NeovimActions {
         Err("Can't update buffer title")?
     }
 
-    pub fn set_page_options_to_current_buffer(
-        &mut self, 
-        filetype: &str, 
-        command: &str, 
-        define_page_command: &str,
-        define_page_command_disconnect: &str,
-    ) -> IO {
-        let options = &format!(
-            " let g:page_scrolloff_backup = &scrolloff \
+    pub fn prepare_current_buffer(&mut self, filetype: &str, command: &str, command_query: &str, initial_buffer_number: u64) -> IO {
+        let options = &format!(" \
+            | let b:page_alternate_bufnr={initial_buffer_number} \
+            | let g:page_scrolloff_backup=&scrolloff \
             | setl scrollback=-1 scrolloff=999 signcolumn=no nonumber nomodifiable filetype={filetype} \
-            | exe 'autocmd BufEnter <buffer> set scrolloff=999 | {page_command}' \
+            | exe 'autocmd BufEnter <buffer> set scrolloff=999' \
             | exe 'autocmd BufLeave <buffer> let &scrolloff=g:page_scrolloff_backup' \
-            | exe '{page_command}' \
-            | exe '{page_command_disconnect}' \
+            {query_command} \
             | exe 'silent doautocmd User PageOpen' \
-            | exe '{user_command}'",
+            | redraw
+            | exe '{user_command}' \
+        ",
             filetype = filetype,
-            page_command = define_page_command,
-            page_command_disconnect = define_page_command_disconnect,
-            user_command = command.replace("'", "''"), // Ecranizes viml literal string,
+            user_command = command.replace("'", "''"), // Ecranizes viml literal string
+            query_command = command_query,
+            initial_buffer_number = initial_buffer_number,
         );
-        trace!(target: "set default options", "{}", &options);
+        trace!(target: "set page options", "{}", &options);
         self.nvim.command(options)?;
         Ok(())
     }
@@ -273,12 +273,12 @@ impl NeovimActions {
     }
 
     pub fn notify_query_finished(&mut self, lines_read: u64) -> IO {
-        self.nvim.command(&format!("echom '{} lines read'", lines_read))?;
+        self.nvim.command(&format!("redraw | echoh Comment | echom '-- [PAGE] {} lines read; has more --' | echoh None", lines_read))?;
         Ok(())
     }
     
     pub fn notify_page_read(&mut self) -> IO {
-        self.nvim.command("echom 'End of input'")?;
+        self.nvim.command("redraw | echoh Comment | echom '-- [PAGE] end of input --' | echoh None")?;
         Ok(())
     }
 
