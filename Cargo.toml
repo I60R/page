@@ -11,7 +11,7 @@ build = "build_shell_completions.rs"
 
 [dependencies]
 rand = "0.6.1"
-libc = "0.2.45"
+libc = "0.2.46"
 notify = "4.0.6"
 atty = "0.2.11"
 shell-words = "0.1.0"
