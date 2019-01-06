@@ -59,7 +59,7 @@ FLAGS:
     -V, --version    Prints version information
 
 OPTIONS:
-    -a <address>                 Neovim session address [env: NVIM_LISTEN_ADDRESS=/tmp/nvimUbj1Sg/0]
+    -a <address>                 Neovim session address [env: NVIM_LISTEN_ADDRESS=/tmp/nvimixHZXQ/0]
     -A <arguments>               Neovim arguments for new child process [env: NVIM_PAGE_ARGS=]
     -c <config>                  Neovim config path for new child process [file:$XDG_CONFIG_HOME/page/init.vim]
     -e <command>                 Run command in output buffer after it's created
@@ -69,6 +69,7 @@ OPTIONS:
     -x <instance_close>          Close instance buffer with this name if exist [revokes implied options]
     -n <name>                    Set output buffer name (displayed in statusline) [env: PAGE_BUFFER_NAME=page --help]
     -t <filetype>                Set output buffer filetype (for syntax highlighting) [default: pager]
+    -q <query_lines>             Enable on-demand stdin reading with :Page <query_lines> command [default: 0]
     -R <split_right_cols>        Split right and resize to <split_right_cols> columns
     -L <split_left_cols>         Split left  and resize to <split_left_cols>  columns
     -U <split_above_rows>        Split above and resize to <split_above_rows> rows
@@ -189,4 +190,4 @@ preexec() {
 * Manually:
     * Install `rustup` from your distribution package manager
     * Configure toolchain: `rustup install stable && rustup default stable`
-    * `git clone git@github.com:I60R/page.git && cd page && cargo install`
+    * `git clone git@github.com:I60R/page.git && cd page && cargo install --path .`
