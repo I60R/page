@@ -1,4 +1,4 @@
-pub(crate) mod common;
+pub mod common; // pub due to intellij-rust bug (https://github.com/intellij-rust/intellij-rust/issues/3757)
 pub(crate) mod cli;
 pub(crate) mod nvim;
 pub(crate) mod context;

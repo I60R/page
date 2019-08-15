@@ -3,7 +3,7 @@
 //!     * determines path to PTY device created by its buffer and returns it to `page` through pipe
 //!     * blocks its thread which prevents its buffer to close early
 
-pub(crate) mod common;
+pub mod common; // pub due to intellij-rust bug (https://github.com/intellij-rust/intellij-rust/issues/3757)
 
 
 use crate::common::IO;
