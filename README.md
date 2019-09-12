@@ -6,14 +6,13 @@
 Allows you to redirect text into [neovim](https://github.com/neovim/neovim).  
 You can set it as `$PAGER` to view logs, diffs, various command outputs.  
   
-ANSI escape sequences will be interpreted by :term buffer which is noticeably faster than [vimpager](https://github.com/rkitover/vimpager) and [nvimpager](https://github.com/lucc/nvimpager).  
-Text will be displayed instantly as it arrives - no need to wait until EOF.  
-
-Also, it allows you to redirect text from shell running in :term buffer into a new buffer in parent neovim instance instead of spawning a nested instance for that purpose.  
-This is by utilizing `$NVIM_LISTEN_ADDRESS` as [neovim-remote](https://github.com/mhinz/neovim-remote) does.  
+ANSI escape sequences will be interpreted by :term buffer, which makes it noticeably faster than [vimpager](https://github.com/rkitover/vimpager) and [nvimpager](https://github.com/lucc/nvimpager).  
+Also, text will be displayed instantly as it arrives - no need to wait until EOF.  
   
-All neovims text editing+searching+navigating facilities, all settings, mappings, plugins, etc. from your neovim config will be effectively reused.
-
+Text from neovim :term buffer will be redirected directly into a new buffer in the same neovim instance - no nested neovim will be spawned.  
+That's by utilizing `$NVIM_LISTEN_ADDRESS` as [neovim-remote](https://github.com/mhinz/neovim-remote) does.  
+  
+Ultimately, `page` will reuse all of neovim text editing+navigating+searching facilities and will pick all of plugins+mappings+options set in your neovim config.  
 
 ## Usage
 
@@ -27,18 +26,19 @@ All neovims text editing+searching+navigating facilities, all settings, mappings
 
 ---
 
+## CLI
 
-## CLI options
+<details><summary> expand `page --help`</summary>
 
-<details><summary> (click here to expand `page --help`)</summary>
+```text
 
-```
 USAGE:
-    page [FLAGS] [OPTIONS] [FILES]...
+    page [FLAGS] [OPTIONS] [files]...
 
 FLAGS:
     -o               Create and use new output buffer (to display text from page stdin) [implied]
     -p               Print path to buffer pty (to redirect `command > /path/to/output`) [implied when page not piped]
+    -P               Set $PWD as working dir for output buffer (to navigate paths with `gf`)
     -b               Return back to current buffer
     -B               Return back to current buffer and enter INSERT mode
     -f               Follow output instead of keeping top position (like `tail -f`)
@@ -59,29 +59,29 @@ FLAGS:
     -V, --version    Prints version information
 
 OPTIONS:
-    -a <address>                 Neovim session address [env: NVIM_LISTEN_ADDRESS=/tmp/nvimixHZXQ/0]
+    -a <address>                 Neovim session address [env: NVIM_LISTEN_ADDRESS=/tmp/nvimycgkAf/0]
     -A <arguments>               Neovim arguments for new child process [env: NVIM_PAGE_ARGS=]
     -c <config>                  Neovim config path for new child process [file:$XDG_CONFIG_HOME/page/init.vim]
     -e <command>                 Run command in output buffer after it's created
-    -E <command_post>            Run command in output buffer after it's created or connected as instance
+    -E <command-post>            Run command in output buffer after it's created or connected as instance
     -i <instance>                Connect or create named output buffer. When connected, new content overwrites previous
-    -I <instance_append>         Connect or create named output buffer. When connected, new content appends to previous
-    -x <instance_close>          Close instance buffer with this name if exist [revokes implied options]
-    -n <name>                    Set output buffer name (displayed in statusline) [env: PAGE_BUFFER_NAME=page --help]
+    -I <instance-append>         Connect or create named output buffer. When connected, new content appends to previous
+    -x <instance-close>          Close instance buffer with this name if exist [revokes implied options]
+    -n <name>                    Set output buffer name (displayed in statusline) [env: PAGE_BUFFER_NAME=page -h]
     -t <filetype>                Set output buffer filetype (for syntax highlighting) [default: pager]
-    -q <query_lines>             Enable on-demand stdin reading with :Page <query_lines> command [default: 0]
-    -R <split_right_cols>        Split right and resize to <split_right_cols> columns
-    -L <split_left_cols>         Split left  and resize to <split_left_cols>  columns
-    -U <split_above_rows>        Split above and resize to <split_above_rows> rows
-    -D <split_below_rows>        Split below and resize to <split_below_rows> rows
+    -q <query-lines>             Enable on-demand stdin reading with :Page <query_lines> command [default: 0]
+    -R <split-right-cols>        Split right and resize to <split_right_cols> columns
+    -L <split-left-cols>         Split left  and resize to <split_left_cols>  columns
+    -U <split-above-rows>        Split above and resize to <split_above_rows> rows
+    -D <split-below-rows>        Split below and resize to <split_below_rows> rows
 
 ARGS:
-    <FILES>...    Open provided files in separate buffers [revokes implied options]
+    <files>...    Open provided files in separate buffers [revokes implied options]
 ```
+
 </details>
 
-
-## Viml
+## Customization
 
 Statusline appearance settings:
 
@@ -91,34 +91,23 @@ let g:page_icon_redirect = '>'
 let g:page_icon_pipe = '|'
 ```
 
-Commands run by `page` on created buffers:
+Autocommand hooks:
 
 ```viml
-let b:page_alternate_bufnr={number of parent :term buffer}
-let g:page_scrolloff_backup = &scrolloff
-setl scrollback=-1 scrolloff=999 signcolumn=no nonumber nomodifiable filetype={-f provided value}
-exe 'autocmd BufEnter <buffer> set scrolloff=999'
-exe 'autocmd BufLeave <buffer> let &scrolloff=g:page_scrolloff_backup'
-exe 'silent doautocmd User PageOpen'
-redraw
-exe '{-e provided value}'
-" NOTE:
-" 1) b:page_alternate_bufnr would be -1 if `page` invoked from regular terminal
-" 2) filetype provided with -f not applies to <FILES> buffers
-" 3) command provided with -E not applies to <FILES> buffer
+" Will be run once when output buffer is created
+autocmd User PageOpen { your settings }
+
+" Will be run once when file buffer is created
+autocmd User PageOpenFile { your settings }
+
+" Only if -C option provided.
+" Will be run always when output buffer is created
+" and also when `page` connects to instance `-i, -I` buffers:
+autocmd User PageConnect { your settings }
+autocmd User PageDisconnect { your settings }
 ```
 
-Autocommands invoked:
-
-```viml
-" Only once when output buffer is created:
-silent doautocmd User PageOpen
-" When -C option provided (also works when `page` connects to instance `-i, -I` buffers):
-silent doautocmd User PageConnect
-silent doautocmd User PageDisconnect
-```
-
-Hotkey for closing `page` buffer:
+Hotkey for closing `page` buffers on `<C-c>`:
 
 ```viml
 function! PageClose(page_alternate_bufnr)
@@ -131,13 +120,6 @@ autocmd User PageOpen
     \| exe 'map  <buffer> <C-c> :call PageClose(b:page_alternate_bufnr)<CR>'
     \| exe 'tmap <buffer> <C-c> :call PageClose(b:page_alternate_bufnr)<CR>'
 ```
-
-
-## Limitations
-
-* Only ~100000 lines can be displayed (this is neovim terminal limit)
-* `MANPAGER=page -t man` not works because `set ft=man` fails on :term buffer (other filetypes may be affected as well)
-
 
 ## Shell hacks
 
@@ -153,10 +135,16 @@ To use as `$MANPAGER` without error:
 export MANPAGER="page -C -e 'au User PageDisconnect sleep 100m|%y p|enew! |bd! #|pu p|set ft=man'"
 ```
 
-To override default neovim config create this file (or use -c option):
+To override neovim config (create this file or use -c option):
 
 ```zsh
 $XDG_CONFIG_HOME/page/init.vim
+```
+
+To circumvent neovim config picking:
+
+```zsh
+page -c NONE
 ```
 
 To set output buffer name as first two words from invoked command (zsh only):
@@ -168,26 +156,89 @@ preexec() {
 }
 ```
 
+## Buffer defaults
 
-## How it works
+These commands are run on each `page` buffer creation:
 
-* `page` connects to parent (or spawned) `nvim` process through `$NVIM_LISTEN_ADDRESS`
-* Command `:term page-term-agent {pipe}` is invoked through nvim's MessagePack-RPC
-* `page-term-agent` reveals (through *{pipe}*) path to PTY device associated with current terminal buffer and blocks it's own thread to keep that buffer open
-* `page` redirects all data from STDIN into PTY device (opened from path read from {pipe})
-* When `page` is'nt piped, PTY device path will be printed, user then can redirect into it manually
+```viml
+let b:page_alternate_bufnr={initial_buf_nr}
+let b:page_scrolloff_backup=&scrolloff
+setl scrollback=-1 scrolloff=999 signcolumn=no nonumber nomodifiable {filetype}
+exe 'au BufEnter <buffer> set scrolloff=999'
+exe 'au BufLeave <buffer> let &scrolloff=b:page_scrolloff_backup'
+{cmd_pre}
+exe 'silent doautocmd User PageOpen'
+redraw
+{cmd_user}
+{cmd_post}
+```
+
+Where:
+
+```viml
+{initial_buf_nr}
+ number of parent :term buffer or -1 when page isn't spawned from neovim terminal
+
+  Is always set on all buffers created by page
+```
+
+```viml
+{filetype}
+ filetype=value of -t argument or "pager"
+
+  Is set only on output buffers.
+  On files buffers filetypes are detected automatically.
+```
+
+```viml
+{cmd_pre}
+ exe 'com! -nargs=? Page call rpcnotify(0, ''page_fetch_lines'', ''{page_id}'', <args>)'
+ exe 'au BufEnter <buffer> com! -nargs=? Page call rpcnotify(0, ''page_fetch_lines'', ''{page_id}'<args>)'
+ exe 'au BufDelete <buffer> call rpcnotify(0, ''page_buffer_closed'', ''{page_id}'')'
+
+  Is appended when -q is provided
+
+
+{cmd_pre}
+ let b:page_lcd_backup = getcwd()
+ lcd {pwd}
+ exe 'au BufEnter <buffer> lcd {pwd}'
+ exe 'au BufLeave <buffer> lcd ' .. b:page_lcd_backup
+
+  Is also appended when -P is provided.
+  {pwd} is $PWD value
+```
+
+```viml
+{cmd_user}
+ value of -e argument
+
+  Is appended when -e is provided
+```
+
+```viml
+{cmd_post}
+ this executes PageOpenFile autocommand
+
+  Is appended only on file buffers
+```
+
+## Limitations
+
+* Only ~100000 lines can be displayed (it's neovim terminal limit)
+* `MANPAGER=page -t man` not works because `set ft=man` fails on :term buffer (other filetypes may be affected as well)
 
 
 ## Installation
 
 * From binaries
-    * Grab binary for your platform from [releases](https://github.com/I60R/page/releases)
+  * Grab binary for your platform from [releases](https://github.com/I60R/page/releases) (currently Linux and OSX are supported)
 
 * Arch Linux:
-    * Package [page-git](https://aur.archlinux.org/packages/page-git/) available in AUR
-    * Or:` git clone git@github.com:I60R/page.git && cd page && makepkg -ef && sudo pacman -U page-git*.pkg.tar.xz`
+  * Package [page-git](https://aur.archlinux.org/packages/page-git/) is available on AUR
+  * Or:`git clone git@github.com:I60R/page.git && cd page && makepkg -ef && sudo pacman -U page-git*.pkg.tar.xz`
 
 * Manually:
-    * Install `rustup` from your distribution package manager
-    * Configure toolchain: `rustup install stable && rustup default stable`
-    * `git clone git@github.com:I60R/page.git && cd page && cargo install --path .`
+  * Install `rustup` from your distribution package manager
+  * Configure toolchain: `rustup install stable && rustup default stable`
+  * `git clone git@github.com:I60R/page.git && cd page && cargo install --path .`

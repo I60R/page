@@ -2,7 +2,7 @@
 _pkgname=page
 pkgname=${_pkgname}-git
 pkgrel=1
-pkgver=v1.9.0
+pkgver=v2.0.0
 pkgdesc='Advanced, fast pager powered by neovim and inspired by neovim-remote'
 arch=('i686' 'x86_64')
 url="https://github.com/I60R/page"
@@ -27,7 +27,6 @@ package() {
 
     # Install binaries
     install -D -m755 "target/release/page" "$pkgdir/usr/bin/page"
-    install -D -m755 "target/release/page-term-agent" "$pkgdir/usr/bin/page-term-agent"
 
     # Find last build directory where completions was generated
     completions_dir=$(find "target" -name "shell_completions" -type d -printf "%T+\t%p\n" | sort | awk 'NR==1{print $2}')

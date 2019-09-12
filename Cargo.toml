@@ -1,6 +1,6 @@
 [package]
 name = "page"
-version = "1.9.0"
+version = "2.0.0"
 authors = ["160R <160R@protonmail.com>"]
 description = "Advanced, fast pager powered by neovim and inspired by neovim-remote"
 repository = "https://github.com/I60R/page"
@@ -10,25 +10,19 @@ edition = "2018"
 build = "build_shell_completions.rs"
 
 [dependencies]
-rand = "0.6.1"
-libc = "0.2.46"
-notify = "4.0.6"
-atty = "0.2.11"
+rand = "0.7.0"
+atty = "0.2.13"
 shell-words = "0.1.0"
-structopt = "0.2.14"
-neovim-lib = "0.5.4"
-log = "0.4.6"
-fern = "0.5.7"
+structopt = "0.3.1"
+neovim-lib = "0.6.1"
+log = "0.4.8"
+fern = "0.5.8"
 
 [build-dependencies]
-structopt = "0.2.14"
+structopt = "0.3.1"
 
 [profile.release]
 lto = true
-
-[[bin]]
-name = "page-term-agent"
-path = "src/page-term-agent.rs"
 
 [[bin]]
 name = "page"

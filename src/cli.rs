@@ -6,12 +6,15 @@ use structopt::{
 
 // Contains arguments provided by command line
 #[derive(StructOpt, Debug)]
-#[structopt(raw(
-    global_settings="&[DisableHelpSubcommand, DeriveDisplayOrder]",
-    group="splits_arg_group()",
-    group="back_arg_group()",
-    group="follow_arg_group()",
-    group="instance_use_arg_group()"))]
+#[structopt(
+    author,
+    about,
+    global_settings = &[DisableHelpSubcommand, DeriveDisplayOrder],
+    group = splits_arg_group(),
+    group = back_arg_group(),
+    group = follow_arg_group(),
+    group = instance_use_arg_group(),
+)]
 pub struct Options {
     /// Neovim session address
     #[structopt(short="a", env="NVIM_LISTEN_ADDRESS")]
@@ -61,6 +64,10 @@ pub struct Options {
     #[structopt(short="p")]
     pub sink_print: bool,
 
+    /// Set $PWD as working dir for output buffer (to navigate paths with `gf`)
+    #[structopt(short="P")]
+    pub pwd: bool,
+
     /// Return back to current buffer
     #[structopt(short="b")]
     pub back: bool,
@@ -77,7 +84,7 @@ pub struct Options {
     #[structopt(short="F")]
     pub follow_all: bool,
 
-    /// Enable on-demand stdin reading with :Page <query_lines> command  
+    /// Enable on-demand stdin reading with :Page <query_lines> command
     #[structopt(short="q", default_value="0")]
     pub query_lines: u64,
 
@@ -136,29 +143,67 @@ pub struct Options {
 
 fn instance_use_arg_group() -> ArgGroup<'static> {
     ArgGroup::with_name("instances")
-        .args(&["instance", "instance_append"])
+        .args(&["instance", "instance-append"])
         .multiple(false)
 }
 
 fn back_arg_group() -> ArgGroup<'static> {
     ArgGroup::with_name("focusing")
-        .args(&["back", "back_restore"])
+        .args(&["back", "back-restore"])
         .multiple(false)
 }
 
 fn follow_arg_group() -> ArgGroup<'static> {
     ArgGroup::with_name("following")
-        .args(&["follow", "follow_all"])
+        .args(&["follow", "follow-all"])
         .multiple(false)
 }
 
 fn splits_arg_group() -> ArgGroup<'static> {
     ArgGroup::with_name("splits")
-        .args(&["split_left", "split_right", "split_above", "split_below"])
-        .args(&["split_left_cols", "split_right_cols", "split_above_rows", "split_below_rows"])
+        .args(&["split-left", "split-right", "split-above", "split-below"])
+        .args(&["split-left-cols", "split-right-cols", "split-above-rows", "split-below-rows"])
         .multiple(false)
 }
 
+
+impl Options {
+    pub fn is_focus_on_existed_instance_buffer_implied(&self) -> bool {
+        self.follow                           // :term buffer should be focused in order to scroll it down.
+        || self.instance.is_some()            // :term buffer should be focused in order to clear it.
+        || self.command_auto                  // We expect autocommands to be run directly on instance buffer.
+        || self.command_post.is_some()        // We expect user comamnd to be run directly on instance buffer.
+        || (!self.back && !self.back_restore) // Should focus when -b is missing to be consistent with -i argument
+    }
+
+    pub fn is_split_implied(&self) -> bool {
+        self.split_left_cols.is_some()
+        || self.split_right_cols.is_some()
+        || self.split_above_rows.is_some()
+        || self.split_below_rows.is_some()
+        || 0u8 < self.split_left
+        || 0u8 < self.split_right
+        || 0u8 < self.split_above
+        || 0u8 < self.split_below
+    }
+
+    pub fn is_output_buffer_implied(&self) -> bool {
+        self.instance_close.is_none() && self.files.is_empty() // These not implies creating output buffer
+        || self.back
+        || self.back_restore
+        || self.follow
+        || self.follow_all
+        || self.sink_open
+        || self.sink_print
+        || self.pwd
+        || 0u64 < self.query_lines
+        || self.instance.is_some()
+        || self.instance_append.is_some()
+        || self.command.is_some()
+        || self.command_post.is_some()
+        || "pager" != &self.filetype
+    }
+}
 
 pub fn get_options() -> Options {
     Options::from_args()

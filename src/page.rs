@@ -1,327 +1,347 @@
-pub mod common; // pub due to intellij-rust bug (https://github.com/intellij-rust/intellij-rust/issues/3757)
 pub(crate) mod cli;
-pub(crate) mod nvim;
+pub(crate) mod neovim;
 pub(crate) mod context;
 
-use crate::common::IO;
 
-use atty::Stream;
+use log::info;
 use std::{env, str::FromStr};
-use log::{info, warn, LevelFilter};
-use fern::Dispatch;
 
 
-
-fn main() -> IO {
-    init_logger()?;
-    let opt = cli::get_options();
-    info!("options: {:#?}", opt);
-    let page_tmp_dir = common::util::get_page_tmp_dir()?;
-    let input_from_pipe = atty::isnt(Stream::Stdin);
-    if opt.query_lines != 0 && !input_from_pipe {
-        warn!("Query works only when page reads from pipe");
+fn main() {
+    init_logger();
+    let cli_ctx = context::after_page_spawned();
+    info!("cli_ctx: {:#?}", &cli_ctx);
+    let mut nvim_conn = neovim::create_connection(&cli_ctx);
+    let nvim_ctx = context::after_neovim_connected(cli_ctx, nvim_conn.nvim_proc.is_some());
+    info!("nvim_ctx: {:#?}", &nvim_ctx);
+    let mut page_actions = page::begin_handling(&mut nvim_conn, &nvim_ctx);
+    page_actions.handle_close_instance_buffer();
+    page_actions.handle_display_files();
+    if nvim_ctx.use_outp_buf {
+        let (buf, outp_ctx) = if let Some(inst_name) = nvim_ctx.inst_mode.any() {
+            if let Some((buf, buf_pty_path)) = page_actions.find_instance_buffer(inst_name) {
+                (buf, context::after_output_found(nvim_ctx, buf_pty_path))
+            } else {
+                let (buf, buf_pty_path) = page_actions.create_instance_output_buffer(inst_name);
+                (buf, context::after_output_created(nvim_ctx, buf_pty_path))
+            }
+        } else {
+            let (buf, buf_pty_path) = page_actions.create_oneoff_output_buffer();
+            (buf, context::after_output_created(nvim_ctx, buf_pty_path))
+        };
+        info!("oup_ctx: {:#?}", &outp_ctx);
+        let mut outp_actions = output::begin_handling(&mut nvim_conn, &outp_ctx, buf);
+        outp_actions.handle_buffer_title();
+        outp_actions.handle_instance_buffer_reset();
+        outp_actions.handle_commands();
+        outp_actions.handle_cursor_position();
+        outp_actions.handle_output();
+        outp_actions.handle_disconnect();
     }
-    let prints_protection = !input_from_pipe && !opt.page_no_protect && env::var_os("PAGE_REDIRECTION_PROTECT").map_or(true, |v| v != "0");
-    let (mut nvim_actions, nvim_child_process) = nvim::connection::get_nvim_connection(&opt, &page_tmp_dir, prints_protection)?;
-    let context = context::create(opt, nvim_child_process, &mut nvim_actions, input_from_pipe)?;
-    info!("context: {:#?}", context);
-    let mut app_actions = app::create_app(nvim_actions, &context);
-    app_actions.handle_close_page_instance_buffer()?;
-    app_actions.handle_display_plain_files()?;
-    if context.creates_output_buffer {
-        let mut output_buffer_actions = app_actions.get_output_buffer()?;
-        output_buffer_actions.handle_instance_state()?;
-        output_buffer_actions.handle_commands()?;
-        output_buffer_actions.handle_scroll_and_switch_back()?;
-        output_buffer_actions.handle_output()?;
-        output_buffer_actions.handle_disconnect()?;
-    }
-    app::exit(context.nvim_child_process)
+    neovim::close_connection(nvim_conn);
 }
 
-fn init_logger() -> IO {
-    Dispatch::new()
-        .format(|out, message, record| out.finish(format_args!("[{}][{}] {}", record.level(), record.target(), message)))
-        .level(LevelFilter::from_str(env::var("RUST_LOG").as_ref().map(String::as_ref).unwrap_or("warn"))?)
-        .level_for("neovim_lib", LevelFilter::Off)
+fn init_logger() {
+    let rust_log = env::var("RUST_LOG");
+    let level = rust_log.as_ref().map(String::as_ref).unwrap_or("warn");
+    let level_filter = log::LevelFilter::from_str(level).expect("Cannot parse $RUST_LOG value");
+    fern::Dispatch::new()
+        .format(|cb, msg, record| cb.finish({
+            format_args!("[{}][{}] {}", record.level(), record.target(), msg)
+        }))
+        .level(level_filter)
+        .level_for("neovim_lib", log::LevelFilter::Off)
         .chain(std::io::stderr())
-        .apply()?;
-    Ok(())
+        .apply()
+        .unwrap();
 }
 
 
-
-pub(crate) mod app {
-    use crate::{
-        common::IO,
-        nvim::{NeovimActions, listen::PageCommand},
-        context::Context,
-    };
-    use std::{
-        io::{self, Write, BufReader, BufRead},
-        fs::{OpenOptions, File},
-        path::PathBuf,
-        process,
-    };    
-    use neovim_lib::neovim_api::Buffer;
+mod page {
+    use crate::{context::NeovimContext, neovim::NeovimConnection};
     use log::warn;
+    use neovim_lib::neovim_api::Buffer;
+    use std::path::PathBuf;
 
-
-
-    /// A manager for `page` application action
-    pub struct AppActions<'a> {
-        nvim_actions: NeovimActions,
-        context: &'a Context,
+    /// This struct implements actions that should be done before output buffer is available
+    pub struct PageActions<'a> {
+        nvim_conn: &'a mut NeovimConnection,
+        nvim_ctx: &'a NeovimContext,
     }
 
-    impl<'a> AppActions<'a> {
-        pub fn handle_close_page_instance_buffer(&mut self) -> IO {
-            let Self { nvim_actions, context, .. } = self;
-            if let Some(ref name) = context.opt.instance_close {
-                if context.nvim_child_process.is_none() {
-                    nvim_actions.close_instance_buffer(name)?;
+    pub fn begin_handling<'a>(nvim_conn: &'a mut NeovimConnection, nvim_ctx: &'a NeovimContext) -> PageActions<'a> {
+        PageActions {
+            nvim_conn,
+            nvim_ctx,
+        }
+    }
+
+    impl<'a> PageActions<'a> {
+        /// Closes buffer marked as instance, when mark is provided by -x argument.
+        /// If neovim is spawned by page then it guaranteedly doesn't have any instances,
+        /// so in this case -x argument will be useless and warning would be printed about that
+        pub fn handle_close_instance_buffer(&mut self) {
+            if let Some(ref instance) = self.nvim_ctx.opt.instance_close {
+                if self.nvim_ctx.nvim_child_proc_spawned {
+                    warn!("Newly spawned neovim cannot contain any instance (-x is useless)")
                 } else {
-                    warn!("Newly spawned neovim process cannot contain any instances")
+                    self.nvim_conn.nvim_actions.close_instance_buffer(instance)
                 }
             }
-            Ok(())
         }
 
-        pub fn handle_display_plain_files(&mut self) -> IO {
-            let Self { nvim_actions, context, .. } = self;
-            for file in &context.opt.files {
-                if let Err(e) = nvim_actions.open_file_buffer(file) {
-                    warn!("Error opening \"{}\": {}", file, e);
+        /// Opens each file provided as free arguments in separate buffers.
+        /// Resets focus to initial buffer and window if further there will be created output buffer in split window,
+        /// since we want to see shell from which that output buffer was spawned
+        pub fn handle_display_files(&mut self) {
+            let PageActions { nvim_conn: NeovimConnection { nvim_actions, initial_buf_number, initial_win_and_buf, .. }, nvim_ctx } = self;
+            for f in &nvim_ctx.opt.files {
+                if let Err(e) = nvim_actions.open_file_buffer(f) {
+                    warn!("Error opening \"{}\": {}", f, e);
                 } else {
-                    let command = &context.opt.command.as_ref().map(String::as_ref).unwrap_or_default();
-                    nvim_actions.prepare_current_buffer("&filetype", command, "", context.initial_buffer_number)?; // Same ft
-                    if context.opt.follow_all {
-                        nvim_actions.set_current_buffer_follow_output_mode()?;
+                    let cmd = &nvim_ctx.opt.command.as_ref().map(String::as_ref).unwrap_or_default();
+                    nvim_actions.prepare_file_buffer(cmd, *initial_buf_number);
+                    if nvim_ctx.opt.follow_all {
+                        nvim_actions.set_current_buffer_follow_output_mode();
                     } else {
-                        nvim_actions.set_current_buffer_scroll_mode()?;
+                        nvim_actions.set_current_buffer_scroll_mode();
                     }
                 }
             }
-            if !context.opt.files.is_empty() && context.creates_in_split {
-                nvim_actions.switch_to_window_and_buffer(&context.initial_window_and_buffer)?;
-            }
-            Ok(())
-        }
-
-        pub fn get_output_buffer(self) -> IO<OutputActions<'a>> {
-            if let Some(instance_name) = self.context.instance_mode.try_get_name() {
-                self.get_instance_output_buffer(instance_name)
-            } else {
-                self.get_oneoff_output_buffer()
+            if !nvim_ctx.opt.files.is_empty() && nvim_ctx.use_outp_buf_in_split {
+                nvim_actions.switch_to_window_and_buffer(&initial_win_and_buf)
             }
         }
 
-        fn get_instance_output_buffer(mut self, instance_name: &'a str) -> IO<OutputActions<'a>> {
-            if let Some((buffer, buffer_pty_path)) = self.nvim_actions.find_instance_buffer(instance_name)? {
-                let Self { nvim_actions, context, .. } = self;
-                Ok(OutputActions { existed_instance: true, sink: None, nvim_actions, context, buffer, buffer_pty_path })
-            } else {
-                let (buffer, buffer_pty_path) = self.open_new_output_buffer()?;
-                self.nvim_actions.register_buffer_as_instance(&buffer, instance_name, &buffer_pty_path.to_string_lossy())?;
-                let Self { nvim_actions, context, .. } = self;
-                Ok(OutputActions { existed_instance: false, sink: None, nvim_actions, context, buffer, buffer_pty_path })
+        /// Returns buffer marked as instance and path to PTY device associated with it.
+        /// If neovim was spawned by page then it guaranteedly doesnt' have any instance,
+        /// so in this case -i and -I arguments would be useless and warning would be printed about that
+        pub fn find_instance_buffer(&mut self, inst_name: &str) -> Option<(Buffer, PathBuf)> {
+            if self.nvim_ctx.nvim_child_proc_spawned {
+                warn!("Newly spawned neovim cannot contain any instance (-i and -I are useless)");
             }
+            self.nvim_conn.nvim_actions.find_instance_buffer(inst_name)
         }
 
-        fn get_oneoff_output_buffer(mut self) -> IO<OutputActions<'a>> {
-            let (buffer, buffer_pty_path) = self.open_new_output_buffer()?;
-            let Self { mut nvim_actions, context, .. } = self;
-            let (page_icon_key, page_icon_default) = if context.input_from_pipe { ("page_icon_pipe", " |") } else { ("page_icon_redirect", " >") };
-            let mut buffer_title = nvim_actions.get_var_or_default(page_icon_key, page_icon_default)?;
-            if let Some(ref buffer_name) = context.opt.name {
-                buffer_title.insert_str(0, buffer_name);
-            }
-            nvim_actions.update_buffer_title(&buffer, &buffer_title)?;
-            Ok(OutputActions { existed_instance: false, sink: None, nvim_actions, context, buffer, buffer_pty_path })
+        /// Creates a new output buffer and then marks it as instance buffer.
+        /// Reuturns this buffer and PTY device associated with it
+        pub fn create_instance_output_buffer(&mut self, inst_name: &str) -> (Buffer, PathBuf) {
+            let (buf, buf_pty_path) = self.create_oneoff_output_buffer();
+            self.nvim_conn.nvim_actions.mark_buffer_as_instance(&buf, inst_name, &buf_pty_path.to_string_lossy());
+            (buf, buf_pty_path)
         }
 
-        fn open_new_output_buffer(&mut self) -> IO<(Buffer, PathBuf)> {
-            let Self { nvim_actions, context, .. } = self;
-            if context.creates_in_split {
-                nvim_actions.split_current_buffer(&context.opt)?;
+        /// Creates a new output buffer using split window if required.
+        /// Also sets some nvim options for better reading experience
+        pub fn create_oneoff_output_buffer(&mut self) -> (Buffer, PathBuf) {
+            let PageActions { nvim_conn: NeovimConnection { nvim_actions, initial_buf_number, .. }, nvim_ctx } = self;
+            if nvim_ctx.use_outp_buf_in_split {
+                nvim_actions.split_current_buffer(&nvim_ctx.opt);
             }
-            let (buffer, buffer_pty_path) = nvim_actions.create_output_buffer_with_pty()?;
-            let filetype = &context.opt.filetype;
-            let command = &context.opt.command.as_ref().map(String::as_ref).unwrap_or_default();
-            let command_query = Self::get_query_commands(context.opt.query_lines, &context.page_id);
-            nvim_actions.prepare_current_buffer(filetype, command, &command_query, context.initial_buffer_number)?;
-            Ok((buffer, buffer_pty_path))
+            let (buf, buf_pty_path) = nvim_actions.create_output_buffer_with_pty();
+            nvim_actions.prepare_output_buffer(
+                &nvim_ctx.page_id,
+                &nvim_ctx.opt.filetype,
+                &nvim_ctx.opt.command.as_ref().map(String::as_ref).unwrap_or_default(),
+                nvim_ctx.opt.pwd,
+                nvim_ctx.opt.query_lines,
+                *initial_buf_number
+            );
+            (buf, buf_pty_path)
         }
+    }
+}
 
-        fn get_query_commands(query_lines: u64, page_id: &str) -> String {
-            let mut commands = String::new();
-            if query_lines != 0 { 
-                commands.push_str(&format!("\
-                    | exe 'command! -nargs=? Page call rpcnotify(0, ''page_fetch_lines'', ''{page_id}'', <args>)' \
-                    | exe 'autocmd BufEnter <buffer> command! -nargs=? Page call rpcnotify(0, ''page_fetch_lines'', ''{page_id}'', <args>)' \
-                    | exe 'autocmd BufDelete <buffer> call rpcnotify(0, ''page_buffer_closed'', ''{page_id}'')' \
-                ", 
-                    page_id = page_id,
-                ));
-            }
-            commands
+
+mod output {
+    use crate::{context::OutputContext, neovim::{NeovimConnection, NotificationFromNeovim}, };
+    use log::warn;
+    use neovim_lib::neovim_api::Buffer;
+    use std::{fs::{File, OpenOptions, }, io::{self, BufRead, BufReader, Write}, };
+
+    /// This struct implements actions that should be done after output buffer is attached
+    pub struct BufferActions<'a> {
+        nvim_conn: &'a mut NeovimConnection,
+        outp_ctx: &'a OutputContext,
+        buf: Buffer,
+        buf_pty: Option<File>,
+    }
+
+    pub fn begin_handling<'a>(nvim_conn: &'a mut NeovimConnection, outp_ctx: &'a OutputContext, buf: Buffer) -> BufferActions<'a> {
+        BufferActions {
+            nvim_conn,
+            outp_ctx,
+            buf,
+            buf_pty: None,
         }
     }
 
-    pub fn create_app(nvim_actions: NeovimActions, context: &Context) -> AppActions {
-        AppActions { nvim_actions, context, }
-    }
-
-
-    /// A manager for output buffer actions 
-    pub struct OutputActions<'a> {
-        nvim_actions: NeovimActions,
-        context: &'a Context,
-        existed_instance: bool,
-        buffer: Buffer,
-        buffer_pty_path: PathBuf,
-        sink: Option<File>
-    }
-
-    impl<'a> OutputActions<'a> {
-        pub fn handle_instance_state(&mut self) -> IO {
-            let Self { nvim_actions, context, sink, buffer_pty_path, buffer, .. } = self;
-            if let Some(instance_name) = context.instance_mode.try_get_name() {
-                Self::update_instance_buffer_title(nvim_actions, &context.opt.name, instance_name, &buffer)?;
-                if context.focuses_on_existed_instance {
-                    nvim_actions.focus_instance_buffer(&buffer)?;
+    impl<'a> BufferActions<'a> {
+        /// This function updates buffer title depending on its type [oneoff/instance] and -n value.
+        /// Icon symbol is received from neovim side and prepended it to the left of buffer title.
+        /// If instance name is provided then it's prepended to the left of icon symbol.
+        pub fn handle_buffer_title(&mut self) {
+            let BufferActions { outp_ctx, buf, nvim_conn: NeovimConnection { nvim_actions, .. }, .. } = self;
+            if let Some(inst_name) = outp_ctx.inst_mode.any() {
+                let (page_icon_key, page_icon_default) = ("page_icon_instance", "@ ");
+                let mut buf_title = nvim_actions.get_var_or_default(page_icon_key, page_icon_default);
+                buf_title.insert_str(0, inst_name);
+                if let Some(ref buf_name) = outp_ctx.opt.name {
+                    if buf_name != inst_name {
+                        buf_title.push_str(buf_name);
+                    }
                 }
-                if context.instance_mode.is_replace() {
-                    let opened_sink = Self::get_opened_sink(sink, buffer_pty_path)?;
-                    write!(opened_sink, "\x1B[3J\x1B[H\x1b[2J")?; // Clear screen sequence
-                }
-            }
-            Ok(())
-        }
-
-        fn update_instance_buffer_title(
-            nvim_actions: &mut NeovimActions,
-            buffer_name: &Option<String>,
-            instance_name: &str,
-            buffer: &Buffer,
-        ) -> IO {
-            let (page_icon_key, page_icon_default) = ("page_icon_instance", "@ ");
-            let mut buffer_title = nvim_actions.get_var_or_default(page_icon_key, page_icon_default)?;
-            buffer_title.insert_str(0, instance_name);
-            if let Some(ref buffer_name) = buffer_name {
-                if buffer_name != instance_name {
-                    buffer_title.push_str(buffer_name);
-                }
-            }
-            nvim_actions.update_buffer_title(&buffer, &buffer_title)?;
-            Ok(())
-        }
-
-        fn get_opened_sink<'b>(sink: &'b mut Option<File>, buffer_pty_path: &'b PathBuf) -> IO<&'b mut File> {
-            Ok(if let Some(opened_sink) = sink {
-                opened_sink
+                nvim_actions.update_buffer_title(&buf, &buf_title);
             } else {
-                let opened_sink = OpenOptions::new().append(true).open(buffer_pty_path)?;
-                *sink = Some(opened_sink);
-                sink.as_mut().unwrap()
-            })
-        }
-
-        pub fn handle_commands(&mut self) -> IO {
-            if self.context.opt.command_auto {
-                self.nvim_actions.execute_connect_autocmd_on_current_buffer()?;
-            }
-            if let Some(ref command) = self.context.opt.command_post {
-                self.nvim_actions.execute_command_post(&command)?;
-            }
-            Ok(())
-        }
-
-        pub fn handle_scroll_and_switch_back(&mut self) -> IO {
-            let Self { nvim_actions, context, .. } = self;
-            if self.existed_instance && !context.focuses_on_existed_instance {
-                return Ok(());
-            }
-            if context.opt.follow {
-                nvim_actions.set_current_buffer_follow_output_mode()?;
-            } else {
-                nvim_actions.set_current_buffer_scroll_mode()?;
-            }
-            if context.switch_back_mode.is_provided() {
-                nvim_actions.switch_to_window_and_buffer(&context.initial_window_and_buffer)?;
-                if context.switch_back_mode.is_insert() {
-                    nvim_actions.set_current_buffer_insert_mode()?;
+                let (page_icon_default, page_icon_key) = if outp_ctx.input_from_pipe { (" |", "page_icon_pipe") } else { (" >", "page_icon_redirect") };
+                let mut buf_title = nvim_actions.get_var_or_default(page_icon_key, page_icon_default);
+                if let Some(ref buf_name) = outp_ctx.opt.name {
+                    buf_title.insert_str(0, buf_name);
                 }
+                nvim_actions.update_buffer_title(&buf, &buf_title);
             }
-            Ok(())
         }
 
-        pub fn handle_output(&mut self) -> IO {
-            let Self { nvim_actions, context, sink, buffer_pty_path, .. } = self;
-            if context.input_from_pipe {
-                let stdin = io::stdin();
-                let opened_sink = Self::get_opened_sink(sink, buffer_pty_path)?;
-                let mut lines_to_read = context.opt.query_lines;
-                if lines_to_read == 0 {
-                    io::copy(&mut stdin.lock(), opened_sink).map(drop)?;
+        /// Resets focus and content of instance buffer when required.
+        /// This is required to support some functionality not available through neovim API.
+        pub fn handle_instance_buffer_reset(&mut self) {
+            let BufferActions { outp_ctx, buf, nvim_conn: NeovimConnection { nvim_actions, .. }, .. } = self;
+            if outp_ctx.inst_focus {
+                nvim_actions.focus_instance_buffer(&buf);
+            }
+            if outp_ctx.inst_mode.is_replace() {
+                writeln!(self.get_buffer_pty(), "\x1B[3J\x1B[H\x1b[2J").expect("Cannot write clear screen sequence");
+            }
+        }
+
+        /// Executes PageConnect (-C) and post command (-E) on page buffer.
+        /// If any of these flags are passed then output buffer should be already focused.
+        pub fn handle_commands(&mut self) {
+            let BufferActions { outp_ctx, nvim_conn: NeovimConnection { nvim_actions, .. }, .. } = self;
+            if outp_ctx.opt.command_auto {
+                nvim_actions.execute_connect_autocmd_on_current_buffer();
+            }
+            if let Some(ref command) = outp_ctx.opt.command_post {
+                nvim_actions.execute_command_post(&command);
+            }
+        }
+
+        /// Sets cursor position on page buffer and on current buffer depending on -f, -b, and -B flags provided.
+        /// First if condition on this function ensures that it's really necessary to do any action,
+        /// to circumvent flicker with `page -I existed -b` and `page -I existed -B` invocations
+        pub fn handle_cursor_position(&mut self) {
+            let BufferActions { outp_ctx, nvim_conn: NeovimConnection { nvim_actions, initial_win_and_buf, .. }, .. } = self;
+            if outp_ctx.move_cursor {
+                if outp_ctx.opt.follow {
+                    nvim_actions.set_current_buffer_follow_output_mode();
                 } else {
-                    let mut lines_to_read_in_last_query = lines_to_read;
+                    nvim_actions.set_current_buffer_scroll_mode();
+                }
+                if outp_ctx.switch_back_mode.is_any() {
+                    nvim_actions.switch_to_window_and_buffer(&initial_win_and_buf);
+                    if outp_ctx.switch_back_mode.is_insert() {
+                        nvim_actions.set_current_buffer_insert_mode();
+                    }
+                }
+            }
+        }
+
+        /// Writes lines from stdin directly into PTY device associated with output buffer.
+        /// In case if -q <count> argument provided it might block until next line from neovim is requested.
+        /// If page isn't piped then it simply prints actual path to PTY device associated with output buffer,
+        /// so user can redirect into it manually.
+        pub fn handle_output(&mut self) {
+            if self.outp_ctx.input_from_pipe {
+                let stdin = io::stdin();
+                let n_lines_in_query = self.outp_ctx.opt.query_lines;
+                if n_lines_in_query == 0 {
+                    io::copy(&mut io::stdin().lock(), self.get_buffer_pty()).expect("Read from stdin failed unexpectedly");
+                } else {
                     let mut stdin_lines = BufReader::new(stdin.lock()).lines();
+                    let mut s = QueryState::default();
+                    s.next_part(n_lines_in_query);
                     loop {
-                        if lines_to_read == 0 {
-                            nvim_actions.notify_query_finished(lines_to_read_in_last_query)?;
-                            match context.receiver.recv() {
-                                Ok(PageCommand::FetchLines(number)) => { lines_to_read = number; lines_to_read_in_last_query = number },
-                                Ok(PageCommand::FetchPart) => lines_to_read = context.opt.query_lines,
-                                _ => break,
+                        if s.is_whole_part_sent() {
+                            self.nvim_conn.nvim_actions.notify_query_finished(s.how_many_lines_sent());
+                            match self.nvim_conn.rx.recv() {
+                                Ok(NotificationFromNeovim::FetchLines(n)) => s.next_part(n),
+                                Ok(NotificationFromNeovim::FetchPart) => s.next_part(n_lines_in_query),
+                                _ => break
                             }
                         }
                         match stdin_lines.next() {
-                            Some(Ok(line)) => writeln!(opened_sink, "{}", line)?,
-                            Some(Err(err)) => {
-                                warn!("Error reading line from stdin: {}", err);
+                            Some(Ok(l)) => writeln!(self.get_buffer_pty(), "{}", l).expect("Cannot write next line"),
+                            Some(Err(e)) => {
+                                warn!("Error reading line from stdin: {}", e);
                                 break;
-                            },
+                            }
                             None => {
-                                nvim_actions.notify_query_finished(lines_to_read_in_last_query - lines_to_read)?;
+                                self.nvim_conn.nvim_actions.notify_query_finished(s.how_many_lines_sent());
                                 break;
                             }
                         }
-                        lines_to_read -= 1;
+                        s.line_sent();
                     }
                 }
-                nvim_actions.notify_page_read()?;
+                self.nvim_conn.nvim_actions.notify_page_read();
             }
-            if context.prints_output_buffer_pty {
-                println!("{}", buffer_pty_path.to_string_lossy());
+            if self.outp_ctx.print_output_buf_pty {
+                println!("{}", self.outp_ctx.buf_pty_path.to_string_lossy());
             }
-            Ok(())
         }
 
-        pub fn handle_disconnect(&mut self) -> IO {
-            let Self { nvim_actions, buffer, context, .. } = self;
-            if context.opt.command_auto {
-                let final_buffer = nvim_actions.get_current_buffer()?;
-                let temp_switch_buffer = &final_buffer != buffer;
-                if temp_switch_buffer {
-                    nvim_actions.switch_to_buffer(&buffer)?;
+        /// Executes PageDisconnect autocommand if -C flag was provided.
+        /// Some time might pass since page buffer was created and output was started,
+        /// so this function might temporarily focus on output buffer in order to run
+        /// autocommand.
+        pub fn handle_disconnect(&mut self) {
+            let BufferActions { nvim_conn: NeovimConnection { nvim_actions, initial_win_and_buf, .. }, buf, outp_ctx, .. } = self;
+            if outp_ctx.opt.command_auto {
+                let c_buf = nvim_actions.get_current_buffer();
+                let switched = buf != &c_buf;
+                if switched {
+                    nvim_actions.switch_to_buffer(&buf);
                 }
-                nvim_actions.execute_disconnect_autocmd_on_current_buffer()?;
-                if temp_switch_buffer {
-                    nvim_actions.switch_to_buffer(&final_buffer)?;
-                    if context.initial_window_and_buffer.1 == final_buffer && context.switch_back_mode.is_insert() {
-                        nvim_actions.set_current_buffer_insert_mode()?;
+                nvim_actions.execute_disconnect_autocmd_on_current_buffer();
+                if switched {
+                    nvim_actions.switch_to_buffer(&c_buf);
+                    if initial_win_and_buf.1 == c_buf && outp_ctx.switch_back_mode.is_insert() {
+                        nvim_actions.set_current_buffer_insert_mode();
                     }
                 }
             }
-            Ok(())
+        }
+
+        /// Returns PTY device associated with output buffer.
+        /// This function ensures that PTY device will be opened only once
+        fn get_buffer_pty(&mut self) -> &mut File {
+            let buf_pty_path = &self.outp_ctx.buf_pty_path;
+            self.buf_pty.get_or_insert_with(|| OpenOptions::new().append(true).open(buf_pty_path).expect("Cannot open page PTY"))
         }
     }
 
-    pub fn exit(nvim_child_process: Option<process::Child>) -> IO {
-        if let Some(mut process) = nvim_child_process {
-            process.wait().map(drop)?;
+
+    /// Encapsulates state of querying lines from neovim side with :Page <count> command.
+    /// Is useful only when -q <count> argument is provided
+    #[derive(Default)]
+    struct QueryState {
+        expect: u64,
+        remain: u64,
+    }
+
+    impl QueryState {
+        fn next_part(&mut self, lines_to_read: u64) {
+            self.expect = lines_to_read;
+            self.remain = lines_to_read;
         }
-        Ok(())
+        fn line_sent(&mut self) {
+            self.remain -= 1;
+        }
+        fn is_whole_part_sent(&self) -> bool {
+            self.remain == 0
+        }
+        fn how_many_lines_sent(&self) -> u64 {
+            self.expect - self.remain
+        }
     }
 }

@@ -47,16 +47,15 @@ matrix:
     - env: TARGET=x86_64-unknown-linux-gnu
       os: linux
 
-    # *BSD
-    # - env: TARGET=i686-unknown-freebsd
-    # - env: TARGET=x86_64-unknown-netbsd
-    - env: TARGET=x86_64-unknown-freebsd
-      os: linux
-
     # OSX
     # - env: TARGET=i686-apple-darwin
     - env: TARGET=x86_64-apple-darwin
       os: osx
+
+    # *BSD
+    # - env: TARGET=i686-unknown-freebsd
+    # - env: TARGET=x86_64-unknown-netbsd
+    # - env: TARGET=x86_64-unknown-freebsd
 
     # Windows
     # - env: TARGET=x86_64-pc-windows-gnu
@@ -95,7 +94,7 @@ install: |
   cargo install cross || true
 
 script: |
-  set -e  
+  set -e
   cross build --verbose --release --target=$TARGET
   # cross test --target=$TARGET TODO: uncomment; currently fails on freebsd
 
