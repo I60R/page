@@ -18,8 +18,7 @@ pub struct CliContext {
 pub fn after_page_spawned() -> CliContext {
     let opt = crate::cli::get_options();
     let tmp_dir = {
-        let mut d = std::env::temp_dir();
-        d.push("neovim-page");
+        let d = std::env::temp_dir().join("neovim-page");
         std::fs::create_dir_all(&d).expect("Cannot create temporary directory for page");
         d
     };

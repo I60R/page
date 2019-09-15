@@ -426,8 +426,7 @@ mod connection {
         if *print_protection {
             print_redirect_protection(&tmp_dir);
         }
-        let mut p = tmp_dir.clone();
-        p.push(&format!("socket-{}", page_id));
+        let p = tmp_dir.clone().join(&format!("socket-{}", page_id));
         let nvim_listen_addr = p.to_string_lossy();
         let nvim_proc = spawn_child_nvim_process(opt, &nvim_listen_addr);
         let mut i = 100;
@@ -460,8 +459,7 @@ mod connection {
     /// is printed first before neovim process was spawned. This expands to "cli > dir {neovim UI}"
     /// command which fails early as redirecting text into directory is impossible.
     fn print_redirect_protection(tmp_dir: &PathBuf) {
-        let mut d = tmp_dir.clone();
-        d.push("DO-NOT-REDIRECT-OUTSIDE-OF-NVIM-TERM(--help[-W])");
+        let d = tmp_dir.clone().join("DO-NOT-REDIRECT-OUTSIDE-OF-NVIM-TERM(--help[-W])");
         if let Err(e) = std::fs::create_dir_all(&d) {
             panic!("Cannot create protection directory '{}': {:?}", d.display(), e)
         }
@@ -500,8 +498,7 @@ mod connection {
     /// Returns path to custom neovim config if it's present in corresponding locations.
     fn default_config_path() -> Option<String> {
         std::env::var("XDG_CONFIG_HOME").ok().and_then(|xdg_config_home| {
-            let mut p = PathBuf::from(xdg_config_home);
-            p.push("page/init.vim");
+            let p = PathBuf::from(xdg_config_home).join("page/init.vim");
             if p.exists() {
                 trace!(target: "default config", "use $XDG_CONFIG_HOME: {}", p.display());
                 Some(p)
@@ -510,8 +507,7 @@ mod connection {
             }
         })
         .or_else(|| std::env::var("HOME").ok().and_then(|home_dir| {
-            let mut p = PathBuf::from(home_dir);
-            p.push(".config/page/init.vim");
+            let p = PathBuf::from(home_dir).join(".config/page/init.vim");
             if p.exists() {
                 trace!(target: "default config", "use ~/.config: {}", p.display());
                 Some(p)
