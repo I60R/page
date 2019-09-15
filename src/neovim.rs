@@ -45,7 +45,7 @@ impl NeovimActions {
             .iter().find(|(k, _)| k.as_str().map(|s| s == "pty").unwrap()).expect("Cannot find 'pty' on channel info")
             .1.as_str().unwrap()
             .into();
-        trace!(target: "new output buffer", "{} => {:?}", self.get_buffer_number(&buf), buf_pty_path);
+        trace!(target: "new output buffer", "{} => {}", self.get_buffer_number(&buf), buf_pty_path.display());
         (buf, buf_pty_path)
     }
 
@@ -463,7 +463,7 @@ mod connection {
         let mut d = tmp_dir.clone();
         d.push("DO-NOT-REDIRECT-OUTSIDE-OF-NVIM-TERM(--help[-W])");
         if let Err(e) = std::fs::create_dir_all(&d) {
-            panic!("Cannot create protection directory '{:?}': {:?}", d, e)
+            panic!("Cannot create protection directory '{}': {:?}", d.display(), e)
         }
         println!("{}", d.to_string_lossy());
     }
@@ -503,7 +503,7 @@ mod connection {
             let mut p = PathBuf::from(xdg_config_home);
             p.push("page/init.vim");
             if p.exists() {
-                trace!(target: "default config", "use $XDG_CONFIG_HOME: {:?}", p);
+                trace!(target: "default config", "use $XDG_CONFIG_HOME: {}", p.display());
                 Some(p)
             } else {
                 None
@@ -513,7 +513,7 @@ mod connection {
             let mut p = PathBuf::from(home_dir);
             p.push(".config/page/init.vim");
             if p.exists() {
-                trace!(target: "default config", "use ~/.config: {:?}", p);
+                trace!(target: "default config", "use ~/.config: {}", p.display());
                 Some(p)
             } else {
                 None
