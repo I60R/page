@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use log::warn;
 
 
-// Contains data required after page was spawned from shell
+/// Contains data required after page was spawned from shell
 #[derive(Debug)]
 pub struct CliContext {
     pub opt: Options,
@@ -23,8 +23,9 @@ pub fn after_page_spawned() -> CliContext {
         d
     };
     let page_id = {
-        use rand::Rng;
-        rand::thread_rng().sample_iter(&rand::distributions::Alphanumeric).take(8).collect()
+        let pid = std::process::id();
+        let time = std::time::UNIX_EPOCH.elapsed().unwrap().as_nanos();
+        format!("{}{}", pid, time) // provides enough entropy for current use case
     };
     let input_from_pipe = {
         use atty::Stream;
@@ -46,7 +47,7 @@ pub fn after_page_spawned() -> CliContext {
 }
 
 
-// Contains data required after neovim is attached
+/// Contains data required after neovim is attached
 #[derive(Debug)]
 pub struct NeovimContext {
     pub opt: Options,
