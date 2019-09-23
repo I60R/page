@@ -145,7 +145,7 @@ impl NeovimActions {
     pub fn update_buffer_title(&mut self, buf: &Buffer, buf_title: &str) {
         trace!(target: "set title", "{:?} => {}", buf.get_number(&mut self.nvim), buf_title);
         let a = std::iter::once((0, buf_title.to_string()));
-        let b = (1..99).map(|attem| (attem, format!("{}({})", buf_title, attem)));
+        let b = (1..99).map(|attempt_nr| (attempt_nr, format!("{}({})", buf_title, attempt_nr)));
         for (attempt_nr, name) in a.chain(b) {
             match buf.set_name(&mut self.nvim, &name) {
                 Err(e) => {
@@ -172,7 +172,7 @@ impl NeovimActions {
         let ft = format!("filetype={}", ft);
         let mut cmd_pre = String::new();
         if 0u64 < query_lines {
-            cmd_pre.push_str(&format!("\
+            cmd_pre.push_str(&format!(" \
                 | exe 'command! -nargs=? Page call rpcnotify(0, ''page_fetch_lines'', ''{page_id}'', <args>)' \
                 | exe 'autocmd BufEnter <buffer> command! -nargs=? Page call rpcnotify(0, ''page_fetch_lines'', ''{page_id}'', <args>)' \
                 | exe 'autocmd BufDelete <buffer> call rpcnotify(0, ''page_buffer_closed'', ''{page_id}'')' \
@@ -181,7 +181,7 @@ impl NeovimActions {
             ));
         }
         if pwd {
-            cmd_pre.push_str(&format!("\
+            cmd_pre.push_str(&format!(" \
                 | let b:page_lcd_backup = getcwd() \
                 | lcd {pwd} \
                 | exe 'autocmd BufEnter <buffer> lcd {pwd}' \
@@ -197,7 +197,7 @@ impl NeovimActions {
         let cmd_user = if cmd_user.is_empty() {
             String::new()
         } else {
-            format!("exe '{}'", cmd_user.replace("'", "''")) // Ecranizes viml literal string
+            format!("| exe '{}'", cmd_user.replace("'", "''")) // Ecranizes viml literal string
         };
         let options = &format!(" \
             | let b:page_alternate_bufnr={initial_buf_nr} \
@@ -205,11 +205,11 @@ impl NeovimActions {
             | setl scrollback=-1 scrolloff=999 signcolumn=no nonumber nomodifiable {ft} \
             | exe 'autocmd BufEnter <buffer> set scrolloff=999' \
             | exe 'autocmd BufLeave <buffer> let &scrolloff=b:page_scrolloff_backup' \
-            {cmd_pre}\
+            {cmd_pre} \
             | exe 'silent doautocmd User PageOpen' \
             | redraw \
-            {cmd_user}\
-            {cmd_post}\
+            {cmd_user} \
+            {cmd_post} \
         ",
             initial_buf_nr = initial_buf_nr,
             ft = ft,

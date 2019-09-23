@@ -18,7 +18,7 @@ fn main() {
     page_actions.handle_close_instance_buffer();
     page_actions.handle_display_files();
     if nvim_ctx.use_outp_buf {
-        let (buf, outp_ctx) = if let Some(inst_name) = nvim_ctx.inst_mode.any() {
+        let (buf, outp_ctx) = if let Some(inst_name) = nvim_ctx.inst_buf_usage.try_get_instance_name() {
             if let Some((buf, buf_pty_path)) = page_actions.find_instance_buffer(inst_name) {
                 (buf, context::after_output_found(nvim_ctx, buf_pty_path))
             } else {
@@ -182,7 +182,7 @@ mod output {
         /// If instance name is provided then it's prepended to the left of icon symbol.
         pub fn handle_buffer_title(&mut self) {
             let BufferActions { outp_ctx, buf, nvim_conn: NeovimConnection { nvim_actions, .. }, .. } = self;
-            if let Some(inst_name) = outp_ctx.inst_mode.any() {
+            if let Some(inst_name) = outp_ctx.inst_buf_usage.try_get_instance_name() {
                 let (page_icon_key, page_icon_default) = ("page_icon_instance", "@ ");
                 let mut buf_title = nvim_actions.get_var_or_default(page_icon_key, page_icon_default);
                 buf_title.insert_str(0, inst_name);
@@ -209,7 +209,7 @@ mod output {
             if outp_ctx.inst_focus {
                 nvim_actions.focus_instance_buffer(&buf);
             }
-            if outp_ctx.inst_mode.is_replace() {
+            if outp_ctx.inst_buf_usage.should_replace_content() {
                 writeln!(self.get_buffer_pty(), "\x1B[3J\x1B[H\x1b[2J").expect("Cannot write clear screen sequence");
             }
         }
@@ -237,9 +237,9 @@ mod output {
                 } else {
                     nvim_actions.set_current_buffer_scroll_mode();
                 }
-                if outp_ctx.switch_back_mode.is_any() {
+                if !outp_ctx.restore_initial_buf_focus.is_disabled() {
                     nvim_actions.switch_to_window_and_buffer(&initial_win_and_buf);
-                    if outp_ctx.switch_back_mode.is_insert() {
+                    if outp_ctx.restore_initial_buf_focus.is_vi_mode_insert() {
                         nvim_actions.set_current_buffer_insert_mode();
                     }
                 }
@@ -305,7 +305,7 @@ mod output {
                 nvim_actions.execute_disconnect_autocmd_on_current_buffer();
                 if switched {
                     nvim_actions.switch_to_buffer(&c_buf);
-                    if initial_win_and_buf.1 == c_buf && outp_ctx.switch_back_mode.is_insert() {
+                    if initial_win_and_buf.1 == c_buf && outp_ctx.restore_initial_buf_focus.is_vi_mode_insert() {
                         nvim_actions.set_current_buffer_insert_mode();
                     }
                 }
