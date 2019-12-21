@@ -42,8 +42,8 @@ fn main() {
 }
 
 fn init_logger() {
-    let rust_log = env::var("RUST_LOG");
-    let level = rust_log.as_ref().map(String::as_ref).unwrap_or("warn");
+    let rust_log = env::var("RUST_LOG").ok();
+    let level = rust_log.as_deref().unwrap_or("warn");
     let level_filter = log::LevelFilter::from_str(level).expect("Cannot parse $RUST_LOG value");
     fern::Dispatch::new()
         .format(|cb, msg, record| cb.finish({
@@ -99,7 +99,7 @@ mod page {
                 if let Err(e) = nvim_actions.open_file_buffer(f) {
                     warn!("Error opening \"{}\": {}", f, e);
                 } else {
-                    let cmd = &nvim_ctx.opt.command.as_ref().map(String::as_ref).unwrap_or_default();
+                    let cmd = &nvim_ctx.opt.command.as_deref().unwrap_or_default();
                     nvim_actions.prepare_file_buffer(cmd, *initial_buf_number);
                     if nvim_ctx.opt.follow_all {
                         nvim_actions.set_current_buffer_follow_output_mode();
@@ -142,7 +142,7 @@ mod page {
             nvim_actions.prepare_output_buffer(
                 &nvim_ctx.page_id,
                 &nvim_ctx.opt.filetype,
-                &nvim_ctx.opt.command.as_ref().map(String::as_ref).unwrap_or_default(),
+                &nvim_ctx.opt.command.as_deref().unwrap_or_default(),
                 nvim_ctx.opt.pwd,
                 nvim_ctx.opt.query_lines,
                 *initial_buf_number

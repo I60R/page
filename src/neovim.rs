@@ -418,7 +418,7 @@ mod connection {
     /// Also prints redirection protection in appropriate circumstances.
     pub(super) fn create_session(pre_ctx: &CliContext,) -> (neovim_lib::Session, Option<process::Child>) {
         let CliContext { opt, tmp_dir, page_id, print_protection, .. } = pre_ctx;
-        match opt.address.as_ref().map(String::as_ref).map(session_at_address) {
+        match opt.address.as_deref().map(session_at_address) {
             Some(Ok(nvim_session)) => return (nvim_session, None),
             Some(Err(e)) => error!(target: "cannot connect to parent neovim", "address '{}': {:?}", opt.address.as_ref().unwrap(), e),
             _ => {}
