@@ -88,13 +88,13 @@ pub struct Options {
     #[structopt(short="q", default_value="0")]
     pub query_lines: u64,
 
-    /// Flush redirecting protection that prevents from producing junk and possible corruption of files
-    /// by invoking commands like "unset NVIM_LISTEN_ADDRESS && ls > $(page -E q)" where "$(page -E q)"
-    /// part not evaluates into /path/to/sink as expected but instead into neovim UI, which consists of
-    /// a bunch of escape characters and strings. Many useless files could be created then and even
-    /// overwriting of existed file might occur.
-    /// To prevent that, a path to temporary directory is printed first, which causes "command > directory ..."
-    /// to fail early as it's impossible to redirect text into directory.
+    /// Flush redirecting protection that prevents from producing junk and possible overwriting of existed
+    /// files by invoking commands like "ls > $(NVIM_LISTEN_ADDRESS= page -E q)" where the RHS of > operator
+    /// evaluates not into /path/to/sink as expected but into a bunch of whitespace-separated strings/escapes
+    /// from neovim UI which some shells also interpret as valid targets for text redirection.
+    /// The protection consists of printing of a path to the existed dummy directory always first before
+    /// printing of a neovim UI will begin in order to make the first target for text redirection from page's
+    /// output invalid and to disrupt harmful redirection early before other writes might occur.
     /// [env:PAGE_REDIRECTION_PROTECT: (0 to disable)]
     #[structopt(short="W")]
     pub page_no_protect: bool,
@@ -169,11 +169,10 @@ fn splits_arg_group() -> ArgGroup<'static> {
 
 impl Options {
     pub fn is_focus_on_existed_instance_buffer_implied(&self) -> bool {
-        self.follow                           // :term buffer should be focused in order to scroll it down.
-        || self.instance.is_some()            // :term buffer should be focused in order to clear it.
-        || self.command_auto                  // We expect autocommands to be run directly on instance buffer.
-        || self.command_post.is_some()        // We expect user comamnd to be run directly on instance buffer.
-        || (!self.back && !self.back_restore) // Should focus when -b is missing to be consistent with -i argument
+        self.follow                           // Should focus if we need to scroll down
+        || self.command_auto                  // Should focus in order to run autocommands
+        || self.command_post.is_some()        // Should focus in order to run user commands
+        || (!self.back && !self.back_restore) // Should focus if -b and -B flags aren't provided
     }
 
     pub fn is_split_implied(&self) -> bool {
@@ -181,13 +180,13 @@ impl Options {
         || self.split_right_cols.is_some()
         || self.split_above_rows.is_some()
         || self.split_below_rows.is_some()
-        || 0u8 < self.split_left
-        || 0u8 < self.split_right
-        || 0u8 < self.split_above
-        || 0u8 < self.split_below
+        || self.split_left > 0u8
+        || self.split_right > 0u8
+        || self.split_above > 0u8
+        || self.split_below > 0u8
     }
 
-    pub fn is_output_buffer_implied(&self) -> bool {
+    pub fn is_output_buffer_creation_implied(&self) -> bool {
         self.instance_close.is_none() && self.files.is_empty() // These not implies creating output buffer
         || self.back
         || self.back_restore
@@ -196,7 +195,7 @@ impl Options {
         || self.sink_open
         || self.sink_print
         || self.pwd
-        || 0u64 < self.query_lines
+        || self.query_lines > 0u64
         || self.instance.is_some()
         || self.instance_append.is_some()
         || self.command.is_some()
@@ -206,5 +205,9 @@ impl Options {
 }
 
 pub fn get_options() -> Options {
-    Options::from_args()
+    let mut opt = Options::from_args();
+    if opt.address.as_ref().map_or(false, |s| s.is_empty()) {
+        opt.address = None;
+    }
+    opt
 }

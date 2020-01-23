@@ -228,7 +228,6 @@ Where:
 * Only ~100000 lines can be displayed (it's neovim terminal limit)
 * `MANPAGER=page -t man` not works because `set ft=man` fails on :term buffer (other filetypes may be affected as well)
 
-
 ## Installation
 
 * From binaries
