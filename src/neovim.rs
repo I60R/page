@@ -35,16 +35,48 @@ impl NeovimActions {
         buf.get_number(&mut self.nvim).unwrap()
     }
 
-    pub fn create_output_buffer_with_pty(&mut self) -> (Buffer, PathBuf) {
+    pub fn create_substituting_output_buffer(&mut self) -> Buffer {
         self.nvim.command("term tail -f <<EOF").unwrap();
         let buf = self.get_current_buffer();
+        log::trace!(target: "new substituting output buffer", "{}", self.get_buffer_number(&buf));
+        buf
+    }
+
+    pub fn create_split_output_buffer(&mut self, opt: &crate::cli::Options) -> Buffer {
+        let cmd = if opt.split_right > 0u8 {
+            format!("exe 'belowright ' . ((winwidth(0)/2) * 3 / {}) . 'vsplit term://tail -f <<EOF' | set winfixwidth", opt.split_right + 1)
+        } else if opt.split_left > 0u8 {
+            format!("exe 'aboveleft ' . ((winwidth(0)/2) * 3 / {}) . 'vsplit term://tail -f <<EOF' | set winfixwidth", opt.split_left + 1)
+        } else if opt.split_below > 0u8 {
+            format!("exe 'belowright ' . ((winheight(0)/2) * 3 / {}) . 'split term://tail -f <<EOF' | set winfixheight", opt.split_below + 1)
+        } else if opt.split_above > 0u8 {
+            format!("exe 'aboveleft ' . ((winheight(0)/2) * 3 / {}) . 'split term://tail -f <<EOF' | set winfixheight", opt.split_above + 1)
+        } else if let Some(split_right_cols) = opt.split_right_cols {
+            format!("belowright {}vsplit term://tail -f <<EOF | set winfixwidth", split_right_cols)
+        } else if let Some(split_left_cols) = opt.split_left_cols {
+            format!("aboveleft {}vsplit term://tail -f <<EOF | set winfixwidth", split_left_cols)
+        } else if let Some(split_below_rows) = opt.split_below_rows {
+            format!("belowright {}split term://tail -f <<EOF | set winfixheight", split_below_rows)
+        } else if let Some(split_above_rows) = opt.split_above_rows {
+            format!("aboveleft {}split term://tail -f <<EOF | set winfixheight", split_above_rows)
+        } else {
+            "".into()
+        };
+        log::trace!(target: "split command", "{}", cmd);
+        self.nvim.command(&cmd).expect("Error when creating split buffer");
+        let buf = self.get_current_buffer();
+        log::trace!(target: "new split output buffer", "{}", self.get_buffer_number(&buf));
+        buf
+    }
+
+    pub fn get_current_buffer_pty_path(&mut self) -> PathBuf {
         let buf_pty_path: PathBuf = self.nvim.eval("nvim_get_chan_info(&channel)").expect("Cannot get channel info")
             .as_map().unwrap()
             .iter().find(|(k, _)| k.as_str().map(|s| s == "pty").unwrap()).expect("Cannot find 'pty' on channel info")
             .1.as_str().unwrap()
             .into();
-        log::trace!(target: "new output buffer", "{} => {}", self.get_buffer_number(&buf), buf_pty_path.display());
-        (buf, buf_pty_path)
+        log::trace!(target: "use pty", "{}", buf_pty_path.display());
+        buf_pty_path
     }
 
     pub fn mark_buffer_as_instance(&mut self, buffer: &Buffer, inst_name: &str, inst_pty_path: &str) {
@@ -110,29 +142,6 @@ impl NeovimActions {
         self.nvim.set_current_buf(inst_buf).unwrap();
     }
 
-    pub fn split_current_buffer(&mut self, opt: &crate::cli::Options) {
-        let cmd = if opt.split_right > 0u8 {
-            format!("belowright vsplit | exe 'vertical resize' . winwidth(0) * 3 / {} | set winfixwidth", opt.split_right + 1)
-        } else if opt.split_left > 0u8 {
-            format!("aboveleft vsplit | exe 'vertical resize' . winwidth(0) * 3 / {} | set winfixwidth", opt.split_left + 1)
-        } else if opt.split_below > 0u8 {
-            format!("belowright split | exe 'resize' . winheight(0) * 3 / {} | set winfixheight", opt.split_below + 1)
-        } else if opt.split_above > 0u8 {
-            format!("aboveleft split | exe 'resize' . winheight(0) * 3 / {} | set winfixheight", opt.split_above + 1)
-        } else if let Some(split_right_cols) = opt.split_right_cols {
-            format!("belowright vsplit | vertical resize {} | set winfixwidth", split_right_cols)
-        } else if let Some(split_left_cols) = opt.split_left_cols {
-            format!("aboveleft vsplit | vertical resize {} | set winfixwidth", split_left_cols)
-        } else if let Some(split_below_rows) = opt.split_below_rows {
-            format!("belowright split | resize {} | set winfixheight", split_below_rows)
-        } else if let Some(split_above_rows) = opt.split_above_rows {
-            format!("aboveleft split | resize {} | set winfixheight", split_above_rows)
-        } else {
-            "".into()
-        };
-        log::trace!(target: "split", "{}", cmd);
-        self.nvim.command(&cmd).expect("Error when splitting current buffer");
-    }
 
     pub fn update_buffer_title(&mut self, buf: &Buffer, buf_title: &str) {
         log::trace!(target: "update title", "{:?} => {}", buf.get_number(&mut self.nvim), buf_title);
@@ -295,7 +304,7 @@ impl NeovimActions {
             .unwrap_or_else(|e| {
                 let description = e.to_string();
                 if description != format!("1 - Key '{}' not found", key)
-                && description != format!("1 - Key not found: {}", key) { // for new neovim version
+                && description != format!("1 - Key not found: {}", key) { // For new neovim version
                     log::error!("Error when getting var: {}, {}", key, e);
                 }
                 String::from(default)

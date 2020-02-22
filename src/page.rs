@@ -167,10 +167,12 @@ mod neovim_api_usage {
         /// Also sets some nvim options for better reading experience
         pub fn create_oneoff_output_buffer(&mut self) -> (Buffer, PathBuf) {
             let RemoteActions { nvim_conn: NeovimConnection { nvim_actions, initial_buf_number, .. }, nvim_ctx } = self;
-            if nvim_ctx.outp_buf_usage.is_create_split() {
-                nvim_actions.split_current_buffer(&nvim_ctx.opt);
-            }
-            let (buf, buf_pty_path) = nvim_actions.create_output_buffer_with_pty();
+            let buf = if nvim_ctx.outp_buf_usage.is_create_split() {
+                nvim_actions.create_split_output_buffer(&nvim_ctx.opt)
+            } else {
+                nvim_actions.create_substituting_output_buffer()
+            };
+            let buf_pty_path = nvim_actions.get_current_buffer_pty_path();
             nvim_actions.prepare_output_buffer(
                 &nvim_ctx.page_id,
                 &nvim_ctx.opt.filetype,

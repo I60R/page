@@ -226,6 +226,7 @@ Where:
 ## Limitations
 
 * Only ~100000 lines can be displayed (it's neovim terminal limit)
+* Text that doesn't fit in window width on resize will be lost ([due to data structures inherited from vim](https://github.com/neovim/neovim/issues/2514#issuecomment-580035346))
 * `MANPAGER=page -t man` not works because `set ft=man` fails on :term buffer (other filetypes may be affected as well)
 
 ## Installation
@@ -235,7 +236,7 @@ Where:
 
 * Arch Linux:
   * Package [page-git](https://aur.archlinux.org/packages/page-git/) is available on AUR
-  * Or:`git clone git@github.com:I60R/page.git && cd page && makepkg -ef && sudo pacman -U page-git*.pkg.tar.xz`
+  * Or: `git clone git@github.com:I60R/page.git && cd page && makepkg -ef && sudo pacman -U page-git*.pkg.tar.xz`
 
 * Manually:
   * Install `rustup` from your distribution package manager
