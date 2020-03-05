@@ -1,6 +1,6 @@
 [package]
 name = "page"
-version = "2.2.1"
+version = "2.3.1"
 authors = ["160R <160R@protonmail.com>"]
 description = "Advanced, fast pager powered by neovim and inspired by neovim-remote"
 repository = "https://github.com/I60R/page"
@@ -12,13 +12,13 @@ build = "build_shell_completions.rs"
 [dependencies]
 atty = "0.2.14"
 shell-words = "0.1.0"
-structopt = "0.3.9"
+structopt = "0.3.11"
 neovim-lib = "0.6.1"
 log = "0.4.8"
 fern = "0.5.9"
 
 [build-dependencies]
-structopt = "0.3.9"
+structopt = "0.3.11"
 
 [profile.release]
 lto = true
