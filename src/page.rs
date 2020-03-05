@@ -134,8 +134,8 @@ mod neovim_api_usage {
                 if let Err(e) = nvim_actions.open_file_buffer(f) {
                     log::warn!("Error opening \"{}\": {}", f, e);
                 } else {
-                    let cmd = &nvim_ctx.opt.command.as_deref().unwrap_or_default();
-                    nvim_actions.prepare_file_buffer(cmd, *initial_buf_number);
+                    let cmd_provided_by_user = &nvim_ctx.opt.command.as_deref().unwrap_or_default();
+                    nvim_actions.prepare_file_buffer(*initial_buf_number, cmd_provided_by_user);
                     if nvim_ctx.opt.follow_all {
                         nvim_actions.set_current_buffer_follow_output_mode();
                     } else {
@@ -173,13 +173,14 @@ mod neovim_api_usage {
                 nvim_actions.create_substituting_output_buffer()
             };
             let buf_pty_path = nvim_actions.get_current_buffer_pty_path();
+            let cmd_provided_by_user = nvim_ctx.opt.command.as_deref().unwrap_or_default();
             nvim_actions.prepare_output_buffer(
-                &nvim_ctx.page_id,
+                *initial_buf_number,
+                &cmd_provided_by_user,
                 &nvim_ctx.opt.filetype,
-                &nvim_ctx.opt.command.as_deref().unwrap_or_default(),
+                &nvim_ctx.page_id,
                 nvim_ctx.opt.pwd,
                 nvim_ctx.opt.query_lines,
-                *initial_buf_number
             );
             (buf, buf_pty_path)
         }

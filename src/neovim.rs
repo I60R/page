@@ -164,60 +164,36 @@ impl NeovimActions {
         }
     }
 
-    pub fn prepare_file_buffer(&mut self, cmd_user: &str, initial_buf_nr: i64) {
-        let cmd_post = "| exe 'silent doautocmd User PageOpenFile'";
-        self.prepare_current_buffer("", cmd_user, "", cmd_post, initial_buf_nr)
+    pub fn prepare_file_buffer(&mut self, initial_buf_nr: i64, cmd_provided_by_user: &str) {
+        let cmds = PageBufferCommands::for_file_buffer(cmd_provided_by_user);
+        let ft = "";
+        self.prepare_buffer(initial_buf_nr, ft, cmds)
     }
 
-    pub fn prepare_output_buffer(&mut self, page_id: &str, ft: &str, cmd_user: &str, pwd: bool, query_lines: u64, initial_buf_nr: i64) {
+    pub fn prepare_output_buffer(&mut self, initial_buf_nr: i64, cmd_provided_by_user: &str, ft: &str, page_id: &str, pwd: bool, query_lines: u64) {
+        let cmds = PageBufferCommands::for_output_buffer(cmd_provided_by_user, page_id, pwd, query_lines);
         let ft = format!("filetype={}", ft);
-        let mut cmd_pre = String::new();
-        if query_lines > 0u64 {
-            let query_opts = format!(" \
-                | exe 'command! -nargs=? Page call rpcnotify(0, ''page_fetch_lines'', ''{page_id}'', <args>)' \
-                | exe 'autocmd BufEnter <buffer> command! -nargs=? Page call rpcnotify(0, ''page_fetch_lines'', ''{page_id}'', <args>)' \
-                | exe 'autocmd BufDelete <buffer> call rpcnotify(0, ''page_buffer_closed'', ''{page_id}'')' \
-            ",
-                page_id = page_id,
-            );
-            cmd_pre.push_str(&query_opts);
-        }
-        if pwd {
-            let pwd_opts = format!(" \
-                | let b:page_lcd_backup = getcwd() \
-                | lcd {pwd} \
-                | exe 'autocmd BufEnter <buffer> lcd {pwd}' \
-                | exe 'autocmd BufLeave <buffer> lcd ' .. b:page_lcd_backup \
-            ",
-                pwd = std::env::var("PWD").unwrap()
-            );
-            cmd_pre.push_str(&pwd_opts);
-        }
-        self.prepare_current_buffer(&ft, cmd_user, &cmd_pre, "", initial_buf_nr)
+        self.prepare_buffer(initial_buf_nr, &ft, cmds)
     }
 
-    fn prepare_current_buffer(&mut self, ft: &str, cmd_user: &str, cmd_pre: &str, cmd_post: &str, initial_buf_nr: i64) {
-        let cmd_user = match cmd_user {
-            "" => String::new(),
-            _ => format!("| exe '{}'", cmd_user.replace("'", "''")) // Ecranizes viml literal string
-        };
+    fn prepare_buffer(&mut self, initial_buf_nr: i64, ft: &str, cmds: PageBufferCommands) {
         let options = format!(" \
             | let b:page_alternate_bufnr={initial_buf_nr} \
             | let b:page_scrolloff_backup=&scrolloff \
             | setl scrollback=100000 scrolloff=999 signcolumn=no nonumber nomodifiable {ft} \
-            | exe 'autocmd BufEnter <buffer> set scrolloff=999' \
+            | exe 'autocmd BufEnter <buffer> setl scrolloff=999' \
             | exe 'autocmd BufLeave <buffer> let &scrolloff=b:page_scrolloff_backup' \
             {cmd_pre} \
             | exe 'silent doautocmd User PageOpen' \
             | redraw \
-            {cmd_user} \
+            {cmd_provided_by_user} \
             {cmd_post} \
         ",
-            initial_buf_nr = initial_buf_nr,
             ft = ft,
-            cmd_user = cmd_user,
-            cmd_pre = cmd_pre,
-            cmd_post = cmd_post,
+            initial_buf_nr = initial_buf_nr,
+            cmd_provided_by_user = cmds.user,
+            cmd_pre = cmds.pre,
+            cmd_post = cmds.post,
         );
         log::trace!(target: "prepare output", "{}", options);
         if let Err(e) = self.nvim.command(&options) {
@@ -309,6 +285,58 @@ impl NeovimActions {
                 }
                 String::from(default)
             })
+    }
+}
+
+pub struct PageBufferCommands {
+    pre: String,
+    post: String,
+    user: String,
+}
+
+impl PageBufferCommands {
+    fn with_cmd_provided_by_user(cmd_provided_by_user: &str) -> PageBufferCommands {
+        let mut user = cmd_provided_by_user.replace("'", "''"); // Ecranizes viml literal string
+        if !user.is_empty() {
+            user = format!("| exe '{}'", user);
+        }
+        PageBufferCommands {
+            pre: String::new(),
+            post: String::new(),
+            user,
+        }
+    }
+
+    pub fn for_file_buffer(cmd_provided_by_user: &str) -> PageBufferCommands {
+        let mut cmds = Self::with_cmd_provided_by_user(cmd_provided_by_user);
+        cmds.post.push_str("| exe 'silent doautocmd User PageOpenFile'");
+        cmds
+    }
+
+    pub fn for_output_buffer(cmd_provided_by_user: &str, page_id: &str, pwd: bool, query_lines: u64) -> PageBufferCommands {
+        let mut cmds = Self::with_cmd_provided_by_user(cmd_provided_by_user);
+        if query_lines > 0u64 {
+            cmds.pre = format!("{prefix} \
+                | exe 'command! -nargs=? Page call rpcnotify(0, ''page_fetch_lines'', ''{page_id}'', <args>)' \
+                | exe 'autocmd BufEnter <buffer> command! -nargs=? Page call rpcnotify(0, ''page_fetch_lines'', ''{page_id}'', <args>)' \
+                | exe 'autocmd BufDelete <buffer> call rpcnotify(0, ''page_buffer_closed'', ''{page_id}'')' \
+            ",
+                prefix = cmds.pre,
+                page_id = page_id,
+            );
+        }
+        if pwd {
+            cmds.pre = format!("{prefix} \
+                | let b:page_lcd_backup = getcwd() \
+                | lcd {pwd} \
+                | exe 'autocmd BufEnter <buffer> lcd {pwd}' \
+                | exe 'autocmd BufLeave <buffer> lcd ' .. b:page_lcd_backup \
+            ",
+                prefix = cmds.pre,
+                pwd = std::env::var("PWD").unwrap()
+            );
+        }
+        cmds
     }
 }
 

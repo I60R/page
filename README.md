@@ -169,7 +169,7 @@ exe 'au BufLeave <buffer> let &scrolloff=b:page_scrolloff_backup'
 {cmd_pre}
 exe 'silent doautocmd User PageOpen'
 redraw
-{cmd_user}
+{cmd_provided_by_user}
 {cmd_post}
 ```
 
@@ -210,7 +210,7 @@ Where:
 ```
 
 ```viml
-{cmd_user}
+{cmd_provided_by_user}
  value of -e argument
 
   Is appended when -e is provided
