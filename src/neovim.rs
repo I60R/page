@@ -223,7 +223,7 @@ impl NeovimActions {
     }
 
     pub fn switch_to_window_and_buffer(&mut self, (win, buf): &(Window, Buffer)) {
-        log::trace!(target: "set window and buffer", "win:{:?} buf:{:?}",  win.get_number(&mut self.nvim), buf.get_number(&mut self.nvim));
+        log::trace!(target: "set window and buffer", "Win:{:?} Buf:{:?}",  win.get_number(&mut self.nvim), buf.get_number(&mut self.nvim));
         if let Err(e) = self.nvim.set_current_win(win) {
             log::error!(target: "set window and buffer", "Can't switch to window: {}", e);
         }
@@ -265,7 +265,7 @@ impl NeovimActions {
     }
 
     pub fn notify_query_finished(&mut self, lines_read: u64) {
-        log::trace!(target: "query finished", "");
+        log::trace!(target: "query finished", "Read {} lines", lines_read);
         self.nvim.command(&format!("redraw | echoh Comment | echom '-- [PAGE] {} lines read; has more --' | echoh None", lines_read)).unwrap();
     }
 
@@ -275,16 +275,18 @@ impl NeovimActions {
     }
 
     pub fn get_var_or(&mut self, key: &str, default: &str) -> String {
-        self.nvim.get_var(key)
+        let val = self.nvim.get_var(key)
             .map(|v| v.to_string())
             .unwrap_or_else(|e| {
                 let description = e.to_string();
                 if description != format!("1 - Key '{}' not found", key)
                 && description != format!("1 - Key not found: {}", key) { // For newer neovim versions
-                    log::error!("Error when getting var: {}, {}", key, e);
+                    log::error!(target: "get var", "Error when getting var: {}, {}", key, e);
                 }
                 String::from(default)
-            })
+            });
+        log::trace!(target: "get var", "Key '{}': '{}'", key, val);
+        val
     }
 }
 
@@ -359,7 +361,7 @@ mod notifications {
     /// Commands are received on separate thread and further redirected to mpsc sender
     /// associated with receiver returned from current function
     pub fn subscribe(nvim: &mut neovim_lib::Neovim, page_id: &str) -> mpsc::Receiver<NotificationFromNeovim> {
-        log::trace!(target: "subscribe to notifications", "id: {}", page_id);
+        log::trace!(target: "subscribe to notifications", "Id: {}", page_id);
         let (tx, rx) = mpsc::sync_channel(16);
         nvim.session.start_event_loop_handler(NotificationReceiver { tx, page_id: page_id.to_string() });
         nvim.subscribe("page_fetch_lines").unwrap();
@@ -397,7 +399,7 @@ mod notifications {
                     return
                 }
             };
-            self.tx.send(notification_from_neovim).expect("cannot receive notification")
+            self.tx.send(notification_from_neovim).expect("Cannot receive notification")
         }
     }
 
@@ -436,7 +438,7 @@ pub mod connection {
     /// Replacement for `neovim_lib::Session::new_child()`, since it uses --embed flag and steals page stdin
     pub fn open(cli_ctx: &context::CliContext) -> NeovimConnection {
         let (nvim_session, nvim_proc) = if let Some(nvim_listen_addr) = cli_ctx.opt.address.as_deref() {
-            let session_at_addr = session_at_address(nvim_listen_addr).expect("cannot connect to parent neovim");
+            let session_at_addr = session_at_address(nvim_listen_addr).expect("Cannot connect to parent neovim");
             (session_at_addr, None)
         } else {
             session_with_new_neovim_process(&cli_ctx)
@@ -524,7 +526,7 @@ pub mod connection {
             }
             shell_words::split(&a).expect("Cannot parse neovim arguments")
         };
-        log::trace!(target: "New neovim process", "args: {:?}", nvim_args);
+        log::trace!(target: "new neovim process", "Args: {:?}", nvim_args);
         process::Command::new("nvim").args(&nvim_args)
             .stdin(process::Stdio::null())
             .spawn()
@@ -536,7 +538,7 @@ pub mod connection {
         std::env::var("XDG_CONFIG_HOME").ok().and_then(|xdg_config_home| {
             let p = PathBuf::from(xdg_config_home).join("page/init.vim");
             if p.exists() {
-                log::trace!(target: "default config", "use $XDG_CONFIG_HOME: {}", p.display());
+                log::trace!(target: "default config", "Use $XDG_CONFIG_HOME: {}", p.display());
                 Some(p)
             } else {
                 None
@@ -545,7 +547,7 @@ pub mod connection {
         .or_else(|| std::env::var("HOME").ok().and_then(|home_dir| {
             let p = PathBuf::from(home_dir).join(".config/page/init.vim");
             if p.exists() {
-                log::trace!(target: "default config", "use ~/.config: {}", p.display());
+                log::trace!(target: "default config", "Use ~/.config: {}", p.display());
                 Some(p)
             } else {
                 None

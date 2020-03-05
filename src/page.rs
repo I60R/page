@@ -30,22 +30,22 @@ pub fn init_logger() {
 
 fn issue_warnings(cli_ctx: &context::CliContext) {
     if cli_ctx.is_inst_close_flag_given_without_address() {
-        log::warn!("Instance close (-x) is ignored if address (-a or $NVIM_LISTEN_ADDRESS) isn't set");
+        log::warn!(target: "usage", "Instance close (-x) is ignored if address (-a or $NVIM_LISTEN_ADDRESS) isn't set");
     }
     if cli_ctx.is_split_flag_given_without_address() {
-        log::warn!("Split (-r -l -u -d -R -L -U -D) is ignored if address (-a or $NVIM_LISTEN_ADDRESS) isn't set");
+        log::warn!(target: "usage", "Split (-r -l -u -d -R -L -U -D) is ignored if address (-a or $NVIM_LISTEN_ADDRESS) isn't set");
     }
     if cli_ctx.is_back_flag_given_without_address() {
-        log::warn!("Switch back (-b -B) is ignored if address (-a or $NVIM_LISTEN_ADDRESS) isn't set");
+        log::warn!(target: "usage", "Switch back (-b -B) is ignored if address (-a or $NVIM_LISTEN_ADDRESS) isn't set");
     }
     if cli_ctx.is_query_flag_given_without_reading_from_pipe() {
-        log::warn!("Query (-q) is ignored when page doesn't read input from pipe");
+        log::warn!(target: "usage", "Query (-q) is ignored when page doesn't read input from pipe");
     }
 }
 
 
 fn begin_neovim_connection_usage(cli_ctx: context::CliContext) {
-    log::info!("cli_ctx: {:#?}", &cli_ctx);
+    log::info!(target: "context", "Cli: {:#?}", &cli_ctx);
     let mut nvim_conn = neovim::connection::open(&cli_ctx);
     let nvim_ctx = if nvim_conn.is_child_neovim_process_spawned() {
         context::neovim_connected::enter(cli_ctx).with_child_neovim_process_spawned()
@@ -57,7 +57,7 @@ fn begin_neovim_connection_usage(cli_ctx: context::CliContext) {
 }
 
 fn begin_neovim_api_usage(nvim_conn: &mut neovim::NeovimConnection, nvim_ctx: context::NeovimContext) {
-    log::info!("nvim_ctx: {:#?}", &nvim_ctx);
+    log::info!(target: "context", "Neovim: {:#?}", &nvim_ctx);
     let mut api_actions = neovim_api_usage::begin(nvim_conn, &nvim_ctx);
     api_actions.close_page_instance_buffer();
     api_actions.display_files();
@@ -81,7 +81,7 @@ fn begin_neovim_api_usage(nvim_conn: &mut neovim::NeovimConnection, nvim_ctx: co
 }
 
 fn begin_output_buffer_usage(nvim_conn: &mut neovim::NeovimConnection, buf: neovim_api::Buffer, outp_ctx: context::OutputContext) {
-    log::info!("oup_ctx: {:#?}", &outp_ctx);
+    log::info!(target: "context", "Output: {:#?}", &outp_ctx);
     let mut outp_buf_actions = output_buffer_usage::begin(nvim_conn, &outp_ctx, buf);
     if let Some(inst_name) = outp_ctx.inst_usage.is_enabled() {
         outp_buf_actions.update_instance_buffer_title(inst_name);
@@ -130,7 +130,7 @@ mod neovim_api_usage {
             let ApiActions { nvim_conn: NeovimConnection { nvim_actions, initial_buf_number, initial_win_and_buf, .. }, nvim_ctx } = self;
             for f in &nvim_ctx.opt.files {
                 if let Err(e) = nvim_actions.open_file_buffer(f) {
-                    log::warn!("Error opening \"{}\": {}", f, e);
+                    log::warn!(target: "page file", "Error opening \"{}\": {}", f, e);
                 } else {
                     let cmd_provided_by_user = &nvim_ctx.opt.command.as_deref().unwrap_or_default();
                     nvim_actions.prepare_file_buffer(*initial_buf_number, cmd_provided_by_user);
@@ -307,7 +307,7 @@ mod output_buffer_usage {
                     match stdin_lines.next() {
                         Some(Ok(l)) => writeln!(self.get_buffer_pty(), "{}", l).expect("Cannot write next line"),
                         Some(Err(e)) => {
-                            log::warn!("Error reading line from stdin: {}", e);
+                            log::warn!(target: "output", "Error reading line from stdin: {}", e);
                             break
                         }
                         None => {
