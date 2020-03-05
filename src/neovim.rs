@@ -1,4 +1,4 @@
-/// A module for actions done with neovim
+/// A module that extends neovim api with methods required in page
 
 
 use neovim_lib::{
@@ -11,9 +11,9 @@ use std::{
 };
 
 
-/// This struct wraps neovim_lib::Neovim in order to enhance it with methods required in page.
+/// This struct wraps neovim_lib::Neovim and decorates it with methods required in page.
 /// Results returned from underlying Neovim methods are mostly unwrapped, since we anyway cannot provide
-/// any meaningful falback logic on call side.
+/// any meaningful falback logic on call side
 pub struct NeovimActions {
     nvim: neovim_lib::Neovim,
 }
@@ -95,7 +95,7 @@ impl NeovimActions {
                 Err(e) => {
                     let descr = e.to_string();
                     if descr != "1 - Key 'page_instance' not found"
-                    && descr != "1 - Key not found: page_instance" { // For new neovim version
+                    && descr != "1 - Key not found: page_instance" { // For newer neovim versions
                         panic!("Error when getting instance mark: {}", e);
                     }
                 }
@@ -157,7 +157,7 @@ impl NeovimActions {
                     }
                 }
                 _ => {
-                    self.nvim.command("redraw!").unwrap();  // To update statusline
+                    self.nvim.command("redraw!").unwrap(); // To update statusline
                     return
                 }
             }
@@ -280,7 +280,7 @@ impl NeovimActions {
             .unwrap_or_else(|e| {
                 let description = e.to_string();
                 if description != format!("1 - Key '{}' not found", key)
-                && description != format!("1 - Key not found: {}", key) { // For new neovim version
+                && description != format!("1 - Key not found: {}", key) { // For newer neovim versions
                     log::error!("Error when getting var: {}, {}", key, e);
                 }
                 String::from(default)
@@ -288,6 +288,7 @@ impl NeovimActions {
     }
 }
 
+/// This struct provides commands that would be run on output buffer after creation
 pub struct PageBufferCommands {
     pre: String,
     post: String,
@@ -307,13 +308,13 @@ impl PageBufferCommands {
         }
     }
 
-    pub fn for_file_buffer(cmd_provided_by_user: &str) -> PageBufferCommands {
+    fn for_file_buffer(cmd_provided_by_user: &str) -> PageBufferCommands {
         let mut cmds = Self::with_cmd_provided_by_user(cmd_provided_by_user);
         cmds.post.push_str("| exe 'silent doautocmd User PageOpenFile'");
         cmds
     }
 
-    pub fn for_output_buffer(cmd_provided_by_user: &str, page_id: &str, pwd: bool, query_lines: u64) -> PageBufferCommands {
+    fn for_output_buffer(cmd_provided_by_user: &str, page_id: &str, pwd: bool, query_lines: u64) -> PageBufferCommands {
         let mut cmds = Self::with_cmd_provided_by_user(cmd_provided_by_user);
         if query_lines > 0u64 {
             cmds.pre = format!("{prefix} \
@@ -342,8 +343,7 @@ impl PageBufferCommands {
 
 
 
-/// This is type-safe enumeration of notifications that could be done from neovim side.
-/// Maybe it'll be enhanced in future
+/// This enum represents all notifications that could be sent from page's commands on neovim side
 pub enum NotificationFromNeovim {
     FetchPart,
     FetchLines(u64),
@@ -357,7 +357,7 @@ mod notifications {
 
     /// Registers handler which receives notifications from neovim side.
     /// Commands are received on separate thread and further redirected to mpsc sender
-    /// associated with receiver returned from current function.
+    /// associated with receiver returned from current function
     pub fn subscribe(nvim: &mut neovim_lib::Neovim, page_id: &str) -> mpsc::Receiver<NotificationFromNeovim> {
         log::trace!(target: "subscribe to notifications", "id: {}", page_id);
         let (tx, rx) = mpsc::sync_channel(16);
@@ -412,7 +412,7 @@ mod notifications {
 
 
 /// This struct contains all neovim-related data which is required by page
-/// after connection with neovim is established.
+/// after connection with neovim is established
 pub struct NeovimConnection {
     pub nvim_proc: Option<std::process::Child>,
     pub nvim_actions: NeovimActions,
@@ -432,8 +432,8 @@ pub mod connection {
     use super::{notifications, NeovimConnection, NeovimActions};
     use std::{path::PathBuf, process};
 
-    /// Connects to parent neovim session if possible or spawns new child neovim process and connects to it through socket.
-    /// Replacement for `neovim_lib::Session::new_child()`, since it uses --embed flag and steals page stdin.
+    /// Connects to parent neovim session or spawns a new neovim process and connects to it through socket.
+    /// Replacement for `neovim_lib::Session::new_child()`, since it uses --embed flag and steals page stdin
     pub fn open(cli_ctx: &context::CliContext) -> NeovimConnection {
         let (nvim_session, nvim_proc) = if let Some(nvim_listen_addr) = cli_ctx.opt.address.as_deref() {
             let session_at_addr = session_at_address(nvim_listen_addr).expect("cannot connect to parent neovim");
@@ -455,15 +455,15 @@ pub mod connection {
         }
     }
 
-    /// Waits until child neovim closes. If no child neovim process then it's safe to exit from page
+    /// Waits until child neovim closes. If no child neovim process spawned then it's safe to just exit from page
     pub fn close(nvim_connection: NeovimConnection) {
         if let Some(mut process) = nvim_connection.nvim_proc {
             process.wait().expect("Neovim process died unexpectedly");
         }
     }
 
-    /// Creates a new session using TCP or UNIX socket, or fallbacks to a new neovim process
-    /// Also prints redirection protection in appropriate circumstances.
+    /// Creates a new session using UNIX socket.
+    /// Also prints protection from shell redirection that could cause some harm (see --help[-W])
     fn session_with_new_neovim_process(cli_ctx: &context::CliContext) -> (neovim_lib::Session, Option<process::Child>) {
         let context::CliContext { opt, tmp_dir, page_id, print_protection, .. } = cli_ctx;
         if *print_protection {
@@ -494,13 +494,7 @@ pub mod connection {
         panic!("Cannot connect to neovim: {:?}", e);
     }
 
-    /// Redirecting protection prevents from producing junk or corruption of existed files
-    /// by invoking commands like "unset NVIM_LISTEN_ADDRESS && ls > $(page -E q)" where "$(page -E q)"
-    /// evaluates not into /path/to/sink as expected but into neovim UI instead. It consists of
-    /// a bunch of characters and strings, so many useless files may be created and even overwriting
-    /// of existed files might occur if their name would match. To prevent that, a path to dumb directory
-    /// is printed first before neovim process was spawned. This expands to "cli > dir {neovim UI}"
-    /// command which fails early as redirecting text into directory is impossible.
+    /// This is hack to prevent behavior (or bug) in some shells (see --help[-W])
     fn print_redirect_protection(tmp_dir: &PathBuf) {
         let d = tmp_dir.clone().join("DO-NOT-REDIRECT-OUTSIDE-OF-NVIM-TERM(--help[-W])");
         if let Err(e) = std::fs::create_dir_all(&d) {
@@ -509,11 +503,10 @@ pub mod connection {
         println!("{}", d.to_string_lossy());
     }
 
-    /// Spawns child neovim process and connects to it using socket.
-    /// This not uses neovim's "--embed" flag, so neovim UI is displayed properly on top of page.
-    /// Also this neovim child process doesn't inherits page stdin, therefore
-    /// page is able to operate on its input and redirect it into a proper target.
-    /// Also custom neovim config would be used if it's present in corresponding location.
+    /// Spawns child neovim process on top of page, which further will be connected to page with UNIX socket.
+    /// In this way neovim UI is displayed properly on top of page, and page as well is able to handle
+    /// its own input to redirect it unto proper target (which is impossible with methods provided by neovim_lib).
+    /// Also custom neovim config will be picked if it exists on corresponding locations.
     fn spawn_child_nvim_process(opt: &Options, nvim_listen_addr: &str) -> process::Child {
         let nvim_args = {
             let mut a = String::new();
@@ -538,7 +531,7 @@ pub mod connection {
             .expect("Cannot spawn a child neovim process")
     }
 
-    /// Returns path to custom neovim config if it's present in corresponding locations.
+    /// Returns path to custom neovim config if it's present in corresponding locations
     fn default_config_path() -> Option<String> {
         std::env::var("XDG_CONFIG_HOME").ok().and_then(|xdg_config_home| {
             let p = PathBuf::from(xdg_config_home).join("page/init.vim");

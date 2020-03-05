@@ -103,22 +103,20 @@ mod neovim_api_usage {
     use std::path::PathBuf;
 
     /// This struct implements actions that should be done before output buffer is available
-    pub struct RemoteActions<'a> {
+    pub struct ApiActions<'a> {
         nvim_conn: &'a mut NeovimConnection,
         nvim_ctx: &'a NeovimContext,
     }
 
-    pub fn begin<'a>(nvim_conn: &'a mut NeovimConnection, nvim_ctx: &'a NeovimContext) -> RemoteActions<'a> {
-        RemoteActions {
+    pub fn begin<'a>(nvim_conn: &'a mut NeovimConnection, nvim_ctx: &'a NeovimContext) -> ApiActions<'a> {
+        ApiActions {
             nvim_conn,
             nvim_ctx,
         }
     }
 
-    impl<'a> RemoteActions<'a> {
-        /// Closes buffer marked as instance, when mark is provided by -x argument.
-        /// If neovim is spawned by page then it guaranteedly doesn't have any instances,
-        /// so in this case -x argument will be useless and warning would be printed about that
+    impl<'a> ApiActions<'a> {
+        /// Closes buffer marked as instance, when mark is provided by -x argument
         pub fn close_page_instance_buffer(&mut self) {
             if let Some(ref instance) = self.nvim_ctx.opt.instance_close {
                 self.nvim_conn.nvim_actions.close_instance_buffer(instance)
@@ -129,7 +127,7 @@ mod neovim_api_usage {
         /// Resets focus to initial buffer and window if further there will be created output buffer in split window,
         /// since we want to see shell from which that output buffer was spawned
         pub fn display_files(&mut self) {
-            let RemoteActions { nvim_conn: NeovimConnection { nvim_actions, initial_buf_number, initial_win_and_buf, .. }, nvim_ctx } = self;
+            let ApiActions { nvim_conn: NeovimConnection { nvim_actions, initial_buf_number, initial_win_and_buf, .. }, nvim_ctx } = self;
             for f in &nvim_ctx.opt.files {
                 if let Err(e) = nvim_actions.open_file_buffer(f) {
                     log::warn!("Error opening \"{}\": {}", f, e);
@@ -148,15 +146,12 @@ mod neovim_api_usage {
             }
         }
 
-        /// Returns buffer marked as instance and path to PTY device associated with it.
-        /// If neovim was spawned by page then it guaranteedly doesnt' have any instance,
-        /// so in this case -i and -I arguments would be useless and warning would be printed about that
+        /// Returns buffer marked as instance and path to PTY device associated with it (if some exists)
         pub fn find_instance_buffer(&mut self, inst_name: &str) -> Option<(Buffer, PathBuf)> {
             self.nvim_conn.nvim_actions.find_instance_buffer(inst_name)
         }
 
-        /// Creates a new output buffer and then marks it as instance buffer.
-        /// Reuturns this buffer and PTY device associated with it
+        /// Creates a new output buffer and then marks it as instance buffer
         pub fn create_instance_output_buffer(&mut self, inst_name: &str) -> (Buffer, PathBuf) {
             let (buf, buf_pty_path) = self.create_oneoff_output_buffer();
             self.nvim_conn.nvim_actions.mark_buffer_as_instance(&buf, inst_name, &buf_pty_path.to_string_lossy());
@@ -166,7 +161,7 @@ mod neovim_api_usage {
         /// Creates a new output buffer using split window if required.
         /// Also sets some nvim options for better reading experience
         pub fn create_oneoff_output_buffer(&mut self) -> (Buffer, PathBuf) {
-            let RemoteActions { nvim_conn: NeovimConnection { nvim_actions, initial_buf_number, .. }, nvim_ctx } = self;
+            let ApiActions { nvim_conn: NeovimConnection { nvim_actions, initial_buf_number, .. }, nvim_ctx } = self;
             let buf = if nvim_ctx.outp_buf_usage.is_create_split() {
                 nvim_actions.create_split_output_buffer(&nvim_ctx.opt)
             } else {
@@ -214,7 +209,7 @@ mod output_buffer_usage {
 
     impl<'a> BufferActions<'a> {
         /// This function updates buffer title depending on -n value.
-        /// Icon symbol is received from neovim side and prepended it to the left of buffer title.
+        /// Icon symbol is received from neovim side and is prepended to the left of buffer title
         pub fn update_buffer_title(&mut self) {
             let BufferActions { outp_ctx, buf, nvim_conn: NeovimConnection { nvim_actions, .. }, .. } = self;
             let (page_icon_default, page_icon_key) = if outp_ctx.input_from_pipe { (" |", "page_icon_pipe") } else { (" >", "page_icon_redirect") };
@@ -226,7 +221,7 @@ mod output_buffer_usage {
         }
 
         /// This function updates instance buffer title depending on its name and -n value.
-        /// Instance name will be prepended to the left of icon symbol.
+        /// Instance name will be prepended to the left of the icon symbol.
         pub fn update_instance_buffer_title(&mut self, inst_name: &str) {
             let BufferActions { outp_ctx, buf, nvim_conn: NeovimConnection { nvim_actions, .. }, .. } = self;
             let (page_icon_key, page_icon_default) = ("page_icon_instance", "@ ");
@@ -240,8 +235,8 @@ mod output_buffer_usage {
             nvim_actions.update_buffer_title(&buf, &buf_title);
         }
 
-        /// Updates buffer title and resets instance buffer focus and content.
-        /// This is required to provide some functionality not available through neovim API.
+        /// Resets instance buffer focus and content.
+        /// This is required to provide some functionality not available through neovim API
         pub fn focus_on_instance_buffer(&mut self) {
             let BufferActions { outp_ctx, buf, nvim_conn: NeovimConnection { nvim_actions, .. }, .. } = self;
             if outp_ctx.inst_usage.is_enabled_and_focus_on_it_required() {
@@ -253,7 +248,7 @@ mod output_buffer_usage {
         }
 
         /// Executes PageConnect (-C) and post command (-E) on page buffer.
-        /// If any of these flags are passed then output buffer should be already focused.
+        /// If any of these flags are passed then output buffer should be already focused
         pub fn execute_commands(&mut self) {
             let BufferActions { outp_ctx, nvim_conn: NeovimConnection { nvim_actions, .. }, .. } = self;
             if outp_ctx.opt.command_auto {
@@ -287,9 +282,9 @@ mod output_buffer_usage {
         }
 
         /// Writes lines from stdin directly into PTY device associated with output buffer.
-        /// In case if -q <count> argument provided it might block until next line from neovim is requested.
+        /// In case if -q <count> argument provided it might block until next line will be request from neovim side.
         /// If page isn't piped then it simply prints actual path to PTY device associated with output buffer,
-        /// so user can redirect into it manually.
+        /// and user might redirect into it directly
         pub fn handle_output(&mut self) {
             if self.outp_ctx.input_from_pipe {
                 let stdin = io::stdin();
@@ -331,8 +326,8 @@ mod output_buffer_usage {
 
         /// Executes PageDisconnect autocommand if -C flag was provided.
         /// Some time might pass since page buffer was created and output was started,
-        /// so this function might temporarily focus on output buffer in order to run
-        /// autocommand.
+        /// so this function might temporarily refocus on output buffer in order to run
+        /// autocommand
         pub fn execute_disconnect_commands(&mut self) {
             let BufferActions { nvim_conn: NeovimConnection { nvim_actions, initial_win_and_buf, .. }, buf, outp_ctx, .. } = self;
             if outp_ctx.opt.command_auto {
@@ -352,7 +347,7 @@ mod output_buffer_usage {
         }
 
         /// Returns PTY device associated with output buffer.
-        /// This function ensures that PTY device will be opened only once
+        /// This function ensures that PTY device is opened only once
         fn get_buffer_pty(&mut self) -> &mut File {
             let buf_pty_path = &self.outp_ctx.buf_pty_path;
             self.buf_pty.get_or_insert_with(|| OpenOptions::new().append(true).open(buf_pty_path).expect("Cannot open page PTY"))
@@ -361,7 +356,7 @@ mod output_buffer_usage {
 
 
     /// Encapsulates state of querying lines from neovim side with :Page <count> command.
-    /// Is useful only when -q <count> argument is provided
+    /// Used only when -q <count> argument is provided
     #[derive(Default)]
     struct QueryState {
         expect: u64,

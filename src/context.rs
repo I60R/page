@@ -1,7 +1,7 @@
-/// A module which contains data available on page invocation
+/// A module that contains data collected throughout page invocation
 
 
-/// Contains data required after page was spawned from shell
+/// Contains data available after page was spawned from shell
 #[derive(Debug)]
 pub struct CliContext {
     pub opt: crate::cli::Options,
@@ -69,7 +69,7 @@ pub mod page_spawned {
 }
 
 
-/// Contains data required after neovim is attached
+/// Contains data available after neovim is connected to page
 #[derive(Debug)]
 pub struct NeovimContext {
     pub opt: crate::cli::Options,
@@ -172,7 +172,7 @@ pub mod neovim_connected {
 }
 
 
-/// Contains data required after buffer for output was found
+/// Contains data available after buffer for output was found
 #[derive(Debug)]
 pub struct OutputContext {
     pub opt: crate::cli::Options,

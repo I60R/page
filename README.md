@@ -18,11 +18,11 @@ Ultimately, `page` will reuse all of neovim text editing+navigating+searching fa
 
 * *under regular terminal*
 
-![](https://imgur.com/lxDCPpn.gif)
+![usage under regular terminal](https://imgur.com/lxDCPpn.gif)
 
 * *under neovim's terminal*
 
-![](https://i.imgur.com/rcLEM6X.gif)
+![usage under neovim's terminal](https://i.imgur.com/rcLEM6X.gif)
 
 ---
 
@@ -33,7 +33,7 @@ Ultimately, `page` will reuse all of neovim text editing+navigating+searching fa
 ```text
 
 USAGE:
-    page [FLAGS] [OPTIONS] [files]...
+    page [FLAGS] [OPTIONS] [FILES]...
 
 FLAGS:
     -o               Create and use new output buffer (to display text from page stdin) [implied]
@@ -43,13 +43,14 @@ FLAGS:
     -B               Return back to current buffer and enter INSERT mode
     -f               Follow output instead of keeping top position (like `tail -f`)
     -F               Follow output instead of keeping top position also for each of <FILES>
-    -W               Flush redirecting protection that prevents from producing junk and possible corruption of files by
-                     invoking commands like "unset NVIM_LISTEN_ADDRESS && ls > $(page -E q)" where "$(page -E q)" part
-                     not evaluates into /path/to/sink as expected but instead into neovim UI, which consists of a bunch
-                     of escape characters and strings. Many useless files could be created then and even overwriting of
-                     existed file might occur. To prevent that, a path to temporary directory is printed first, which
-                     causes "command > directory ..." to fail early as it's impossible to redirect text into directory.
-                     [env:PAGE_REDIRECTION_PROTECT: (0 to disable)]
+    -W               Flush redirecting protection that prevents from producing junk and possible overwriting of existed
+                     files by invoking commands like "ls > $(NVIM_LISTEN_ADDRESS= page -E q)" where the RHS of >
+                     operator evaluates not into /path/to/sink as expected but into a bunch of whitespace-separated
+                     strings/escapes from neovim UI which some shells also interpret as valid targets for text
+                     redirection. The protection consists of printing of a path to the existed dummy directory always
+                     first before printing of a neovim UI will begin in order to make the first target for text
+                     redirection from page's output invalid and to disrupt harmful redirection early before other writes
+                     might occur. [env:PAGE_REDIRECTION_PROTECT: (0 to disable)]
     -C               Enable PageConnect PageDisconnect autocommands
     -r               Split right with ratio: window_width  * 3 / (<r-provided> + 1)
     -l               Split left  with ratio: window_width  * 3 / (<l-provided> + 1)
@@ -67,7 +68,7 @@ OPTIONS:
     -i <instance>                Connect or create named output buffer. When connected, new content overwrites previous
     -I <instance-append>         Connect or create named output buffer. When connected, new content appends to previous
     -x <instance-close>          Close instance buffer with this name if exist [revokes implied options]
-    -n <name>                    Set output buffer name (displayed in statusline) [env: PAGE_BUFFER_NAME=page -h]
+    -n <name>                    Set output buffer name (displayed in statusline) [env: PAGE_BUFFER_NAME=./page --help]
     -t <filetype>                Set output buffer filetype (for syntax highlighting) [default: pager]
     -q <query-lines>             Enable on-demand stdin reading with :Page <query_lines> command [default: 0]
     -R <split-right-cols>        Split right and resize to <split_right_cols> columns
@@ -76,7 +77,8 @@ OPTIONS:
     -D <split-below-rows>        Split below and resize to <split_below_rows> rows
 
 ARGS:
-    <files>...    Open provided files in separate buffers [revokes implied options]
+    <FILES>...    Open provided files in separate buffers [revokes implied options]
+
 ```
 
 </details>
@@ -163,7 +165,7 @@ These commands are run on each `page` buffer creation:
 ```viml
 let b:page_alternate_bufnr={initial_buf_nr}
 let b:page_scrolloff_backup=&scrolloff
-setl scrollback=-1 scrolloff=999 signcolumn=no nonumber nomodifiable {filetype}
+setl scrollback=100000 scrolloff=999 signcolumn=no nonumber nomodifiable {filetype}
 exe 'au BufEnter <buffer> set scrolloff=999'
 exe 'au BufLeave <buffer> let &scrolloff=b:page_scrolloff_backup'
 {cmd_pre}
