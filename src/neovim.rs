@@ -11,6 +11,12 @@ use std::{
 };
 
 
+const VER_SPLIT_RATIO: &'static str = "(winwidth(0) / 2) * 3";
+const HOR_SPLIT_RATIO: &'static str = "(winheight(0) / 2) * 3";
+
+const TERM_URI: &'static str = "term://sleep 2147483647d"; // Max value of i32 should be enough
+
+
 /// This struct wraps neovim_lib::Neovim and decorates it with methods required in page.
 /// Results returned from underlying Neovim methods are mostly unwrapped, since we anyway cannot provide
 /// any meaningful falback logic on call side
@@ -36,7 +42,7 @@ impl NeovimActions {
     }
 
     pub fn create_substituting_output_buffer(&mut self) -> Buffer {
-        self.nvim.command("term tail -f <<EOF").unwrap();
+        self.nvim.command(&format!("e {}", TERM_URI)).unwrap();
         let buf = self.get_current_buffer();
         log::trace!(target: "new substituting output buffer", "{}", self.get_buffer_number(&buf));
         buf
@@ -44,21 +50,21 @@ impl NeovimActions {
 
     pub fn create_split_output_buffer(&mut self, opt: &crate::cli::Options) -> Buffer {
         let cmd = if opt.split_right > 0u8 {
-            format!("exe 'belowright ' . ((winwidth(0)/2) * 3 / {}) . 'vsplit term://tail -f <<EOF' | set winfixwidth", opt.split_right + 1)
+            format!("exe 'belowright ' . ({}/{}) . 'vsplit {}' | set winfixwidth", VER_SPLIT_RATIO, opt.split_right + 1, TERM_URI)
         } else if opt.split_left > 0u8 {
-            format!("exe 'aboveleft ' . ((winwidth(0)/2) * 3 / {}) . 'vsplit term://tail -f <<EOF' | set winfixwidth", opt.split_left + 1)
+            format!("exe 'aboveleft ' . ({}/{}) . 'vsplit {}' | set winfixwidth", VER_SPLIT_RATIO, opt.split_left + 1, TERM_URI)
         } else if opt.split_below > 0u8 {
-            format!("exe 'belowright ' . ((winheight(0)/2) * 3 / {}) . 'split term://tail -f <<EOF' | set winfixheight", opt.split_below + 1)
+            format!("exe 'belowright ' . ({}/{}) . 'split {}' | set winfixheight", HOR_SPLIT_RATIO, opt.split_below + 1, TERM_URI)
         } else if opt.split_above > 0u8 {
-            format!("exe 'aboveleft ' . ((winheight(0)/2) * 3 / {}) . 'split term://tail -f <<EOF' | set winfixheight", opt.split_above + 1)
+            format!("exe 'aboveleft ' . ({}/{}) . 'split {}' | set winfixheight", HOR_SPLIT_RATIO, opt.split_above + 1, TERM_URI)
         } else if let Some(split_right_cols) = opt.split_right_cols {
-            format!("belowright {}vsplit term://tail -f <<EOF | set winfixwidth", split_right_cols)
+            format!("belowright {}vsplit {} | set winfixwidth", split_right_cols, TERM_URI)
         } else if let Some(split_left_cols) = opt.split_left_cols {
-            format!("aboveleft {}vsplit term://tail -f <<EOF | set winfixwidth", split_left_cols)
+            format!("aboveleft {}vsplit {} | set winfixwidth", split_left_cols, TERM_URI)
         } else if let Some(split_below_rows) = opt.split_below_rows {
-            format!("belowright {}split term://tail -f <<EOF | set winfixheight", split_below_rows)
+            format!("belowright {}split {} | set winfixheight", split_below_rows, TERM_URI)
         } else if let Some(split_above_rows) = opt.split_above_rows {
-            format!("aboveleft {}split term://tail -f <<EOF | set winfixheight", split_above_rows)
+            format!("aboveleft {}split {} | set winfixheight", split_above_rows, TERM_URI)
         } else {
             "".into()
         };
