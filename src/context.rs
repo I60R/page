@@ -102,13 +102,13 @@ pub mod neovim_connected {
         let inst_usage = if let Some(name) = opt.instance.clone() {
             InstanceUsage::Enabled {
                 name,
-                focus: true,
+                focused: true,
                 replace_content: true
             }
         } else if let Some(name) = opt.instance_append.clone() {
             InstanceUsage::Enabled {
                 name,
-                focus: opt.is_focus_on_existed_instance_buffer_implied(),
+                focused: opt.is_focus_on_existed_instance_buffer_implied(),
                 replace_content: false
             }
         } else {
@@ -133,7 +133,7 @@ pub mod neovim_connected {
 
     #[derive(Debug)]
     pub enum InstanceUsage {
-        Enabled { name: String, focus: bool, replace_content: bool, },
+        Enabled { name: String, focused: bool, replace_content: bool },
         Disabled,
     }
 
@@ -142,12 +142,12 @@ pub mod neovim_connected {
             if let InstanceUsage::Enabled { name, .. } = self { Some(name) } else { None }
         }
 
-        pub fn is_enabled_and_focus_on_it_required(&self) -> bool {
-            if let InstanceUsage::Enabled { focus, .. } = self { *focus } else { false }
+        pub fn is_enabled_and_should_be_focused(&self) -> bool {
+            if let InstanceUsage::Enabled { focused, .. } = self { *focused } else { false }
         }
 
-        pub fn is_enabled_but_focus_on_it_was_skipped(&self) -> bool {
-            if let InstanceUsage::Enabled { focus, .. } = self { !focus } else { false }
+        pub fn is_enabled_but_should_be_unfocused(&self) -> bool {
+            if let InstanceUsage::Enabled { focused, .. } = self { !focused } else { false }
         }
 
         pub fn is_enabled_and_should_replace_its_content(&self) -> bool {
@@ -189,6 +189,13 @@ pub struct OutputContext {
 impl OutputContext {
     pub fn is_query_disabled(&self) -> bool {
         self.opt.query_lines == 0
+    }
+
+    pub fn with_new_instance_output_buffer(mut self) -> OutputContext {
+        if let neovim_connected::InstanceUsage::Enabled { focused, .. } = &mut self.inst_usage {
+            *focused = true; // Obtains focus on buffer creation
+        }
+        self
     }
 }
 

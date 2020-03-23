@@ -70,7 +70,7 @@ fn begin_neovim_api_usage(nvim_conn: &mut neovim::NeovimConnection, nvim_ctx: co
             begin_output_buffer_usage(nvim_conn, buf, outp_ctx)
         } else {
             let (buf, buf_pty_path) = api_actions.create_instance_output_buffer(inst_name);
-            let outp_ctx = context::output_buffer_available::enter(nvim_ctx, buf_pty_path);
+            let outp_ctx = context::output_buffer_available::enter(nvim_ctx, buf_pty_path).with_new_instance_output_buffer();
             begin_output_buffer_usage(nvim_conn, buf, outp_ctx)
         }
     } else {
@@ -239,7 +239,7 @@ mod output_buffer_usage {
         /// This is required to provide some functionality not available through neovim API
         pub fn focus_on_instance_buffer(&mut self) {
             let BufferActions { outp_ctx, buf, nvim_conn: NeovimConnection { nvim_actions, .. }, .. } = self;
-            if outp_ctx.inst_usage.is_enabled_and_focus_on_it_required() {
+            if outp_ctx.inst_usage.is_enabled_and_should_be_focused() {
                 nvim_actions.focus_instance_buffer(&buf);
                 if outp_ctx.inst_usage.is_enabled_and_should_replace_its_content() {
                     writeln!(self.get_buffer_pty(), "\x1B[3J\x1B[H\x1b[2J").expect("Cannot write clear screen sequence");
@@ -264,7 +264,7 @@ mod output_buffer_usage {
         /// to circumvent flicker with `page -I existed -b` and `page -I existed -B` invocations
         pub fn focus_on_initial_buffer(&mut self) {
             let BufferActions { outp_ctx, nvim_conn: NeovimConnection { nvim_actions, initial_win_and_buf, .. }, .. } = self;
-            if outp_ctx.inst_usage.is_enabled_but_focus_on_it_was_skipped() {
+            if outp_ctx.inst_usage.is_enabled_but_should_be_unfocused() {
                 return
             }
             if outp_ctx.opt.follow {
