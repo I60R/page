@@ -11,11 +11,7 @@ use std::{
 };
 
 
-const VER_SPLIT_RATIO: &str = "(winwidth(0) / 2) * 3";
-const HOR_SPLIT_RATIO: &str = "(winheight(0) / 2) * 3";
-
-const TERM_URI: &str = "term://sleep 2147483647d"; // Max value of i32 should be enough
-
+const TERM_URI: &str = "term://2147483647d"; // Will be passed to /bin/sleep
 
 /// This struct wraps neovim_lib::Neovim and decorates it with methods required in page.
 /// Results returned from underlying Neovim methods are mostly unwrapped, since we anyway cannot provide
@@ -42,21 +38,19 @@ impl NeovimActions {
     }
 
     pub fn create_substituting_output_buffer(&mut self) -> Buffer {
-        self.nvim.command(&format!("e {}", TERM_URI)).unwrap();
-        let buf = self.get_current_buffer();
-        log::trace!(target: "new substituting output buffer", "{}", self.get_buffer_number(&buf));
-        buf
+        self.create_buffer(&format!("e {}", TERM_URI))
     }
 
     pub fn create_split_output_buffer(&mut self, opt: &crate::cli::Options) -> Buffer {
+        let (ver_ratio, hor_ratio) = ("(winwidth(0) / 2) * 3", "(winheight(0) / 2) * 3");
         let cmd = if opt.split_right > 0u8 {
-            format!("exe 'belowright ' . ({}/{}) . 'vsplit {}' | set winfixwidth", VER_SPLIT_RATIO, opt.split_right + 1, TERM_URI)
+            format!("exe 'belowright ' . ({}/{}) . 'vsplit {}' | set winfixwidth", ver_ratio, opt.split_right + 1, TERM_URI)
         } else if opt.split_left > 0u8 {
-            format!("exe 'aboveleft ' . ({}/{}) . 'vsplit {}' | set winfixwidth", VER_SPLIT_RATIO, opt.split_left + 1, TERM_URI)
+            format!("exe 'aboveleft ' . ({}/{}) . 'vsplit {}' | set winfixwidth", ver_ratio, opt.split_left + 1, TERM_URI)
         } else if opt.split_below > 0u8 {
-            format!("exe 'belowright ' . ({}/{}) . 'split {}' | set winfixheight", HOR_SPLIT_RATIO, opt.split_below + 1, TERM_URI)
+            format!("exe 'belowright ' . ({}/{}) . 'split {}' | set winfixheight", hor_ratio, opt.split_below + 1, TERM_URI)
         } else if opt.split_above > 0u8 {
-            format!("exe 'aboveleft ' . ({}/{}) . 'split {}' | set winfixheight", HOR_SPLIT_RATIO, opt.split_above + 1, TERM_URI)
+            format!("exe 'aboveleft ' . ({}/{}) . 'split {}' | set winfixheight", hor_ratio, opt.split_above + 1, TERM_URI)
         } else if let Some(split_right_cols) = opt.split_right_cols {
             format!("belowright {}vsplit {} | set winfixwidth", split_right_cols, TERM_URI)
         } else if let Some(split_left_cols) = opt.split_left_cols {
@@ -66,12 +60,24 @@ impl NeovimActions {
         } else if let Some(split_above_rows) = opt.split_above_rows {
             format!("aboveleft {}split {} | set winfixheight", split_above_rows, TERM_URI)
         } else {
-            "".into()
+            unreachable!()
         };
-        log::trace!(target: "split command", "{}", cmd);
-        self.nvim.command(&cmd).expect("Error when creating split buffer");
+        self.create_buffer(&cmd)
+    }
+
+    fn create_buffer(&mut self, term_open_cmd: &str) -> Buffer {
+        let cmd = format!(" \
+            | let g:page_shell_backup = [&shell, &shellcmdflag] \
+            | let [&shell, &shellcmdflag] = ['/bin/sleep', ''] \
+            | {term_open_cmd} \
+            | let [&shell, &shellcmdflag] = g:page_shell_backup \
+        ",
+            term_open_cmd = term_open_cmd
+        );
+        log::trace!(target: "create buffer", "{}", cmd);
+        self.nvim.command(&cmd).expect("Error when creating split output buffer");
         let buf = self.get_current_buffer();
-        log::trace!(target: "new split output buffer", "{}", self.get_buffer_number(&buf));
+        log::trace!(target: "create buffer", "created: {}", self.get_buffer_number(&buf));
         buf
     }
 
