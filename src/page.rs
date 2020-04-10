@@ -17,10 +17,18 @@ pub fn init_logger() {
     let level = rust_log.as_deref().unwrap_or("warn");
     use std::str::FromStr;
     let level_filter = log::LevelFilter::from_str(level).expect("Cannot parse $RUST_LOG value");
+    let exec_time = std::time::Instant::now();
     fern::Dispatch::new()
-        .format(|cb, msg, record| {
-            cb.finish(format_args!("[{}][{}] {}", record.level(), record.target(), msg))
-        })
+        .format(move |cb, msg, record| cb.finish(
+            format_args!(
+                "\x1B[1m\x1B[4m[ {:010} | {module} | {target} | {importancy} ]\x1B[0m\n{message}\n",
+                exec_time.elapsed().as_micros(),
+                module = record.module_path().unwrap_or_default(),
+                target = record.target(),
+                importancy = record.level(),
+                message = msg
+            )
+        ))
         .level(level_filter)
         .level_for("neovim_lib", log::LevelFilter::Off)
         .chain(std::io::stderr())
@@ -45,7 +53,7 @@ fn issue_warnings(cli_ctx: &context::CliContext) {
 
 
 fn begin_neovim_connection_usage(cli_ctx: context::CliContext) {
-    log::info!(target: "context", "Cli: {:#?}", &cli_ctx);
+    log::info!(target: "context", "{:#?}", &cli_ctx);
     let mut nvim_conn = neovim::connection::open(&cli_ctx);
     let nvim_ctx = if nvim_conn.is_child_neovim_process_spawned() {
         context::neovim_connected::enter(cli_ctx).with_child_neovim_process_spawned()
@@ -57,7 +65,7 @@ fn begin_neovim_connection_usage(cli_ctx: context::CliContext) {
 }
 
 fn begin_neovim_api_usage(nvim_conn: &mut neovim::NeovimConnection, nvim_ctx: context::NeovimContext) {
-    log::info!(target: "context", "Neovim: {:#?}", &nvim_ctx);
+    log::info!(target: "context", "{:#?}", &nvim_ctx);
     let mut api_actions = neovim_api_usage::begin(nvim_conn, &nvim_ctx);
     api_actions.close_page_instance_buffer();
     api_actions.display_files();
@@ -81,7 +89,7 @@ fn begin_neovim_api_usage(nvim_conn: &mut neovim::NeovimConnection, nvim_ctx: co
 }
 
 fn begin_output_buffer_usage(nvim_conn: &mut neovim::NeovimConnection, buf: neovim_api::Buffer, outp_ctx: context::OutputContext) {
-    log::info!(target: "context", "Output: {:#?}", &outp_ctx);
+    log::info!(target: "context", "{:#?}", &outp_ctx);
     let mut outp_buf_actions = output_buffer_usage::begin(nvim_conn, &outp_ctx, buf);
     if let Some(inst_name) = outp_ctx.inst_usage.is_enabled() {
         outp_buf_actions.update_instance_buffer_title(inst_name);
