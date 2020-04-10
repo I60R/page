@@ -99,6 +99,10 @@ pub struct Options {
     #[structopt(short="W")]
     pub page_no_protect: bool,
 
+    /// Allow to ender in INSERT/TERMINAL mode by pressing i, I, a, A keys [ignored on connected instance]
+    #[structopt(short="w")]
+    pub edit: bool,
+
     /// Enable PageConnect PageDisconnect autocommands
     #[structopt(short="C")]
     pub command_auto: bool,
