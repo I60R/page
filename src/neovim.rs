@@ -41,7 +41,7 @@ impl NeovimActions {
         self.create_buffer(&format!("e {}", TERM_URI))
     }
 
-    pub fn create_split_output_buffer(&mut self, opt: &crate::cli::Options) -> Buffer {
+    pub fn create_split_output_buffer(&mut self, opt: &crate::cli::Split) -> Buffer {
         let (ver_ratio, hor_ratio) = ("(winwidth(0) / 2) * 3", "(winheight(0) / 2) * 3");
         let cmd = if opt.split_right > 0u8 {
             format!("exe 'belowright ' . ({}/{}) . 'vsplit {}' | set winfixwidth", ver_ratio, opt.split_right + 1, TERM_URI)
@@ -176,14 +176,14 @@ impl NeovimActions {
         }
     }
 
-    pub fn prepare_file_buffer(&mut self, initial_buf_nr: i64, cmd_provided_by_user: &str, edit: bool) {
-        let cmds = PageBufferCommands::for_file_buffer(cmd_provided_by_user, edit);
+    pub fn prepare_file_buffer(&mut self, initial_buf_nr: i64, cmd_provided_by_user: &str, writeable: bool) {
+        let cmds = PageBufferCommands::for_file_buffer(cmd_provided_by_user, writeable);
         let ft = "";
         self.prepare_buffer(initial_buf_nr, ft, cmds)
     }
 
-    pub fn prepare_output_buffer(&mut self, initial_buf_nr: i64, cmd_provided_by_user: &str, ft: &str, page_id: &str, edit: bool, pwd: bool, query_lines: u64) {
-        let cmds = PageBufferCommands::for_output_buffer(cmd_provided_by_user, page_id, edit, pwd, query_lines);
+    pub fn prepare_output_buffer(&mut self, initial_buf_nr: i64, page_id: &str, cmd_provided_by_user: &str, ft: &str, writeable: bool, pwd: bool, query_lines: u64) {
+        let cmds = PageBufferCommands::for_output_buffer(cmd_provided_by_user, page_id, writeable, pwd, query_lines);
         let ft = format!("filetype={}", ft);
         self.prepare_buffer(initial_buf_nr, &ft, cmds)
     }
@@ -326,18 +326,18 @@ impl PageBufferCommands {
         }
     }
 
-    fn for_file_buffer(cmd_provided_by_user: &str, edit: bool) -> PageBufferCommands {
+    fn for_file_buffer(cmd_provided_by_user: &str, writeable: bool) -> PageBufferCommands {
         let mut cmds = Self::with_cmd_provided_by_user(cmd_provided_by_user);
-        if !edit {
+        if !writeable {
             cmds.edit.push_str("| setl nomodifiable");
         }
         cmds.post.push_str("| exe 'silent doautocmd User PageOpenFile'");
         cmds
     }
 
-    fn for_output_buffer(cmd_provided_by_user: &str, page_id: &str, edit: bool, pwd: bool, query_lines: u64) -> PageBufferCommands {
+    fn for_output_buffer(cmd_provided_by_user: &str, page_id: &str, writeable: bool, pwd: bool, query_lines: u64) -> PageBufferCommands {
         let mut cmds = Self::with_cmd_provided_by_user(cmd_provided_by_user);
-        if !edit {
+        if !writeable {
             cmds.edit.push_str(" \
                 | setl nomodifiable
                 | noremap <buffer> i x
