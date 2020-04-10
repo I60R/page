@@ -101,12 +101,22 @@ pub struct Options {
 
     /// Allow to ender in INSERT/TERMINAL mode by pressing i, I, a, A keys [ignored on connected instance]
     #[structopt(short="w")]
-    pub edit: bool,
+    pub writeable: bool,
 
     /// Enable PageConnect PageDisconnect autocommands
     #[structopt(short="C")]
     pub command_auto: bool,
 
+    #[structopt(flatten)]
+    pub split: Split,
+
+    /// Open provided files in separate buffers [revokes implied options]
+    #[structopt(name="FILES")]
+    pub files: Vec<String>
+}
+
+#[derive(StructOpt, Debug)]
+pub struct Split {
     /// Split right with ratio: window_width  * 3 / (<r-provided> + 1)
     #[structopt(short="r", parse(from_occurrences))]
     pub split_right: u8,
@@ -123,25 +133,21 @@ pub struct Options {
     #[structopt(short="d", parse(from_occurrences))]
     pub split_below: u8,
 
-    /// Split right and resize to <split_right_cols> columns
+    /// Split right and resize to <split-right-cols> columns
     #[structopt(short="R")]
     pub split_right_cols: Option<u8>,
 
-    /// Split left  and resize to <split_left_cols>  columns
+    /// Split left  and resize to <split-left-cols>  columns
     #[structopt(short="L")]
     pub split_left_cols: Option<u8>,
 
-    /// Split above and resize to <split_above_rows> rows
+    /// Split above and resize to <split-above-rows> rows
     #[structopt(short="U")]
     pub split_above_rows: Option<u8>,
 
-    /// Split below and resize to <split_below_rows> rows
+    /// Split below and resize to <split-below-rows> rows
     #[structopt(short="D")]
     pub split_below_rows: Option<u8>,
-
-    /// Open provided files in separate buffers [revokes implied options]
-    #[structopt(name="FILES")]
-    pub files: Vec<String>
 }
 
 
@@ -179,17 +185,6 @@ impl Options {
         || (!self.back && !self.back_restore) // Should focus if -b and -B flags aren't provided
     }
 
-    pub fn is_split_implied(&self) -> bool {
-        self.split_left_cols.is_some()
-        || self.split_right_cols.is_some()
-        || self.split_above_rows.is_some()
-        || self.split_below_rows.is_some()
-        || self.split_left > 0u8
-        || self.split_right > 0u8
-        || self.split_above > 0u8
-        || self.split_below > 0u8
-    }
-
     pub fn is_output_buffer_creation_implied(&self) -> bool {
         self.instance_close.is_none() && self.files.is_empty() // These not implies creating output buffer
         || self.back
@@ -205,6 +200,19 @@ impl Options {
         || self.command.is_some()
         || self.command_post.is_some()
         || "pager" != &self.filetype
+    }
+}
+
+impl Split {
+    pub fn is_implied(&self) -> bool {
+        self.split_left_cols.is_some()
+        || self.split_right_cols.is_some()
+        || self.split_above_rows.is_some()
+        || self.split_below_rows.is_some()
+        || self.split_left > 0u8
+        || self.split_right > 0u8
+        || self.split_above > 0u8
+        || self.split_below > 0u8
     }
 }
 

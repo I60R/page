@@ -55,7 +55,7 @@ pub mod page_spawned {
             && !opt.page_no_protect
             && std::env::var_os("PAGE_REDIRECTION_PROTECT").map_or(true, |v| v != "" && v != "0");
         let outp_buf_implied = opt.is_output_buffer_creation_implied();
-        let split_buf_implied = opt.is_split_implied();
+        let split_buf_implied = opt.split.is_implied();
         CliContext {
             opt,
             tmp_dir,
