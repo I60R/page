@@ -31,7 +31,7 @@ impl CliContext {
 
     pub fn is_query_flag_given_without_reading_from_pipe(&self) -> bool {
         let CliContext { opt, input_from_pipe, .. } = self;
-        opt.query_lines > 0u64 && !input_from_pipe
+        opt.output.query_lines > 0u64 && !input_from_pipe
     }
 }
 
@@ -55,7 +55,7 @@ pub mod page_spawned {
             && !opt.page_no_protect
             && std::env::var_os("PAGE_REDIRECTION_PROTECT").map_or(true, |v| v != "" && v != "0");
         let outp_buf_implied = opt.is_output_buffer_creation_implied();
-        let split_buf_implied = opt.split.is_implied();
+        let split_buf_implied = opt.output.split.is_implied();
         CliContext {
             opt,
             tmp_dir,
@@ -188,7 +188,7 @@ pub struct OutputContext {
 
 impl OutputContext {
     pub fn is_query_disabled(&self) -> bool {
-        self.opt.query_lines == 0
+        self.opt.output.query_lines == 0
     }
 
     pub fn with_new_instance_output_buffer(mut self) -> OutputContext {

@@ -28,10 +28,6 @@ pub struct Options {
     #[structopt(short="c")]
     pub config: Option<String>,
 
-    /// Run command in output buffer after it's created
-    #[structopt(short="e")]
-    pub command: Option<String>,
-
     /// Run command in output buffer after it's created or connected as instance
     #[structopt(short="E")]
     pub command_post: Option<String>,
@@ -52,10 +48,6 @@ pub struct Options {
     #[structopt(short="n", env="PAGE_BUFFER_NAME")]
     pub name: Option<String>,
 
-    /// Set output buffer filetype (for syntax highlighting)
-    #[structopt(short="t", default_value="pager")]
-    pub filetype: String,
-
     /// Create and use new output buffer (to display text from page stdin) [implied]
     #[structopt(short="o")]
     pub sink_open: bool,
@@ -63,10 +55,6 @@ pub struct Options {
     /// Print path to buffer pty (to redirect `command > /path/to/output`) [implied when page not piped]
     #[structopt(short="p")]
     pub sink_print: bool,
-
-    /// Set $PWD as working dir for output buffer (to navigate paths with `gf`)
-    #[structopt(short="P")]
-    pub pwd: bool,
 
     /// Return back to current buffer
     #[structopt(short="b")]
@@ -84,10 +72,6 @@ pub struct Options {
     #[structopt(short="F")]
     pub follow_all: bool,
 
-    /// Enable on-demand stdin reading with :Page <query_lines> command
-    #[structopt(short="q", default_value="0")]
-    pub query_lines: u64,
-
     /// Flush redirecting protection that prevents from producing junk and possible overwriting of existed
     /// files by invoking commands like "ls > $(NVIM_LISTEN_ADDRESS= page -E q)" where the RHS of > operator
     /// evaluates not into /path/to/sink as expected but into a bunch of whitespace-separated strings/escapes
@@ -99,24 +83,48 @@ pub struct Options {
     #[structopt(short="W")]
     pub page_no_protect: bool,
 
-    /// Allow to ender in INSERT/TERMINAL mode by pressing i, I, a, A keys [ignored on connected instance]
-    #[structopt(short="w")]
-    pub writeable: bool,
-
     /// Enable PageConnect PageDisconnect autocommands
     #[structopt(short="C")]
     pub command_auto: bool,
 
-    #[structopt(flatten)]
-    pub split: Split,
-
     /// Open provided files in separate buffers [revokes implied options]
     #[structopt(name="FILES")]
-    pub files: Vec<String>
+    pub files: Vec<String>,
+
+    #[structopt(flatten)]
+    pub output: OutputOptions
 }
 
+/// Options that are required on output buffer creation
 #[derive(StructOpt, Debug)]
-pub struct Split {
+pub struct OutputOptions {
+    /// Run command in output buffer after it's created
+    #[structopt(short="e")]
+    pub command: Option<String>,
+
+    /// Enable on-demand stdin reading with :Page <query_lines> command
+    #[structopt(short="q", default_value="0")]
+    pub query_lines: u64,
+
+    /// Set output buffer filetype (for syntax highlighting)
+    #[structopt(short="t", default_value="pager")]
+    pub filetype: String,
+
+    /// Allow to ender in INSERT/TERMINAL mode by pressing i, I, a, A keys [ignored on connected instance]
+    #[structopt(short="w")]
+    pub writeable: bool,
+
+    /// Set $PWD as working dir for output buffer (to navigate paths with `gf`)
+    #[structopt(short="P")]
+    pub pwd: bool,
+
+    #[structopt(flatten)]
+    pub split: SplitOptions,
+}
+
+/// Options for split
+#[derive(StructOpt, Debug)]
+pub struct SplitOptions {
     /// Split right with ratio: window_width  * 3 / (<r-provided> + 1)
     #[structopt(short="r", parse(from_occurrences))]
     pub split_right: u8,
@@ -193,17 +201,17 @@ impl Options {
         || self.follow_all
         || self.sink_open
         || self.sink_print
-        || self.pwd
-        || self.query_lines > 0u64
         || self.instance.is_some()
         || self.instance_append.is_some()
-        || self.command.is_some()
         || self.command_post.is_some()
-        || "pager" != &self.filetype
+        || self.output.command.is_some()
+        || self.output.pwd
+        || self.output.query_lines > 0u64
+        || "pager" != &self.output.filetype
     }
 }
 
-impl Split {
+impl SplitOptions {
     pub fn is_implied(&self) -> bool {
         self.split_left_cols.is_some()
         || self.split_right_cols.is_some()

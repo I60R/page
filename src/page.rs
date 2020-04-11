@@ -106,7 +106,7 @@ fn begin_output_buffer_usage(nvim_conn: &mut neovim::NeovimConnection, buf: neov
 
 
 mod neovim_api_usage {
-    use crate::{context::NeovimContext, neovim::NeovimConnection};
+    use crate::{context::NeovimContext, neovim::NeovimConnection, neovim::OutputCommands};
     use neovim_lib::neovim_api::Buffer;
     use std::path::PathBuf;
 
@@ -140,8 +140,9 @@ mod neovim_api_usage {
                 if let Err(e) = nvim_actions.open_file_buffer(f) {
                     log::warn!(target: "page file", "Error opening \"{}\": {}", f, e);
                 } else {
-                    let cmd_provided_by_user = &nvim_ctx.opt.command.as_deref().unwrap_or_default();
-                    nvim_actions.prepare_file_buffer(*initial_buf_number, cmd_provided_by_user, nvim_ctx.opt.writeable);
+                    let cmd_provided_by_user = &nvim_ctx.opt.output.command.as_deref().unwrap_or_default();
+                    let file_buf_opts = OutputCommands::for_file_buffer(cmd_provided_by_user, nvim_ctx.opt.output.writeable);
+                    nvim_actions.prepare_output_buffer(*initial_buf_number, file_buf_opts);
                     if nvim_ctx.opt.follow_all {
                         nvim_actions.set_current_buffer_follow_output_mode();
                     } else {
@@ -171,20 +172,13 @@ mod neovim_api_usage {
         pub fn create_oneoff_output_buffer(&mut self) -> (Buffer, PathBuf) {
             let ApiActions { nvim_conn: NeovimConnection { nvim_actions, initial_buf_number, .. }, nvim_ctx } = self;
             let buf = if nvim_ctx.outp_buf_usage.is_create_split() {
-                nvim_actions.create_split_output_buffer(&nvim_ctx.opt.split)
+                nvim_actions.create_split_output_buffer(&nvim_ctx.opt.output.split)
             } else {
                 nvim_actions.create_substituting_output_buffer()
             };
             let buf_pty_path = nvim_actions.get_current_buffer_pty_path();
-            nvim_actions.prepare_output_buffer(
-                *initial_buf_number,
-                &nvim_ctx.page_id,
-                &nvim_ctx.opt.command.as_deref().unwrap_or_default(),
-                &nvim_ctx.opt.filetype,
-                nvim_ctx.opt.writeable,
-                nvim_ctx.opt.pwd,
-                nvim_ctx.opt.query_lines,
-            );
+            let outp_buf_opts = OutputCommands::for_output_buffer(&nvim_ctx.page_id, &nvim_ctx.opt.output);
+            nvim_actions.prepare_output_buffer(*initial_buf_number, outp_buf_opts);
             (buf, buf_pty_path)
         }
     }
@@ -302,13 +296,13 @@ mod output_buffer_usage {
                 }
                 let mut stdin_lines = BufReader::new(stdin.lock()).lines();
                 let mut s = QueryState::default();
-                s.next_part(self.outp_ctx.opt.query_lines);
+                s.next_part(self.outp_ctx.opt.output.query_lines);
                 loop {
                     if s.is_whole_part_sent() {
                         self.nvim_conn.nvim_actions.notify_query_finished(s.how_many_lines_was_sent());
                         match self.nvim_conn.rx.recv() {
                             Ok(NotificationFromNeovim::FetchLines(n)) => s.next_part(n),
-                            Ok(NotificationFromNeovim::FetchPart) => s.next_part(self.outp_ctx.opt.query_lines),
+                            Ok(NotificationFromNeovim::FetchPart) => s.next_part(self.outp_ctx.opt.output.query_lines),
                             _ => break
                         }
                     }
