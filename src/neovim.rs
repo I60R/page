@@ -11,7 +11,10 @@ use std::{
 };
 
 
-const TERM_URI: &str = "term://2147483647d"; // Will be passed to /bin/sleep
+const TERM_URI: &str = concat!(
+    "term://",     // Shell will be temporarily replaced with /bin/sleep
+    "2147483647d"  // This will sleep for i32::MAX days
+);
 
 /// This struct wraps neovim_lib::Neovim and decorates it with methods required in page.
 /// Results returned from underlying Neovim methods are mostly unwrapped, since we anyway cannot provide
@@ -41,7 +44,7 @@ impl NeovimActions {
         self.create_buffer(&format!("e {}", TERM_URI))
     }
 
-    pub fn create_split_output_buffer(&mut self, opt: &crate::cli::Split) -> Buffer {
+    pub fn create_split_output_buffer(&mut self, opt: &crate::cli::SplitOptions) -> Buffer {
         let (ver_ratio, hor_ratio) = ("(winwidth(0) / 2) * 3", "(winheight(0) / 2) * 3");
         let cmd = if opt.split_right > 0u8 {
             format!("exe 'belowright ' . ({}/{}) . 'vsplit {}' | set winfixwidth", ver_ratio, opt.split_right + 1, TERM_URI)
@@ -176,19 +179,7 @@ impl NeovimActions {
         }
     }
 
-    pub fn prepare_file_buffer(&mut self, initial_buf_nr: i64, cmd_provided_by_user: &str, writeable: bool) {
-        let cmds = PageBufferCommands::for_file_buffer(cmd_provided_by_user, writeable);
-        let ft = "";
-        self.prepare_buffer(initial_buf_nr, ft, cmds)
-    }
-
-    pub fn prepare_output_buffer(&mut self, initial_buf_nr: i64, page_id: &str, cmd_provided_by_user: &str, ft: &str, writeable: bool, pwd: bool, query_lines: u64) {
-        let cmds = PageBufferCommands::for_output_buffer(cmd_provided_by_user, page_id, writeable, pwd, query_lines);
-        let ft = format!("filetype={}", ft);
-        self.prepare_buffer(initial_buf_nr, &ft, cmds)
-    }
-
-    fn prepare_buffer(&mut self, initial_buf_nr: i64, ft: &str, cmds: PageBufferCommands) {
+    pub fn prepare_output_buffer(&mut self, initial_buf_nr: i64, cmds: OutputCommands) {
         let options = format!(" \
             | let b:page_alternate_bufnr={initial_buf_nr} \
             | let b:page_scrolloff_backup=&scrolloff \
@@ -202,7 +193,7 @@ impl NeovimActions {
             {cmd_provided_by_user} \
             {cmd_post} \
         ",
-            ft = ft,
+            ft = cmds.ft,
             initial_buf_nr = initial_buf_nr,
             cmd_edit = cmds.edit,
             cmd_provided_by_user = cmds.user,
@@ -305,28 +296,30 @@ impl NeovimActions {
 }
 
 /// This struct provides commands that would be run on output buffer after creation
-pub struct PageBufferCommands {
+pub struct OutputCommands {
     edit: String,
+    ft: String,
     pre: String,
     post: String,
     user: String,
 }
 
-impl PageBufferCommands {
-    fn with_cmd_provided_by_user(cmd_provided_by_user: &str) -> PageBufferCommands {
+impl OutputCommands {
+    fn with_cmd_provided_by_user(cmd_provided_by_user: &str) -> OutputCommands {
         let mut user = cmd_provided_by_user.replace("'", "''"); // Ecranizes viml literal string
         if !user.is_empty() {
             user = format!("| exe '{}'", user);
         }
-        PageBufferCommands {
+        OutputCommands {
             edit: String::new(),
+            ft: String::new(),
             pre: String::new(),
             post: String::new(),
             user,
         }
     }
 
-    fn for_file_buffer(cmd_provided_by_user: &str, writeable: bool) -> PageBufferCommands {
+    pub fn for_file_buffer(cmd_provided_by_user: &str, writeable: bool) -> OutputCommands {
         let mut cmds = Self::with_cmd_provided_by_user(cmd_provided_by_user);
         if !writeable {
             cmds.edit.push_str("| setl nomodifiable");
@@ -335,9 +328,10 @@ impl PageBufferCommands {
         cmds
     }
 
-    fn for_output_buffer(cmd_provided_by_user: &str, page_id: &str, writeable: bool, pwd: bool, query_lines: u64) -> PageBufferCommands {
-        let mut cmds = Self::with_cmd_provided_by_user(cmd_provided_by_user);
-        if !writeable {
+    pub fn for_output_buffer(page_id: &str, opt: &crate::cli::OutputOptions) -> OutputCommands {
+        let mut cmds = Self::with_cmd_provided_by_user(opt.command.as_deref().unwrap_or_default());
+        cmds.ft = format!("filetype={}", opt.filetype);
+        if !opt.writeable {
             cmds.edit.push_str(" \
                 | setl nomodifiable
                 | noremap <buffer> i x
@@ -346,7 +340,7 @@ impl PageBufferCommands {
                 | noremap <buffer> A x
             ")
         }
-        if query_lines > 0u64 {
+        if opt.query_lines > 0u64 {
             cmds.pre = format!("{prefix} \
                 | exe 'command! -nargs=? Page call rpcnotify(0, ''page_fetch_lines'', ''{page_id}'', <args>)' \
                 | exe 'autocmd BufEnter <buffer> command! -nargs=? Page call rpcnotify(0, ''page_fetch_lines'', ''{page_id}'', <args>)' \
@@ -356,7 +350,7 @@ impl PageBufferCommands {
                 page_id = page_id,
             );
         }
-        if pwd {
+        if opt.pwd {
             cmds.pre = format!("{prefix} \
                 | let b:page_lcd_backup = getcwd() \
                 | lcd {pwd} \
