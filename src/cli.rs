@@ -52,7 +52,7 @@ pub struct Options {
     #[structopt(short="o")]
     pub sink_open: bool,
 
-    /// Print path to buffer pty (to redirect `command > /path/to/output`) [implied when page not piped]
+    /// Print path to buffer pty (to redirect `command > /path/to/pty`) [implied when page isn't piped]
     #[structopt(short="p")]
     pub sink_print: bool,
 
@@ -102,7 +102,7 @@ pub struct OutputOptions {
     #[structopt(short="e")]
     pub command: Option<String>,
 
-    /// Enable on-demand stdin reading with :Page <query_lines> command
+    /// Enable on-demand stdin reading with :Page <query-lines> neovim command
     #[structopt(short="q", default_value="0")]
     pub query_lines: u64,
 
