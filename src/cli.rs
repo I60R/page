@@ -9,83 +9,82 @@ use structopt::{
 #[structopt(
     author,
     about,
-    global_settings = &[DisableHelpSubcommand, DeriveDisplayOrder],
+    global_settings = &[ColoredHelp, DisableHelpSubcommand, UnifiedHelpMessage],
     group = splits_arg_group(),
     group = back_arg_group(),
     group = follow_arg_group(),
     group = instance_use_arg_group(),
 )]
 pub struct Options {
-    /// Neovim session address
-    #[structopt(short="a", env="NVIM_LISTEN_ADDRESS")]
-    pub address: Option<String>,
-
-    /// Neovim arguments for new child process
-    #[structopt(short="A", env="NVIM_PAGE_ARGS")]
-    pub arguments: Option<String>,
-
-    /// Neovim config path for new child process [file:$XDG_CONFIG_HOME/page/init.vim]
-    #[structopt(short="c")]
-    pub config: Option<String>,
-
-    /// Run command in output buffer after it's created or connected as instance
-    #[structopt(short="E")]
-    pub command_post: Option<String>,
-
-    /// Connect or create named output buffer. When connected, new content overwrites previous
-    #[structopt(short="i")]
-    pub instance: Option<String>,
-
-    /// Connect or create named output buffer. When connected, new content appends to previous
-    #[structopt(short="I")]
-    pub instance_append: Option<String>,
-
-    /// Close instance buffer with this name if exist [revokes implied options]
-    #[structopt(short="x")]
-    pub instance_close: Option<String>,
-
-    /// Set output buffer name (displayed in statusline)
-    #[structopt(short="n", env="PAGE_BUFFER_NAME")]
+    /// Set title for output buffer (to display it in statusline)
+    #[structopt(display_order=10, short="n", env="PAGE_BUFFER_NAME")]
     pub name: Option<String>,
 
-    /// Create and use new output buffer (to display text from page stdin) [implied]
-    #[structopt(short="o")]
-    pub sink_open: bool,
+    /// Neovim session address
+    #[structopt(display_order=100, short="a", env="NVIM_LISTEN_ADDRESS")]
+    pub address: Option<String>,
 
-    /// Print path to buffer pty (to redirect `command > /path/to/pty`) [implied when page isn't piped]
-    #[structopt(short="p")]
-    pub sink_print: bool,
+    /// Neovim arguments to use when spawning its child process
+    #[structopt(display_order=101, short="A", env="NVIM_PAGE_ARGS")]
+    pub arguments: Option<String>,
 
-    /// Return back to current buffer
-    #[structopt(short="b")]
-    pub back: bool,
+    /// Neovim config path to use when spawning its child process [file:$XDG_CONFIG_HOME/page/init.vim]
+    #[structopt(display_order=102, short="c")]
+    pub config: Option<String>,
 
-    /// Return back to current buffer and enter INSERT mode
-    #[structopt(short="B")]
-    pub back_restore: bool,
+    /// Run command on output buffer after it was created or connected as instance {n} ~ ~ ~
+    #[structopt(display_order=105, short="E")]
+    pub command_post: Option<String>,
 
-    /// Follow output instead of keeping top position (like `tail -f`)
-    #[structopt(short="f")]
+    /// Use named output buffer or create if it doesn't exists. Redirected from page stdin new content will replace existed
+    #[structopt(display_order=200, short="i")]
+    pub instance: Option<String>,
+
+    /// Use named output or create if it doesn't exists. Redirected from page stdin new content will be appendded to existed
+    #[structopt(display_order=201, short="I")]
+    pub instance_append: Option<String>,
+
+    /// Close this named output buffer if exists [revokes implied options] {n} ~ ~ ~
+    #[structopt(display_order=202, short="x")]
+    pub instance_close: Option<String>,
+
+    /// Create and use output buffer (to redirect text from page stdin into it) [implied always]
+    #[structopt(display_order=0, short="o")]
+    pub output_open: bool,
+
+    /// Print path to pty device associated with output buffer (to redirect `command > /path/to/pty`) [implied if page isn't piped]
+    #[structopt(display_order=2, short="p")]
+    pub pty_path_print: bool,
+
+    /// Cursor follows output buffer content when it appears instead of keeping top position (like `tail -f`)
+    #[structopt(display_order=5, short="f")]
     pub follow: bool,
 
-    /// Follow output instead of keeping top position also for each of <FILES>
-    #[structopt(short="F")]
+    /// Cursor follows output buffer content when it appears instead of keeping top position also for each of <FILES>
+    #[structopt(display_order=6, short="F")]
     pub follow_all: bool,
 
-    /// Flush redirecting protection that prevents from producing junk and possible overwriting of existed
-    /// files by invoking commands like "ls > $(NVIM_LISTEN_ADDRESS= page -E q)" where the RHS of > operator
-    /// evaluates not into /path/to/sink as expected but into a bunch of whitespace-separated strings/escapes
-    /// from neovim UI which some shells also interpret as valid targets for text redirection.
-    /// The protection consists of printing of a path to the existed dummy directory always first before
-    /// printing of a neovim UI will begin in order to make the first target for text redirection from page's
-    /// output invalid and to disrupt harmful redirection early before other writes might occur.
-    /// [env:PAGE_REDIRECTION_PROTECT: (0 to disable)]
-    #[structopt(short="W")]
-    pub page_no_protect: bool,
+    /// Return back to current buffer
+    #[structopt(display_order=8, short="b")]
+    pub back: bool,
+
+    /// Return back to current buffer and enter into INSERT mode
+    #[structopt(display_order=9, short="B")]
+    pub back_restore: bool,
 
     /// Enable PageConnect PageDisconnect autocommands
-    #[structopt(short="C")]
+    #[structopt(display_order=103, short="C")]
     pub command_auto: bool,
+
+    /// Flush redirection protection that prevents from producing junk and possible overwrite of existed files by invoking commands like
+    /// "ls > $(NVIM_LISTEN_ADDRESS= page -E q)" where the RHS of > operator evaluates not into /path/to/pty as expected but into a bunch
+    /// of whitespace-separated strings/escape sequences from neovim UI, and bad things happens because some shells interpret this as valid
+    /// targets for text redirection. The protection is only printing of a path to the existed dummy directory always first before printing
+    /// of a neovim UI might occur; this makes the first target for text redirection from page's output invalid and disrupts redirection
+    /// early before any harmful write might begin.
+    /// [env:PAGE_REDIRECTION_PROTECT (0 to disable)] {n} ~ ~ ~
+    #[structopt(display_order=800, short="W")]
+    pub page_no_protect: bool,
 
     /// Open provided files in separate buffers [revokes implied options]
     #[structopt(name="FILES")]
@@ -95,66 +94,70 @@ pub struct Options {
     pub output: OutputOptions
 }
 
-/// Options that are required on output buffer creation
+// Options that are required on output buffer creation
 #[derive(StructOpt, Debug)]
 pub struct OutputOptions {
-    /// Run command in output buffer after it's created
-    #[structopt(short="e")]
+    /// Run command in output buffer after it was created
+    #[structopt(display_order=104, short="e")]
     pub command: Option<String>,
 
-    /// Enable on-demand stdin reading with :Page <query-lines> neovim command
-    #[structopt(short="q", default_value="0")]
+    /// Enable on-demand stdin reading with :Page <query-lines> command on neovim side [default: 0 (disabled)]
+    #[structopt(display_order=4, short="q", default_value="0", hide_default_value=true)]
     pub query_lines: u64,
 
-    /// Set output buffer filetype (for syntax highlighting)
-    #[structopt(short="t", default_value="pager")]
+    /// Echo input if it has less than <open_from> lines [default: 0 (disabled); empty: term height; ignored if page isn't piped]
+    #[structopt(display_order=1, short="O")]
+    pub open_from: Option<Option<u64>>,
+
+    /// Set neovim filetype for output buffer (enables syntax highlighting)
+    #[structopt(display_order=7, short="t", default_value="pager")]
     pub filetype: String,
 
-    /// Allow to ender in INSERT/TERMINAL mode by pressing i, I, a, A keys [ignored on connected instance]
-    #[structopt(short="w")]
+    /// Allow to ender into INSERT/TERMINAL mode by pressing i, I, a, A keys [ignored on connected instance output buffer] {n} ~ ~ ~
+    #[structopt(display_order=11, short="w")]
     pub writeable: bool,
 
-    /// Set $PWD as working dir for output buffer (to navigate paths with `gf`)
-    #[structopt(short="P")]
+    /// Set $PWD as working dir for output buffer (allows to navigate paths with `gf`)
+    #[structopt(display_order=3, short="P")]
     pub pwd: bool,
 
     #[structopt(flatten)]
     pub split: SplitOptions,
 }
 
-/// Options for split
+// Options for split
 #[derive(StructOpt, Debug)]
 pub struct SplitOptions {
-    /// Split right with ratio: window_width  * 3 / (<r-provided> + 1)
-    #[structopt(short="r", parse(from_occurrences))]
-    pub split_right: u8,
-
     /// Split left  with ratio: window_width  * 3 / (<l-provided> + 1)
-    #[structopt(short="l", parse(from_occurrences))]
+    #[structopt(display_order=900, short="l", parse(from_occurrences))]
     pub split_left: u8,
 
+    /// Split right with ratio: window_width  * 3 / (<r-provided> + 1)
+    #[structopt(display_order=901, short="r", parse(from_occurrences))]
+    pub split_right: u8,
+
     /// Split above with ratio: window_height * 3 / (<u-provided> + 1)
-    #[structopt(short="u", parse(from_occurrences))]
+    #[structopt(display_order=902, short="u", parse(from_occurrences))]
     pub split_above: u8,
 
     /// Split below with ratio: window_height * 3 / (<d-provided> + 1)
-    #[structopt(short="d", parse(from_occurrences))]
+    #[structopt(display_order=903, short="d", parse(from_occurrences))]
     pub split_below: u8,
 
-    /// Split right and resize to <split-right-cols> columns
-    #[structopt(short="R")]
-    pub split_right_cols: Option<u8>,
-
     /// Split left  and resize to <split-left-cols>  columns
-    #[structopt(short="L")]
+    #[structopt(display_order=904, short="L")]
     pub split_left_cols: Option<u8>,
 
+    /// Split right and resize to <split-right-cols> columns
+    #[structopt(display_order=905, short="R")]
+    pub split_right_cols: Option<u8>,
+
     /// Split above and resize to <split-above-rows> rows
-    #[structopt(short="U")]
+    #[structopt(display_order=906, short="U")]
     pub split_above_rows: Option<u8>,
 
-    /// Split below and resize to <split-below-rows> rows
-    #[structopt(short="D")]
+    /// Split below and resize to <split-below-rows> rows {n} ~ ~ ~
+    #[structopt(display_order=907, short="D")]
     pub split_below_rows: Option<u8>,
 }
 
@@ -184,50 +187,19 @@ fn splits_arg_group() -> ArgGroup<'static> {
         .multiple(false)
 }
 
-
-impl Options {
-    pub fn is_focus_on_existed_instance_buffer_implied(&self) -> bool {
-        self.follow                           // Should focus if we need to scroll down
-        || self.command_auto                  // Should focus in order to run autocommands
-        || self.command_post.is_some()        // Should focus in order to run user commands
-        || (!self.back && !self.back_restore) // Should focus if -b and -B flags aren't provided
-    }
-
-    pub fn is_output_buffer_creation_implied(&self) -> bool {
-        self.instance_close.is_none() && self.files.is_empty() // These not implies creating output buffer
-        || self.back
-        || self.back_restore
-        || self.follow
-        || self.follow_all
-        || self.sink_open
-        || self.sink_print
-        || self.instance.is_some()
-        || self.instance_append.is_some()
-        || self.command_post.is_some()
-        || self.output.command.is_some()
-        || self.output.pwd
-        || self.output.query_lines > 0u64
-        || "pager" != &self.output.filetype
-    }
-}
-
 impl SplitOptions {
-    pub fn is_implied(&self) -> bool {
-        self.split_left_cols.is_some()
+    pub fn is_provided(&self) -> bool {
+        !! self.split_left_cols.is_some()
         || self.split_right_cols.is_some()
         || self.split_above_rows.is_some()
         || self.split_below_rows.is_some()
-        || self.split_left > 0u8
-        || self.split_right > 0u8
-        || self.split_above > 0u8
-        || self.split_below > 0u8
+        || self.split_left != 0
+        || self.split_right != 0
+        || self.split_above != 0
+        || self.split_below != 0
     }
 }
 
 pub fn get_options() -> Options {
-    let mut opt = Options::from_args();
-    if opt.address.as_ref().map_or(false, |s| s.is_empty()) {
-        opt.address = None;
-    }
-    opt
+    Options::from_args()
 }
