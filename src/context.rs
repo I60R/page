@@ -9,7 +9,6 @@ pub struct CliContext {
     pub tmp_dir: std::path::PathBuf,
     pub input_from_pipe: bool,
     pub print_protection: bool,
-    pub outp_buf_implied: bool,
     pub split_buf_implied: bool,
 }
 
@@ -31,7 +30,33 @@ impl CliContext {
 
     pub fn is_query_flag_given_without_reading_from_pipe(&self) -> bool {
         let CliContext { opt, input_from_pipe, .. } = self;
-        opt.output.query_lines > 0u64 && !input_from_pipe
+        opt.output.query_lines != 0 && !input_from_pipe
+    }
+
+    pub fn is_focus_on_existed_instance_buffer_implied(&self) -> bool {
+        let CliContext { opt, .. } = self;
+        !! opt.follow                       // Should focus if we want to scroll down
+        || opt.command_auto                 // Should focus in order to run autocommands
+        || opt.command_post.is_some()       // Should focus in order to run user commands
+        || (!opt.back && !opt.back_restore) // Should focus if -b and -B flags aren't provided
+    }
+
+    pub fn is_output_buffer_creation_implied(&self) -> bool {
+        let CliContext { opt, .. } = self;
+        !! opt.instance_close.is_none() && opt.files.is_empty() // These not implies creating output buffer
+        || opt.back
+        || opt.back_restore
+        || opt.follow
+        || opt.follow_all
+        || opt.output_open
+        || opt.pty_path_print
+        || opt.instance.is_some()
+        || opt.instance_append.is_some()
+        || opt.command_post.is_some()
+        || opt.output.command.is_some()
+        || opt.output.pwd
+        || opt.output.query_lines != 0
+        || opt.output.filetype.as_str() != "pager"
     }
 }
 
@@ -39,7 +64,13 @@ pub mod page_spawned {
     use crate::context::CliContext;
 
     pub fn enter() -> CliContext {
-        let opt = crate::cli::get_options();
+        let opt = {
+            let mut opt = crate::cli::get_options();
+            if opt.address.as_ref().map_or(false, |s| s.is_empty()) {
+                opt.address = None;
+            }
+            opt
+        };
         let tmp_dir = {
             let d = std::env::temp_dir().join("neovim-page");
             std::fs::create_dir_all(&d).expect("Cannot create temporary directory for page");
@@ -54,15 +85,13 @@ pub mod page_spawned {
         let print_protection = !input_from_pipe
             && !opt.page_no_protect
             && std::env::var_os("PAGE_REDIRECTION_PROTECT").map_or(true, |v| v != "" && v != "0");
-        let outp_buf_implied = opt.is_output_buffer_creation_implied();
-        let split_buf_implied = opt.output.split.is_implied();
+        let split_buf_implied = opt.output.split.is_provided();
         CliContext {
             opt,
             tmp_dir,
             page_id,
             input_from_pipe,
             print_protection,
-            outp_buf_implied,
             split_buf_implied,
         }
     }
@@ -98,6 +127,8 @@ pub mod neovim_connected {
     use crate::context::{CliContext, NeovimContext,};
 
     pub fn enter(cli_ctx: CliContext) -> NeovimContext {
+        let should_focus_on_existed_instance_buffer = cli_ctx.is_focus_on_existed_instance_buffer_implied();
+        let should_create_output_buffer = cli_ctx.is_output_buffer_creation_implied();
         let CliContext { opt, page_id, input_from_pipe, split_buf_implied, .. } = cli_ctx;
         let inst_usage = if let Some(name) = opt.instance.clone() {
             InstanceUsage::Enabled {
@@ -108,7 +139,7 @@ pub mod neovim_connected {
         } else if let Some(name) = opt.instance_append.clone() {
             InstanceUsage::Enabled {
                 name,
-                focused: opt.is_focus_on_existed_instance_buffer_implied(),
+                focused: should_focus_on_existed_instance_buffer,
                 replace_content: false
             }
         } else {
@@ -116,7 +147,7 @@ pub mod neovim_connected {
         };
         let outp_buf_usage = if split_buf_implied {
             OutputBufferUsage::CreateSplit
-        } else if input_from_pipe || opt.is_output_buffer_creation_implied() {
+        } else if input_from_pipe || should_create_output_buffer {
             OutputBufferUsage::CreateSubstituting
         } else {
             OutputBufferUsage::Disabled
@@ -211,7 +242,7 @@ pub mod output_buffer_available {
         } else {
             RestoreInitialBufferFocus::Disabled
         };
-        let print_output_buf_pty = opt.sink_print || (!nvim_child_proc_spawned && !input_from_pipe);
+        let print_output_buf_pty = opt.pty_path_print || (!nvim_child_proc_spawned && !input_from_pipe);
         OutputContext {
             opt,
             inst_usage,
