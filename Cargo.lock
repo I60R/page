@@ -135,7 +135,7 @@ dependencies = [
 
 [[package]]
 name = "page"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "atty 0.2.14 (registry+https://github.com/rust-lang/crates.io-index)",
  "fern 0.5.9 (registry+https://github.com/rust-lang/crates.io-index)",

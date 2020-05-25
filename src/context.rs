@@ -87,7 +87,9 @@ impl NeovimContext {
 
     pub fn with_child_neovim_process_spawned(mut self) -> NeovimContext {
         self.nvim_child_proc_spawned = true;
-        self.outp_buf_usage = neovim_connected::OutputBufferUsage::CreateSubstituting;
+        if !self.outp_buf_usage.is_disabled() {
+            self.outp_buf_usage = neovim_connected::OutputBufferUsage::CreateSubstituting;
+        }
         self
     }
 }

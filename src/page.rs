@@ -19,7 +19,7 @@ pub fn init_logger() {
     let level_filter = log::LevelFilter::from_str(level).expect("Cannot parse $RUST_LOG value");
     fern::Dispatch::new()
         .format(|cb, msg, record| {
-            cb.finish({ format_args!("[{}][{}] {}", record.level(), record.target(), msg) })
+            cb.finish(format_args!("[{}][{}] {}", record.level(), record.target(), msg))
         })
         .level(level_filter)
         .level_for("neovim_lib", log::LevelFilter::Off)
