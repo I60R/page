@@ -46,13 +46,13 @@ impl NeovimActions {
 
     pub fn create_split_output_buffer(&mut self, opt: &crate::cli::SplitOptions) -> Buffer {
         let (ver_ratio, hor_ratio) = ("(winwidth(0) / 2) * 3", "(winheight(0) / 2) * 3");
-        let cmd = if opt.split_right > 0u8 {
+        let cmd = if opt.split_right != 0u8 {
             format!("exe 'belowright ' . ({}/{}) . 'vsplit {}' | set winfixwidth", ver_ratio, opt.split_right + 1, TERM_URI)
-        } else if opt.split_left > 0u8 {
+        } else if opt.split_left != 0u8 {
             format!("exe 'aboveleft ' . ({}/{}) . 'vsplit {}' | set winfixwidth", ver_ratio, opt.split_left + 1, TERM_URI)
-        } else if opt.split_below > 0u8 {
+        } else if opt.split_below != 0u8 {
             format!("exe 'belowright ' . ({}/{}) . 'split {}' | set winfixheight", hor_ratio, opt.split_below + 1, TERM_URI)
-        } else if opt.split_above > 0u8 {
+        } else if opt.split_above != 0u8 {
             format!("exe 'aboveleft ' . ({}/{}) . 'split {}' | set winfixheight", hor_ratio, opt.split_above + 1, TERM_URI)
         } else if let Some(split_right_cols) = opt.split_right_cols {
             format!("belowright {}vsplit {} | set winfixwidth", split_right_cols, TERM_URI)
@@ -269,7 +269,7 @@ impl NeovimActions {
         Ok(())
     }
 
-    pub fn notify_query_finished(&mut self, lines_read: u64) {
+    pub fn notify_query_finished(&mut self, lines_read: usize) {
         log::trace!(target: "query finished", "Read {} lines", lines_read);
         self.nvim.command(&format!("redraw | echoh Comment | echom '-- [PAGE] {} lines read; has more --' | echoh None", lines_read)).unwrap();
     }
@@ -340,7 +340,7 @@ impl OutputCommands {
                 | noremap <buffer> A x
             ")
         }
-        if opt.query_lines > 0u64 {
+        if opt.query_lines != 0usize {
             cmds.pre = format!("{prefix} \
                 | exe 'command! -nargs=? Page call rpcnotify(0, ''page_fetch_lines'', ''{page_id}'', <args>)' \
                 | exe 'autocmd BufEnter <buffer> command! -nargs=? Page call rpcnotify(0, ''page_fetch_lines'', ''{page_id}'', <args>)' \
@@ -370,7 +370,7 @@ impl OutputCommands {
 /// This enum represents all notifications that could be sent from page's commands on neovim side
 pub enum NotificationFromNeovim {
     FetchPart,
-    FetchLines(u64),
+    FetchLines(usize),
     BufferClosed,
 }
 
@@ -407,8 +407,8 @@ mod notifications {
             }
             let notification_from_neovim = match notification {
                 "page_fetch_lines" => {
-                     if let Some(lines_count) = args.get(1).and_then(Value::as_u64) {
-                        NotificationFromNeovim::FetchLines(lines_count)
+                    if let Some(lines_count) = args.get(1).and_then(Value::as_u64) {
+                        NotificationFromNeovim::FetchLines(lines_count as usize)
                     } else {
                         NotificationFromNeovim::FetchPart
                     }

@@ -7,16 +7,14 @@ use neovim_lib::neovim_api;
 
 fn main() {
     init_logger();
-    let cli_ctx = context::page_spawned::enter();
-    issue_warnings(&cli_ctx);
-    begin_neovim_connection_usage(cli_ctx);
+    let opt_ctx = crate::context::opt_parsed::enter();
+    prefetch_lines_routine(opt_ctx);
 }
 
 pub fn init_logger() {
     let rust_log = std::env::var("RUST_LOG").ok();
     let level = rust_log.as_deref().unwrap_or("warn");
-    use std::str::FromStr;
-    let level_filter = log::LevelFilter::from_str(level).expect("Cannot parse $RUST_LOG value");
+    let level_filter: log::LevelFilter = std::str::FromStr::from_str(level).expect("Cannot parse $RUST_LOG value");
     let exec_time = std::time::Instant::now();
     fern::Dispatch::new()
         .format(move |cb, msg, record| cb.finish(
@@ -36,23 +34,50 @@ pub fn init_logger() {
         .unwrap();
 }
 
-fn issue_warnings(cli_ctx: &context::CliContext) {
-    if cli_ctx.is_inst_close_flag_given_without_address() {
+fn prefetch_lines_routine(opt_ctx: context::OptContext) {
+    log::info!(target: "context", "{:#?}", &opt_ctx);
+    let echo_lines = opt_ctx.echo_lines;
+    let mut prefetched_lines = Vec::with_capacity(echo_lines);
+    loop {
+        if prefetched_lines.len() == echo_lines {
+            break
+        }
+        let mut line = String::new();
+        let remain = std::io::stdin().read_line(&mut line).unwrap();
+        prefetched_lines.push(line);
+        if remain == 0 {
+            break
+        }
+    }
+    if prefetched_lines.len() < echo_lines && echo_lines != 0usize {
+        let stdout = std::io::stdout();
+        let mut stdout_lock = stdout.lock();
+        for ln in prefetched_lines {
+            std::io::Write::write(&mut stdout_lock, ln.as_bytes()).unwrap();
+        }
+        std::process::exit(0)
+    }
+    warn_incompatible_options(&opt_ctx);
+    let cli_ctx = context::cli_spawned::enter(prefetched_lines, opt_ctx);
+    connect_neovim_routine(cli_ctx);
+}
+
+fn warn_incompatible_options(opt_ctx: &context::OptContext) {
+    if opt_ctx.is_inst_close_flag_given_without_address() {
         log::warn!(target: "usage", "Instance close (-x) is ignored if address (-a or $NVIM_LISTEN_ADDRESS) isn't set");
     }
-    if cli_ctx.is_split_flag_given_without_address() {
+    if opt_ctx.is_split_flag_given_without_address() {
         log::warn!(target: "usage", "Split (-r -l -u -d -R -L -U -D) is ignored if address (-a or $NVIM_LISTEN_ADDRESS) isn't set");
     }
-    if cli_ctx.is_back_flag_given_without_address() {
+    if opt_ctx.is_back_flag_given_without_address() {
         log::warn!(target: "usage", "Switch back (-b -B) is ignored if address (-a or $NVIM_LISTEN_ADDRESS) isn't set");
     }
-    if cli_ctx.is_query_flag_given_without_reading_from_pipe() {
+    if opt_ctx.is_query_flag_given_without_reading_from_pipe() {
         log::warn!(target: "usage", "Query (-q) is ignored when page doesn't read input from pipe");
     }
 }
 
-
-fn begin_neovim_connection_usage(cli_ctx: context::CliContext) {
+fn connect_neovim_routine(cli_ctx: context::CliContext) {
     log::info!(target: "context", "{:#?}", &cli_ctx);
     let mut nvim_conn = neovim::connection::open(&cli_ctx);
     let nvim_ctx = if nvim_conn.is_child_neovim_process_spawned() {
@@ -60,11 +85,11 @@ fn begin_neovim_connection_usage(cli_ctx: context::CliContext) {
     } else {
         context::neovim_connected::enter(cli_ctx)
     };
-    begin_neovim_api_usage(&mut nvim_conn, nvim_ctx);
+    neovim_usage_routine(&mut nvim_conn, nvim_ctx);
     neovim::connection::close(nvim_conn);
 }
 
-fn begin_neovim_api_usage(nvim_conn: &mut neovim::NeovimConnection, nvim_ctx: context::NeovimContext) {
+fn neovim_usage_routine(nvim_conn: &mut neovim::NeovimConnection, nvim_ctx: context::NeovimContext) {
     log::info!(target: "context", "{:#?}", &nvim_ctx);
     let mut api_actions = neovim_api_usage::begin(nvim_conn, &nvim_ctx);
     api_actions.close_page_instance_buffer();
@@ -75,20 +100,20 @@ fn begin_neovim_api_usage(nvim_conn: &mut neovim::NeovimConnection, nvim_ctx: co
     if let Some(inst_name) = nvim_ctx.inst_usage.is_enabled() {
         if let Some((buf, buf_pty_path)) = api_actions.find_instance_buffer(inst_name) {
             let outp_ctx = context::output_buffer_available::enter(nvim_ctx, buf_pty_path);
-            begin_output_buffer_usage(nvim_conn, buf, outp_ctx)
+            output_buffer_usage_routine(nvim_conn, buf, outp_ctx)
         } else {
             let (buf, buf_pty_path) = api_actions.create_instance_output_buffer(inst_name);
             let outp_ctx = context::output_buffer_available::enter(nvim_ctx, buf_pty_path).with_new_instance_output_buffer();
-            begin_output_buffer_usage(nvim_conn, buf, outp_ctx)
+            output_buffer_usage_routine(nvim_conn, buf, outp_ctx)
         }
     } else {
         let (buf, buf_pty_path) = api_actions.create_oneoff_output_buffer();
         let outp_ctx = context::output_buffer_available::enter(nvim_ctx, buf_pty_path);
-        begin_output_buffer_usage(nvim_conn, buf, outp_ctx)
+        output_buffer_usage_routine(nvim_conn, buf, outp_ctx)
     };
 }
 
-fn begin_output_buffer_usage(nvim_conn: &mut neovim::NeovimConnection, buf: neovim_api::Buffer, outp_ctx: context::OutputContext) {
+fn output_buffer_usage_routine(nvim_conn: &mut neovim::NeovimConnection, buf: neovim_api::Buffer, outp_ctx: context::OutputContext) {
     log::info!(target: "context", "{:#?}", &outp_ctx);
     let mut outp_buf_actions = output_buffer_usage::begin(nvim_conn, &outp_ctx, buf);
     if let Some(inst_name) = outp_ctx.inst_usage.is_enabled() {
@@ -189,7 +214,7 @@ mod output_buffer_usage {
     use neovim_lib::neovim_api::Buffer;
     use std::{
         fs::{File, OpenOptions},
-        io::{self, BufRead, BufReader, Write},
+        io::{BufRead, Write},
     };
 
     /// This struct implements actions that should be done after output buffer is attached
@@ -289,12 +314,19 @@ mod output_buffer_usage {
         /// and user might redirect into it directly
         pub fn handle_output(&mut self) {
             if self.outp_ctx.input_from_pipe {
-                let stdin = io::stdin();
-                if self.outp_ctx.is_query_disabled() {
-                    io::copy(&mut io::stdin().lock(), self.get_buffer_pty()).expect("Read from stdin failed unexpectedly");
+                // First write all prefetched lines if any available
+                for ln in self.outp_ctx.prefetched_lines.as_slice() {
+                    write!(self.get_buffer_pty(), "{}", ln).expect("Cannot write next prefetched line");
+                }
+                // Then copy the rest of lines from stdin into buffer pty
+                let stdin = std::io::stdin();
+                let mut stdin_lock = stdin.lock();
+                if !self.outp_ctx.is_query_enabled() {
+                    std::io::copy(&mut stdin_lock, self.get_buffer_pty()).expect("Read from stdin failed unexpectedly");
                     return
                 }
-                let mut stdin_lines = BufReader::new(stdin.lock()).lines();
+                // If query (-q) is enabled then wait for it
+                let mut stdin_lines = stdin_lock.lines();
                 let mut s = QueryState::default();
                 s.next_part(self.outp_ctx.opt.output.query_lines);
                 loop {
@@ -307,7 +339,7 @@ mod output_buffer_usage {
                         }
                     }
                     match stdin_lines.next() {
-                        Some(Ok(l)) => writeln!(self.get_buffer_pty(), "{}", l).expect("Cannot write next line"),
+                        Some(Ok(ln)) => writeln!(self.get_buffer_pty(), "{}", ln).expect("Cannot write next line"),
                         Some(Err(e)) => {
                             log::warn!(target: "output", "Error reading line from stdin: {}", e);
                             break
@@ -361,12 +393,12 @@ mod output_buffer_usage {
     /// Used only when -q <count> argument is provided
     #[derive(Default)]
     struct QueryState {
-        expect: u64,
-        remain: u64,
+        expect: usize,
+        remain: usize,
     }
 
     impl QueryState {
-        fn next_part(&mut self, lines_to_read: u64) {
+        fn next_part(&mut self, lines_to_read: usize) {
             self.expect = lines_to_read;
             self.remain = lines_to_read;
         }
@@ -376,7 +408,7 @@ mod output_buffer_usage {
         fn is_whole_part_sent(&self) -> bool {
             self.remain == 0
         }
-        fn how_many_lines_was_sent(&self) -> u64 {
+        fn how_many_lines_was_sent(&self) -> usize {
             self.expect - self.remain
         }
     }
