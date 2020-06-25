@@ -20,15 +20,15 @@ pub struct Options {
     #[structopt(display_order=10, short="n", env="PAGE_BUFFER_NAME")]
     pub name: Option<String>,
 
-    /// Neovim session address
+    /// TCP/IP socked address or path to named pipe listened by running host neovim process
     #[structopt(display_order=100, short="a", env="NVIM_LISTEN_ADDRESS")]
     pub address: Option<String>,
 
-    /// Neovim arguments to use when spawning its child process
+    /// Arguments that will be passed to child neovim process spawned when <address> is missing
     #[structopt(display_order=101, short="A", env="NVIM_PAGE_ARGS")]
     pub arguments: Option<String>,
 
-    /// Neovim config path to use when spawning its child process [file:$XDG_CONFIG_HOME/page/init.vim]
+    /// Config that will be used by child neovim process spawned when <address> is missing [file:$XDG_CONFIG_HOME/page/init.vim]
     #[structopt(display_order=102, short="c")]
     pub config: Option<String>,
 
@@ -36,15 +36,15 @@ pub struct Options {
     #[structopt(display_order=105, short="E")]
     pub command_post: Option<String>,
 
-    /// Use named output buffer or create if it doesn't exists. Redirected from page stdin new content will replace existed
+    /// Create output buffer with <instance> tag or use existed with replacing its content by text from page's stdin
     #[structopt(display_order=200, short="i")]
     pub instance: Option<String>,
 
-    /// Use named output or create if it doesn't exists. Redirected from page stdin new content will be appendded to existed
+    /// Create output buffer with <instance_append> tag or use existed with appending to its content text from page's stdin
     #[structopt(display_order=201, short="I")]
     pub instance_append: Option<String>,
 
-    /// Close this named output buffer if exists [revokes implied options] {n} ~ ~ ~
+    /// Close output buffer with <instance_close> tag if it exists [without other flags revokes implied by defalt -o or -p option] {n} ~ ~ ~
     #[structopt(display_order=202, short="x")]
     pub instance_close: Option<String>,
 
@@ -53,8 +53,8 @@ pub struct Options {
     #[structopt(display_order=0, short="o")]
     pub output_open: bool,
 
-    /// Print path of pty device associated with output buffer (to redirect text from commands with respecting output buffer size and
-    /// preserving colors) [implied if page isn't piped unless -x and/or <FILE> provided without other flags]
+    /// Print path of pty device associated with output buffer (to redirect text from commands respecting output buffer size and preserving
+    /// colors) [implied if page isn't piped unless -x and/or <FILE> provided without other flags]
     #[structopt(display_order=2, short="p")]
     pub pty_path_print: bool,
 
@@ -70,7 +70,7 @@ pub struct Options {
     #[structopt(display_order=8, short="b")]
     pub back: bool,
 
-    /// Return back to current buffer with entering INSERT mode
+    /// Return back to current buffer and enter into INSERT/TERMINAL mode
     #[structopt(display_order=9, short="B")]
     pub back_restore: bool,
 
@@ -79,16 +79,16 @@ pub struct Options {
     pub command_auto: bool,
 
     /// Flush redirection protection that prevents from producing junk and possible overwriting of existed files by invoking commands like
-    /// "ls > $(NVIM_LISTEN_ADDRESS= page -E q)" where the RHS of > operator evaluates not into /path/to/pty as expected but into a bunch
-    /// of whitespace-separated strings/escape sequences from neovim UI; bad things happens because some shells interpret this as many
-    /// valid targets for text redirection. The protection is only printing of a path to the existed dummy directory always first before
-    /// printing of a neovim UI might occur; this makes the first target for text redirection from page's output invalid and disrupts
-    /// redirection early before any harmful write might begin.
+    /// `ls > $(NVIM_LISTEN_ADDRESS= page -E q)` where the RHS of > operator evaluates not into /path/to/pty as expected but into a bunch
+    /// of whitespace-separated strings/escape sequences from neovim UI; bad things happens when some shells interpret this as many valid
+    /// targets for text redirection. The protection is only printing of a path to the existed dummy directory always first before
+    /// printing of a neovim UI might occur; this makes the first target for text redirection from page's output invalid and disrupts the
+    /// whole redirection early before other harmful writes might occur.
     /// [env:PAGE_REDIRECTION_PROTECT; (0 to disable)] {n} ~ ~ ~
     #[structopt(display_order=800, short="W")]
     pub page_no_protect: bool,
 
-    /// Open provided file in separate buffer [revokes implied options]
+    /// Open provided file in separate buffer [without other flags revokes implied by default -o or -p option]
     #[structopt(name="FILE")]
     pub files: Vec<String>,
 
@@ -103,8 +103,8 @@ pub struct OutputOptions {
     #[structopt(display_order=104, short="e")]
     pub command: Option<String>,
 
-    /// Prefetch <open-lines> from page's stdin: if input is smaller then print it to stdout and exit [empty: term height; 0: disabled and
-    /// default; ignored with -o, -p, -x and when page isn't piped]
+    /// Prefetch <open-lines> from page's stdin: if input is smaller then print it to stdout and exit without neovim usage [empty: term
+    /// height; 0: disabled and default; ignored with -o, -p, -x and when page isn't piped]
     #[structopt(display_order=1, short="O")]
     pub open_lines: Option<Option<usize>>,
 
@@ -121,7 +121,7 @@ pub struct OutputOptions {
     #[structopt(display_order=11, short="w")]
     pub writeable: bool,
 
-    /// Set $PWD as working direcory of output buffer (to navigate paths with `gf`)
+    /// Set $PWD as working directory at output buffer (to navigate paths with `gf`)
     #[structopt(display_order=3, short="P")]
     pub pwd: bool,
 

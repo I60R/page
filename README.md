@@ -30,43 +30,71 @@ Ultimately, `page` will reuse all of neovim text editing+navigating+searching fa
 
 <details><summary> expand `page --help`</summary>
 
-```text
-
+```xml
 USAGE:
-    page [OPTIONS] [FILES]...
+    page [OPTIONS] [FILE]...
 
 OPTIONS:
-    -o                           Create and use output buffer (to redirect text from page stdin into it) [implied always]
-    -O <open-from>               Echo input if it has less than <open_from> lines [default: 0 (disabled); empty: term height; ignored if page isn't piped]
-    -p                           Print path to pty device associated with output buffer (to redirect `command > /path/to/pty`) [implied if page isn't piped]
-    -P                           Set $PWD as working dir for output buffer (allows to navigate paths with `gf`)
-    -q <query-lines>             Enable on-demand stdin reading with :Page <query-lines> command on neovim side [default: 0 (disabled)]
-    -f                           Cursor follows output buffer content when it appears instead of keeping top position (like `tail -f`)
-    -F                           Cursor follows output buffer content when it appears instead of keeping top position also for each of <FILES>
-    -t <filetype>                Set neovim filetype for output buffer (enables syntax highlighting) [default: pager]
+    -o                           Create and use output buffer (to redirect text from page's stdin)
+                                 [implied by default unless -x and/or <FILE> provided without
+                                 other flags]
+    -O <open-lines>              Prefetch <open-lines> from page's stdin: if input is smaller then
+                                 print it to stdout and exit without neovim usage [empty: term
+                                 height; 0: disabled and default; ignored with -o, -p, -x and when
+                                 page isn't piped]
+    -p                           Print path of pty device associated with output buffer (to
+                                 redirect text from commands respecting output buffer size and
+                                 preserving colors) [implied if page isn't piped unless -x and/or
+                                 <FILE> provided without other flags]
+    -P                           Set $PWD as working directory at output buffer (to navigate paths
+                                 with `gf`)
+    -q <query-lines>             Read no more than <query-lines> from page's stdin: next lines
+                                 should be fetched by invoking :Page <query> command on neovim
+                                 side [0: disabled and default; <query> is optional and defaults
+                                 to <query-lines>]
+    -f                           Cursor follows content of output buffer as it appears instead of
+                                 keeping top position (like `tail -f`)
+    -F                           Cursor follows content of output and <FIlE> buffers as it appears
+                                 instead of keeping top position
+    -t <filetype>                Set filetype on output buffer (to enable syntax highlighting)
+                                 [pager: default; not works with text echoed by -O]
     -b                           Return back to current buffer
-    -B                           Return back to current buffer and enter into INSERT mode
-    -n <name>                    Set title for output buffer (to display it in statusline) [env: PAGE_BUFFER_NAME=cargo run]
-    -w                           Allow to ender into INSERT/TERMINAL mode by pressing i, I, a, A keys [ignored on connected instance output buffer]
+    -B                           Return back to current buffer and enter into INSERT/TERMINAL mode
+    -n <name>                    Set title for output buffer (to display it in statusline) [env:
+                                 PAGE_BUFFER_NAME=./page -h]
+    -w                           Allow to ender into INSERT/TERMINAL mode by pressing i, I, a, A
+                                 keys [ignored on connected instance output buffer]
                                   ~ ~ ~
-    -a <address>                 Neovim session address [env: NVIM_LISTEN_ADDRESS=/tmp/nvim93nVQD/0]
-    -A <arguments>               Neovim arguments to use when spawning its child process [env: NVIM_PAGE_ARGS=]
-    -c <config>                  Neovim config path to use when spawning its child process [file:$XDG_CONFIG_HOME/page/init.vim]
+    -a <address>                 TCP/IP socked address or path to named pipe listened by running
+                                 host neovim process [env: NVIM_LISTEN_ADDRESS=/tmp/nvimPwYcjt/0]
+    -A <arguments>               Arguments that will be passed to child neovim process spawned
+                                 when <address> is missing [env: NVIM_PAGE_ARGS=]
+    -c <config>                  Config that will be used by child neovim process spawned when
+                                 <address> is missing [file:$XDG_CONFIG_HOME/page/init.vim]
     -C                           Enable PageConnect PageDisconnect autocommands
     -e <command>                 Run command in output buffer after it was created
-    -E <command-post>            Run command on output buffer after it was created or connected as instance
+    -E <command-post>            Run command on output buffer after it was created or connected as
+                                 instance
                                   ~ ~ ~
-    -i <instance>                Use named output buffer or create if it doesn't exists. Redirected from page stdin new content will replace existed
-    -I <instance-append>         Use named output or create if it doesn't exists. Redirected from page stdin new content will be appendded to existed
-    -x <instance-close>          Close this named output buffer if exists [revokes implied options]
+    -i <instance>                Create output buffer with <instance> tag or use existed with
+                                 replacing its content by text from page's stdin
+    -I <instance-append>         Create output buffer with <instance_append> tag or use existed
+                                 with appending to its content text from page's stdin
+    -x <instance-close>          Close output buffer with <instance_close> tag if it exists
+                                 [without other flags revokes implied by defalt -o or -p option]
                                   ~ ~ ~
-    -W                           Flush redirection protection that prevents from producing junk and possible overwrite of existed files by invoking commands
-                                 like "ls > $(NVIM_LISTEN_ADDRESS= page -E q)" where the RHS of > operator evaluates not into /path/to/pty as expected but
-                                 into a bunch of whitespace-separated strings/escape sequences from neovim UI, and bad things happens because some shells
-                                 interpret this as valid targets for text redirection. The protection is only printing of a path to the existed dummy
-                                 directory always first before printing of a neovim UI might occur; this makes the first target for text redirection from
-                                 page's output invalid and disrupts redirection early before any harmful write might begin.
-                                 [env:PAGE_REDIRECTION_PROTECT (0 to disable)]
+    -W                           Flush redirection protection that prevents from producing junk
+                                 and possible overwriting of existed files by invoking commands
+                                 like `ls > $(NVIM_LISTEN_ADDRESS= page -E q)` where the RHS of >
+                                 operator evaluates not into /path/to/pty as expected but into a
+                                 bunch of whitespace-separated strings/escape sequences from
+                                 neovim UI; bad things happens when some shells interpret this as
+                                 many valid targets for text redirection. The protection is only
+                                 printing of a path to the existed dummy directory always first
+                                 before printing of a neovim UI might occur; this makes the first
+                                 target for text redirection from page's output invalid and
+                                 disrupts the whole redirection early before other harmful writes
+                                 might occur. [env:PAGE_REDIRECTION_PROTECT; (0 to disable)]
                                   ~ ~ ~
     -l                           Split left  with ratio: window_width  * 3 / (<l-provided> + 1)
     -r                           Split right with ratio: window_width  * 3 / (<r-provided> + 1)
@@ -81,8 +109,8 @@ OPTIONS:
     -V, --version                Prints version information
 
 ARGS:
-    <FILES>...    Open provided files in separate buffers [revokes implied options]
-
+    <FILE>...    Open provided file in separate buffer [without other flags revokes implied by
+                 default -o or -p option]
 ```
 
 </details>
