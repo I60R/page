@@ -117,9 +117,9 @@ pub struct OutputOptions {
     #[structopt(display_order=7, short="t", default_value="pager", hide_default_value=true)]
     pub filetype: String,
 
-    /// Allow to ender into INSERT/TERMINAL mode by pressing i, I, a, A keys [ignored on connected instance output buffer] {n} ~ ~ ~
+    /// Allow to ender into INSERT/TERMINAL mode by pressing i, I, a, A keys instead of remapping them [ignored on connected instance output buffer] {n} ~ ~ ~
     #[structopt(display_order=11, short="w")]
-    pub writeable: bool,
+    pub writable: bool,
 
     /// Set $PWD as working directory at output buffer (to navigate paths with `gf`)
     #[structopt(display_order=3, short="P")]

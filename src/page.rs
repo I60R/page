@@ -166,7 +166,7 @@ mod neovim_api_usage {
                     log::warn!(target: "page file", "Error opening \"{}\": {}", f, e);
                 } else {
                     let cmd_provided_by_user = &nvim_ctx.opt.output.command.as_deref().unwrap_or_default();
-                    let file_buf_opts = OutputCommands::for_file_buffer(cmd_provided_by_user, nvim_ctx.opt.output.writeable);
+                    let file_buf_opts = OutputCommands::for_file_buffer(cmd_provided_by_user, nvim_ctx.opt.output.writable);
                     nvim_actions.prepare_output_buffer(*initial_buf_number, file_buf_opts);
                     if nvim_ctx.opt.follow_all {
                         nvim_actions.set_current_buffer_follow_output_mode();

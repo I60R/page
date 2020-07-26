@@ -196,7 +196,7 @@ impl NeovimActions {
             ft = cmds.ft,
             initial_buf_nr = initial_buf_nr,
             cmd_edit = cmds.edit,
-            cmd_provided_by_user = cmds.user,
+            cmd_provided_by_user = cmds.provided_by_user,
             cmd_pre = cmds.pre,
             cmd_post = cmds.post,
         );
@@ -301,45 +301,73 @@ pub struct OutputCommands {
     ft: String,
     pre: String,
     post: String,
-    user: String,
+    provided_by_user: String,
 }
 
 impl OutputCommands {
-    fn with_cmd_provided_by_user(cmd_provided_by_user: &str) -> OutputCommands {
-        let mut user = cmd_provided_by_user.replace("'", "''"); // Ecranizes viml literal string
-        if !user.is_empty() {
-            user = format!("| exe '{}'", user);
+    fn create_with(provided_by_user: &str, writeable: bool) -> OutputCommands {
+        let mut provided_by_user = provided_by_user.replace("'", "''"); // Ecranizes viml literal string
+        if !provided_by_user.is_empty() {
+            provided_by_user = format!("| exe '{}'", provided_by_user);
+        }
+        let mut edit = String::new();
+        if !writeable {
+            edit.push_str(" \
+                | setl nomodifiable \
+                | call nvim_buf_set_keymap(0, '', 'I', '<CMD> \
+                    | setl scrolloff=0 \
+                    | call cursor(9999999999, 9999999999) \
+                    | call search(''\\S'') \
+                    | call feedkeys(\"z\\<lt>CR>M\", ''nx'') \
+                    | call timer_start(100, { -> execute(''au CursorMoved <buffer> ++once echo'') }) \
+                    | redraw \
+                    | echohl Comment | echo ''-- [PAGE] in the beginning of scroll --'' | echohl None \
+                    | setl scrolloff=999 \
+                    <CR>', { 'noremap': v:true }) \
+                | call nvim_buf_set_keymap(0, '', 'A', '<CMD> \
+                    | setl scrolloff=0 \
+                    | call cursor(1, 1) \
+                    | call search(''\\S'', ''b'') \
+                    | call feedkeys(\"z-M\", ''nx'') \
+                    | call timer_start(100, { -> execute(''au CursorMoved <buffer> ++once echo'') }) \
+                    | redraw \
+                    | echohl Comment | echo ''-- [PAGE] at the end of scroll --'' | echohl None \
+                    | setl scrolloff=999 \
+                    <CR>', { 'noremap': v:true }) \
+                | call nvim_buf_set_keymap(0, '', 'i', '<CMD> \
+                    | call cursor(9999999999, 9999999999) \
+                    | call search(''\\S'') \
+                    | call timer_start(100, { -> execute(''au CursorMoved <buffer> ++once echo'') }) \
+                    | redraw \
+                    | echohl Comment | echo ''-- [PAGE] in the beginning --'' | echohl None \
+                    <CR>', { 'noremap': v:true }) \
+                | call nvim_buf_set_keymap(0, '', 'a', '<CMD> \
+                    | call cursor(1, 1) \
+                    | call search(''\\S'', ''b'') \
+                    | call timer_start(100, { -> execute(''au CursorMoved <buffer> ++once echo'') }) \
+                    | redraw \
+                    | echohl Comment | echo ''-- [PAGE] at the end --'' | echohl None \
+                    <CR>', { 'noremap': v:true }) \
+            ")
         }
         OutputCommands {
-            edit: String::new(),
             ft: String::new(),
             pre: String::new(),
             post: String::new(),
-            user,
+            edit,
+            provided_by_user,
         }
     }
 
     pub fn for_file_buffer(cmd_provided_by_user: &str, writeable: bool) -> OutputCommands {
-        let mut cmds = Self::with_cmd_provided_by_user(cmd_provided_by_user);
-        if !writeable {
-            cmds.edit.push_str("| setl nomodifiable");
-        }
+        let mut cmds = Self::create_with(cmd_provided_by_user, writeable);
         cmds.post.push_str("| exe 'silent doautocmd User PageOpenFile'");
         cmds
     }
 
     pub fn for_output_buffer(page_id: &str, opt: &crate::cli::OutputOptions) -> OutputCommands {
-        let mut cmds = Self::with_cmd_provided_by_user(opt.command.as_deref().unwrap_or_default());
+        let mut cmds = Self::create_with(opt.command.as_deref().unwrap_or_default(), opt.writable);
         cmds.ft = format!("filetype={}", opt.filetype);
-        if !opt.writeable {
-            cmds.edit.push_str(" \
-                | setl nomodifiable
-                | noremap <buffer> i x
-                | noremap <buffer> I x
-                | noremap <buffer> a x
-                | noremap <buffer> A x
-            ")
-        }
         if opt.query_lines != 0usize {
             cmds.pre = format!("{prefix} \
                 | exe 'command! -nargs=? Page call rpcnotify(0, ''page_fetch_lines'', ''{page_id}'', <args>)' \
