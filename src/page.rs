@@ -50,16 +50,51 @@ fn prefetch_lines_routine(opt_ctx: context::OptContext) {
         }
     }
     if prefetched_lines.len() < echo_lines && echo_lines != 0usize {
-        let stdout = std::io::stdout();
-        let mut stdout_lock = stdout.lock();
-        for ln in prefetched_lines {
-            std::io::Write::write(&mut stdout_lock, ln.as_bytes()).unwrap();
-        }
-        std::process::exit(0)
+        dump_prefetched_lines_and_exit(opt_ctx, prefetched_lines)
+    } else {
+        warn_incompatible_options(&opt_ctx);
+        let cli_ctx = context::cli_spawned::enter(prefetched_lines, opt_ctx);
+        connect_neovim_routine(cli_ctx);
     }
-    warn_incompatible_options(&opt_ctx);
-    let cli_ctx = context::cli_spawned::enter(prefetched_lines, opt_ctx);
-    connect_neovim_routine(cli_ctx);
+}
+
+fn dump_prefetched_lines_and_exit(opt_ctx: context::OptContext, lines: Vec<String>) {
+    use std::{io, process};
+    let ft = opt_ctx.opt.output.filetype;
+    let (stdout, mut stdout_lock);
+    let mut bat = None;
+    let sink: &mut dyn io::Write = {
+        if ft.is_empty() {
+            (stdout = io::stdout(), stdout_lock = stdout.lock());
+            &mut stdout_lock
+        } else {
+            match process::Command::new("bat")
+                .arg("--plain")
+                .arg("--paging=never")
+                .arg("--color=always")
+                .arg(&format!("--language={}", ft))
+                .stdin(process::Stdio::piped())
+                .spawn().ok()
+            {
+                Some(bat_proc) => {
+                    bat = Some(bat_proc);
+                    bat.as_mut().and_then(|b| b.stdin.as_mut()).unwrap()
+                }
+                _ => {
+                    (stdout = io::stdout(), stdout_lock = stdout.lock());
+                    &mut stdout_lock
+                }
+            }
+        }
+    };
+    for ln in lines {
+        io::Write::write(sink, ln.as_bytes()).unwrap();
+    }
+    sink.flush().unwrap();
+    if let Some(mut bat_proc) = bat {
+        bat_proc.wait().unwrap();
+    }
+    process::exit(0)
 }
 
 fn warn_incompatible_options(opt_ctx: &context::OptContext) {
