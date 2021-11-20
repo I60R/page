@@ -486,7 +486,7 @@ pub mod connection {
 
     /// Connects to parent neovim session or spawns a new neovim process and connects to it through socket.
     /// Replacement for `neovim_lib::Session::new_child()`, since it uses --embed flag and steals page stdin
-    pub fn open(cli_ctx: &context::CliContext) -> NeovimConnection {
+    pub fn open(cli_ctx: &context::UsageContext) -> NeovimConnection {
         let (nvim_session, nvim_proc) = if let Some(nvim_listen_addr) = cli_ctx.opt.address.as_deref() {
             let session_at_addr = session_at_address(nvim_listen_addr).expect("Cannot connect to parent neovim");
             (session_at_addr, None)
@@ -516,8 +516,8 @@ pub mod connection {
 
     /// Creates a new session using UNIX socket.
     /// Also prints protection from shell redirection that could cause some harm (see --help[-W])
-    fn session_with_new_neovim_process(cli_ctx: &context::CliContext) -> (neovim_lib::Session, Option<process::Child>) {
-        let context::CliContext { opt, tmp_dir, page_id, print_protection, .. } = cli_ctx;
+    fn session_with_new_neovim_process(cli_ctx: &context::UsageContext) -> (neovim_lib::Session, Option<process::Child>) {
+        let context::UsageContext { opt, tmp_dir, page_id, print_protection, .. } = cli_ctx;
         if *print_protection {
             print_redirect_protection(&tmp_dir);
         }

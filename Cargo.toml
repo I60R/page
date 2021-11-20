@@ -14,12 +14,12 @@ atty = "0.2.14"
 shell-words = "1.0.0"
 neovim-lib = "0.6.1"
 term_size = "0.3.2"
-log = "0.4.8"
+log = "0.4.14"
 fern = "0.6.0"
-structopt = { version = "0.3.14", default-features = false, features = [ "color", "wrap_help" ] }
+structopt = { version = "0.3.22", default-features = false, features = [ "color", "wrap_help" ] }
 
 [build-dependencies]
-structopt = "0.3.14"
+structopt = "0.3.22"
 
 [profile.release]
 lto = true

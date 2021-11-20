@@ -6,13 +6,13 @@ use neovim_lib::neovim_api;
 
 
 fn main() {
-    init_logger();
-    let opt_ctx = crate::context::opt_parsed::enter();
-    prefetch_lines_routine(opt_ctx);
+    _init_logger_();
+    let env_ctx = crate::context::gather_env::enter();
+    prefetch_lines(env_ctx);
 }
 
-pub fn init_logger() {
-    let rust_log = std::env::var("RUST_LOG").ok();
+fn _init_logger_() {
+    let rust_log = std::env::var("RUST_LOG");
     let level = rust_log.as_deref().unwrap_or("warn");
     let level_filter: log::LevelFilter = std::str::FromStr::from_str(level).expect("Cannot parse $RUST_LOG value");
     let exec_time = std::time::Instant::now();
@@ -34,70 +34,64 @@ pub fn init_logger() {
         .unwrap();
 }
 
-fn prefetch_lines_routine(opt_ctx: context::OptContext) {
-    log::info!(target: "context", "{:#?}", &opt_ctx);
-    let echo_lines = opt_ctx.echo_lines;
-    let mut prefetched_lines = Vec::with_capacity(echo_lines);
-    loop {
-        if prefetched_lines.len() == echo_lines {
-            break
-        }
+
+fn prefetch_lines(env_ctx: context::EnvContext) {
+    log::info!(target: "context", "{:#?}", &env_ctx);
+    let mut prefetched_lines = Vec::with_capacity(env_ctx.echo_lines);
+    while env_ctx.echo_lines > prefetched_lines.len() {
         let mut line = String::new();
         let remain = std::io::stdin().read_line(&mut line).unwrap();
         prefetched_lines.push(line);
-        if remain == 0 {
+        if remain == 0usize {
             break
         }
     }
-    if prefetched_lines.len() < echo_lines && echo_lines != 0usize {
-        dump_prefetched_lines_and_exit(opt_ctx, prefetched_lines)
-    } else {
-        warn_incompatible_options(&opt_ctx);
-        let cli_ctx = context::cli_spawned::enter(prefetched_lines, opt_ctx);
-        connect_neovim_routine(cli_ctx);
+    if env_ctx.echo_lines - prefetched_lines.len() > 0usize {
+        _dump_prefetched_lines_and_exit_(prefetched_lines, &env_ctx.opt.output.filetype)
     }
+    _warn_incompatible_options_(&env_ctx);
+    let cli_ctx = context::check_usage::enter(prefetched_lines, env_ctx);
+    connect_neovim(cli_ctx);
 }
 
-fn dump_prefetched_lines_and_exit(opt_ctx: context::OptContext, lines: Vec<String>) {
+fn _dump_prefetched_lines_and_exit_(lines: Vec<String>, filetype: &str) -> ! {
     use std::{io, process};
-    let ft = opt_ctx.opt.output.filetype;
     let (stdout, mut stdout_lock);
-    let mut bat = None;
-    let sink: &mut dyn io::Write = {
-        if ft.is_empty() {
-            (stdout = io::stdout(), stdout_lock = stdout.lock());
-            &mut stdout_lock
-        } else {
+    let mut bat_proc = None;
+    let output: &mut dyn io::Write = {
+        if !filetype.is_empty() {
             match process::Command::new("bat")
                 .arg("--plain")
                 .arg("--paging=never")
                 .arg("--color=always")
-                .arg(&format!("--language={}", ft))
+                .arg(&format!("--language={}", filetype))
                 .stdin(process::Stdio::piped())
-                .spawn().ok()
+                .spawn()
             {
-                Some(bat_proc) => {
-                    bat = Some(bat_proc);
-                    bat.as_mut().and_then(|b| b.stdin.as_mut()).unwrap()
+                Ok(proc) => {
+                    bat_proc.get_or_insert(proc).stdin.as_mut().unwrap()
                 }
                 _ => {
                     (stdout = io::stdout(), stdout_lock = stdout.lock());
                     &mut stdout_lock
                 }
             }
+        } else {
+            (stdout = io::stdout(), stdout_lock = stdout.lock());
+            &mut stdout_lock
         }
     };
     for ln in lines {
-        io::Write::write(sink, ln.as_bytes()).unwrap();
+        io::Write::write(output, ln.as_bytes()).unwrap();
     }
-    sink.flush().unwrap();
-    if let Some(mut bat_proc) = bat {
-        bat_proc.wait().unwrap();
+    output.flush().unwrap();
+    if let Some(mut proc) = bat_proc {
+        proc.wait().unwrap();
     }
     process::exit(0)
 }
 
-fn warn_incompatible_options(opt_ctx: &context::OptContext) {
+fn _warn_incompatible_options_(opt_ctx: &context::EnvContext) {
     if opt_ctx.is_inst_close_flag_given_without_address() {
         log::warn!(target: "usage", "Instance close (-x) is ignored if address (-a or $NVIM_LISTEN_ADDRESS) isn't set");
     }
@@ -112,19 +106,19 @@ fn warn_incompatible_options(opt_ctx: &context::OptContext) {
     }
 }
 
-fn connect_neovim_routine(cli_ctx: context::CliContext) {
+fn connect_neovim(cli_ctx: context::UsageContext) {
     log::info!(target: "context", "{:#?}", &cli_ctx);
     let mut nvim_conn = neovim::connection::open(&cli_ctx);
     let nvim_ctx = if nvim_conn.is_child_neovim_process_spawned() {
-        context::neovim_connected::enter(cli_ctx).with_child_neovim_process_spawned()
+        context::connect_neovim::enter(cli_ctx).with_child_neovim_process_spawned()
     } else {
-        context::neovim_connected::enter(cli_ctx)
+        context::connect_neovim::enter(cli_ctx)
     };
-    neovim_usage_routine(&mut nvim_conn, nvim_ctx);
+    manage_page_state(&mut nvim_conn, nvim_ctx);
     neovim::connection::close(nvim_conn);
 }
 
-fn neovim_usage_routine(nvim_conn: &mut neovim::NeovimConnection, nvim_ctx: context::NeovimContext) {
+fn manage_page_state(nvim_conn: &mut neovim::NeovimConnection, nvim_ctx: context::NeovimContext) {
     log::info!(target: "context", "{:#?}", &nvim_ctx);
     let mut api_actions = neovim_api_usage::begin(nvim_conn, &nvim_ctx);
     api_actions.close_page_instance_buffer();
@@ -135,20 +129,20 @@ fn neovim_usage_routine(nvim_conn: &mut neovim::NeovimConnection, nvim_ctx: cont
     if let Some(inst_name) = nvim_ctx.inst_usage.is_enabled() {
         if let Some((buf, buf_pty_path)) = api_actions.find_instance_buffer(inst_name) {
             let outp_ctx = context::output_buffer_available::enter(nvim_ctx, buf_pty_path);
-            output_buffer_usage_routine(nvim_conn, buf, outp_ctx)
+            manage_output_buffer(nvim_conn, buf, outp_ctx)
         } else {
             let (buf, buf_pty_path) = api_actions.create_instance_output_buffer(inst_name);
             let outp_ctx = context::output_buffer_available::enter(nvim_ctx, buf_pty_path).with_new_instance_output_buffer();
-            output_buffer_usage_routine(nvim_conn, buf, outp_ctx)
+            manage_output_buffer(nvim_conn, buf, outp_ctx)
         }
     } else {
         let (buf, buf_pty_path) = api_actions.create_oneoff_output_buffer();
         let outp_ctx = context::output_buffer_available::enter(nvim_ctx, buf_pty_path);
-        output_buffer_usage_routine(nvim_conn, buf, outp_ctx)
+        manage_output_buffer(nvim_conn, buf, outp_ctx)
     };
 }
 
-fn output_buffer_usage_routine(nvim_conn: &mut neovim::NeovimConnection, buf: neovim_api::Buffer, outp_ctx: context::OutputContext) {
+fn manage_output_buffer(nvim_conn: &mut neovim::NeovimConnection, buf: neovim_api::Buffer, outp_ctx: context::OutputContext) {
     log::info!(target: "context", "{:#?}", &outp_ctx);
     let mut outp_buf_actions = output_buffer_usage::begin(nvim_conn, &outp_ctx, buf);
     if let Some(inst_name) = outp_ctx.inst_usage.is_enabled() {
@@ -167,8 +161,8 @@ fn output_buffer_usage_routine(nvim_conn: &mut neovim::NeovimConnection, buf: ne
 
 mod neovim_api_usage {
     use crate::{context::NeovimContext, neovim::NeovimConnection, neovim::OutputCommands};
-    use neovim_lib::neovim_api::Buffer;
-    use std::path::PathBuf;
+
+    type BufferAndPty = (neovim_lib::neovim_api::Buffer, std::path::PathBuf);
 
     /// This struct implements actions that should be done before output buffer is available
     pub struct ApiActions<'a> {
@@ -216,12 +210,12 @@ mod neovim_api_usage {
         }
 
         /// Returns buffer marked as instance and path to PTY device associated with it (if some exists)
-        pub fn find_instance_buffer(&mut self, inst_name: &str) -> Option<(Buffer, PathBuf)> {
+        pub fn find_instance_buffer(&mut self, inst_name: &str) -> Option<BufferAndPty> {
             self.nvim_conn.nvim_actions.find_instance_buffer(inst_name)
         }
 
         /// Creates a new output buffer and then marks it as instance buffer
-        pub fn create_instance_output_buffer(&mut self, inst_name: &str) -> (Buffer, PathBuf) {
+        pub fn create_instance_output_buffer(&mut self, inst_name: &str) -> BufferAndPty {
             let (buf, buf_pty_path) = self.create_oneoff_output_buffer();
             self.nvim_conn.nvim_actions.mark_buffer_as_instance(&buf, inst_name, &buf_pty_path.to_string_lossy());
             (buf, buf_pty_path)
@@ -229,7 +223,7 @@ mod neovim_api_usage {
 
         /// Creates a new output buffer using split window if required.
         /// Also sets some nvim options for better reading experience
-        pub fn create_oneoff_output_buffer(&mut self) -> (Buffer, PathBuf) {
+        pub fn create_oneoff_output_buffer(&mut self) -> BufferAndPty {
             let ApiActions { nvim_conn: NeovimConnection { nvim_actions, initial_buf_number, .. }, nvim_ctx } = self;
             let buf = if nvim_ctx.outp_buf_usage.is_create_split() {
                 nvim_actions.create_split_output_buffer(&nvim_ctx.opt.output.split)

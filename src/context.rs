@@ -3,36 +3,36 @@
 
 /// Contains data available after cli options parsed
 #[derive(Debug)]
-pub struct OptContext {
+pub struct EnvContext {
     pub opt: crate::cli::Options,
     pub echo_lines: usize,
     pub input_from_pipe: bool,
     pub split_buf_implied: bool,
 }
 
-impl OptContext {
+impl EnvContext {
     pub fn is_inst_close_flag_given_without_address(&self) -> bool {
-        let OptContext { opt, .. } = self;
+        let EnvContext { opt, .. } = self;
         opt.address.is_none() && opt.instance_close.is_some()
     }
 
     pub fn is_split_flag_given_without_address(&self) -> bool {
-        let OptContext { opt, split_buf_implied, .. } = self;
+        let EnvContext { opt, split_buf_implied, .. } = self;
         opt.address.is_none() && *split_buf_implied
     }
 
     pub fn is_back_flag_given_without_address(&self) -> bool {
-        let OptContext { opt, .. } = self;
+        let EnvContext { opt, .. } = self;
         opt.address.is_none() && (opt.back || opt.back_restore)
     }
 
     pub fn is_query_flag_given_without_reading_from_pipe(&self) -> bool {
-        let OptContext { opt, input_from_pipe, .. } = self;
+        let EnvContext { opt, input_from_pipe, .. } = self;
         opt.output.query_lines != 0usize && !input_from_pipe
     }
 
     pub fn is_output_buffer_creation_implied(&self) -> bool {
-        let OptContext { opt, .. } = self;
+        let EnvContext { opt, .. } = self;
         let unrevoked = {
             // These options if set revokes output buffer creation
             !! opt.instance_close.is_none()
@@ -55,7 +55,7 @@ impl OptContext {
     }
 
     pub fn is_split_creation_implied(&self) -> bool {
-        let OptContext { opt, .. } = self;
+        let EnvContext { opt, .. } = self;
         !! opt.output.split.split_left_cols.is_some()
         || opt.output.split.split_right_cols.is_some()
         || opt.output.split.split_above_rows.is_some()
@@ -67,10 +67,10 @@ impl OptContext {
     }
 }
 
-pub mod opt_parsed {
-    use crate::context::OptContext;
+pub mod gather_env {
+    use super::EnvContext;
 
-    pub fn enter() -> OptContext {
+    pub fn enter() -> EnvContext {
         let input_from_pipe = !atty::is(atty::Stream::Stdin);
         let opt = {
             let mut opt = crate::cli::get_options();
@@ -87,24 +87,23 @@ pub mod opt_parsed {
         let echo_lines = opt.output.open_lines.clone()
             .map(|e| e.unwrap_or_else(|| term_size::dimensions().map(|(_w, h)| h).expect("Cannot get terminal height")))
             .unwrap_or(0);
-        let opt_ctx = {
-            let mut opt_ctx = OptContext {
+        {
+            let mut env_ctx = EnvContext {
                 opt,
                 echo_lines,
                 input_from_pipe,
                 split_buf_implied: false,
             };
-            opt_ctx.split_buf_implied = opt_ctx.is_split_creation_implied();
-            opt_ctx
-        };
-        opt_ctx
+            env_ctx.split_buf_implied = env_ctx.is_split_creation_implied();
+            env_ctx
+        }
     }
 }
 
 
 /// Contains data available after page was spawned from shell
 #[derive(Debug)]
-pub struct CliContext {
+pub struct UsageContext {
     pub opt: crate::cli::Options,
     pub page_id: String,
     pub tmp_dir: std::path::PathBuf,
@@ -115,9 +114,9 @@ pub struct CliContext {
     pub split_buf_implied: bool,
 }
 
-impl CliContext {
+impl UsageContext {
     pub fn is_focus_on_existed_instance_buffer_implied(&self) -> bool {
-        let CliContext { opt, .. } = self;
+        let UsageContext { opt, .. } = self;
         !! opt.follow // Should focus in order to scroll buffer down
         || opt.command_auto // Autocommands should run on focused buffer
         || opt.command_post.is_some() // User command should run on focused buffer
@@ -125,12 +124,12 @@ impl CliContext {
     }
 }
 
-pub mod cli_spawned {
-    use crate::context::{OptContext, CliContext};
+pub mod check_usage {
+    use super::{EnvContext, UsageContext};
 
-    pub fn enter(prefetched_lines: Vec<String>, opt_ctx: OptContext) -> CliContext {
-        let outp_buf_implied = opt_ctx.is_output_buffer_creation_implied();
-        let OptContext { input_from_pipe, opt, split_buf_implied, .. } = opt_ctx;
+    pub fn enter(prefetched_lines: Vec<String>, env_ctx: EnvContext) -> UsageContext {
+        let outp_buf_implied = env_ctx.is_output_buffer_creation_implied();
+        let EnvContext { input_from_pipe, opt, split_buf_implied, .. } = env_ctx;
         let tmp_dir = {
             let d = std::env::temp_dir().join("neovim-page");
             std::fs::create_dir_all(&d).expect("Cannot create temporary directory for page");
@@ -147,7 +146,7 @@ pub mod cli_spawned {
             && !opt.page_no_protect
             && std::env::var_os("PAGE_REDIRECTION_PROTECT").map_or(true, |v| v != "" && v != "0")
         };
-        CliContext {
+        UsageContext {
             opt,
             tmp_dir,
             page_id,
@@ -167,8 +166,8 @@ pub struct NeovimContext {
     pub opt: crate::cli::Options,
     pub page_id: String,
     pub prefetched_lines: Vec<String>,
-    pub inst_usage: neovim_connected::InstanceUsage,
-    pub outp_buf_usage: neovim_connected::OutputBufferUsage,
+    pub inst_usage: connect_neovim::InstanceUsage,
+    pub outp_buf_usage: connect_neovim::OutputBufferUsage,
     pub nvim_child_proc_spawned: bool,
     pub input_from_pipe: bool,
 }
@@ -181,18 +180,18 @@ impl NeovimContext {
     pub fn with_child_neovim_process_spawned(mut self) -> NeovimContext {
         self.nvim_child_proc_spawned = true;
         if !self.outp_buf_usage.is_disabled() {
-            self.outp_buf_usage = neovim_connected::OutputBufferUsage::CreateSubstituting;
+            self.outp_buf_usage = connect_neovim::OutputBufferUsage::CreateSubstituting;
         }
         self
     }
 }
 
-pub mod neovim_connected {
-    use crate::context::{CliContext, NeovimContext};
+pub mod connect_neovim {
+    use super::{UsageContext, NeovimContext};
 
-    pub fn enter(cli_ctx: CliContext) -> NeovimContext {
+    pub fn enter(cli_ctx: UsageContext) -> NeovimContext {
         let should_focus_on_existed_instance_buffer = cli_ctx.is_focus_on_existed_instance_buffer_implied();
-        let CliContext { opt, page_id, input_from_pipe, outp_buf_implied, split_buf_implied, prefetched_lines, .. } = cli_ctx;
+        let UsageContext { opt, page_id, input_from_pipe, outp_buf_implied, split_buf_implied, prefetched_lines, .. } = cli_ctx;
         let inst_usage = if let Some(name) = opt.instance.clone() {
             InstanceUsage::Enabled {
                 name,
@@ -238,23 +237,27 @@ pub mod neovim_connected {
 
     impl InstanceUsage {
         pub fn is_enabled(&self) -> Option<&String> {
-            if let InstanceUsage::Enabled { name, .. } = self { Some(name) } else { None }
+            if let InstanceUsage::Enabled { name, .. } = self {
+                Some(name)
+            } else {
+                None
+            }
         }
 
         pub fn is_enabled_and_should_be_focused(&self) -> bool {
-            if let InstanceUsage::Enabled { focused, .. } = self { *focused } else { false }
+            matches!(self, InstanceUsage::Enabled { focused: true, .. })
         }
 
         pub fn is_enabled_but_should_be_unfocused(&self) -> bool {
-            if let InstanceUsage::Enabled { focused, .. } = self { !focused } else { false }
+            matches!(self, InstanceUsage::Enabled { focused: false, .. })
         }
 
         pub fn is_enabled_and_should_replace_its_content(&self) -> bool {
-            if let InstanceUsage::Enabled { replace_content, .. } = self { *replace_content } else { false }
+            matches!(self, InstanceUsage::Enabled { replace_content: true, .. })
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug)]
     pub enum OutputBufferUsage {
         CreateSubstituting,
         CreateSplit,
@@ -263,11 +266,11 @@ pub mod neovim_connected {
 
     impl OutputBufferUsage {
         pub fn is_disabled(&self) -> bool {
-            *self == Self::Disabled
+            matches!(self, Self::Disabled)
         }
 
         pub fn is_create_split(&self) -> bool {
-            *self == Self::CreateSplit
+            matches!(self, Self::CreateSplit)
         }
     }
 }
@@ -279,7 +282,7 @@ pub struct OutputContext {
     pub opt: crate::cli::Options,
     pub buf_pty_path: std::path::PathBuf,
     pub prefetched_lines: Vec<String>,
-    pub inst_usage: neovim_connected::InstanceUsage,
+    pub inst_usage: connect_neovim::InstanceUsage,
     pub restore_initial_buf_focus: output_buffer_available::RestoreInitialBufferFocus,
     pub input_from_pipe: bool,
     pub nvim_child_proc_spawned: bool,
@@ -288,7 +291,7 @@ pub struct OutputContext {
 
 impl OutputContext {
     pub fn with_new_instance_output_buffer(mut self) -> OutputContext {
-        if let neovim_connected::InstanceUsage::Enabled { focused, .. } = &mut self.inst_usage {
+        if let connect_neovim::InstanceUsage::Enabled { focused, .. } = &mut self.inst_usage {
             *focused = true; // Obtains focus on buffer creation
         }
         self
@@ -324,7 +327,7 @@ pub mod output_buffer_available {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug)]
     pub enum RestoreInitialBufferFocus {
         ViModeNormal,
         ViModeInsert,
@@ -333,11 +336,11 @@ pub mod output_buffer_available {
 
     impl RestoreInitialBufferFocus {
         pub fn is_disabled(&self) -> bool {
-            *self == Self::Disabled
+            matches!(self, Self::Disabled)
         }
 
         pub fn is_vi_mode_insert(&self) -> bool {
-            *self == Self::ViModeInsert
+            matches!(self, Self::ViModeInsert)
         }
     }
 }
