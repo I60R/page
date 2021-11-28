@@ -2,10 +2,10 @@
 
 
 use nvim_rs::{Buffer, Value, Window, error::CallError, neovim::Neovim};
-use std::{path::PathBuf, task};
+use std::{io, path::PathBuf, pin::Pin, task};
 use nvim_rs::{compat::tokio::Compat, error::LoopError};
 use parity_tokio_ipc::Connection;
-use ::tokio::{io::{ReadHalf, WriteHalf}, net::TcpStream, task::JoinHandle};
+use tokio::{io::{ReadHalf, WriteHalf}, net::TcpStream, task::JoinHandle};
 
 
 const TERM_URI: &str = concat!(
@@ -13,48 +13,41 @@ const TERM_URI: &str = concat!(
     "2147483647d"  // This will sleep for i32::MAX days
 );
 
-pub enum ConnectionAgnosticRead {
-    Tcp(Compat<ReadHalf<TcpStream>>),
+pub enum IoRead {
     Ipc(Compat<ReadHalf<Connection>>),
+    Tcp(Compat<ReadHalf<TcpStream>>),
 }
 
-pub enum ConnectionAgnosticWrite {
-    Tcp(Compat<WriteHalf<TcpStream>>),
+pub enum IoWrite {
     Ipc(Compat<WriteHalf<Connection>>),
+    Tcp(Compat<WriteHalf<TcpStream>>),
+
 }
 
-
-use futures::AsyncRead;
-impl AsyncRead for ConnectionAgnosticRead {
-    fn poll_read(self: std::pin::Pin<&mut Self>, cx: &mut task::Context<'_>, buf: &mut [u8]) -> task::Poll<Result<usize, std::io::Error>> {
-        match self.get_mut() {
-            ConnectionAgnosticRead::Tcp(r) => std::pin::Pin::new(r).poll_read(cx, buf),
-            ConnectionAgnosticRead::Ipc(r) => std::pin::Pin::new(r).poll_read(cx, buf),
+macro_rules! delegate {
+    ($self:ident => $method:ident($($args:expr),*)) => {
+        match $self.get_mut() {
+            Self::Ipc(rw) => Pin::new(rw).$method($($args),*),
+            Self::Tcp(rw) => Pin::new(rw).$method($($args),*),
         }
+    };
+}
+
+impl futures::AsyncRead for IoRead {
+    fn poll_read(self: Pin<&mut Self>, cx: &mut task::Context<'_>, buf: &mut [u8]) -> task::Poll<Result<usize, io::Error>> {
+        delegate!(self => poll_read(cx, buf))
     }
 }
 
-use futures::AsyncWrite;
-impl AsyncWrite for ConnectionAgnosticWrite {
-    fn poll_write(self: std::pin::Pin<&mut Self>, cx: &mut task::Context<'_>, buf: &[u8]) -> task::Poll<std::io::Result<usize>> {
-        match self.get_mut() {
-            ConnectionAgnosticWrite::Tcp(w) => std::pin::Pin::new(w).poll_write(cx, buf),
-            ConnectionAgnosticWrite::Ipc(w) => std::pin::Pin::new(w).poll_write(cx, buf),
-        }
+impl futures::AsyncWrite for IoWrite {
+    fn poll_write(self: Pin<&mut Self>, cx: &mut task::Context<'_>, buf: &[u8]) -> task::Poll<io::Result<usize>> {
+        delegate!(self => poll_write(cx, buf))
     }
-
-    fn poll_flush(self: std::pin::Pin<&mut Self>, cx: &mut task::Context<'_>) -> task::Poll<std::io::Result<()>> {
-        match self.get_mut() {
-            ConnectionAgnosticWrite::Tcp(w) => std::pin::Pin::new(w).poll_flush(cx),
-            ConnectionAgnosticWrite::Ipc(w) => std::pin::Pin::new(w).poll_flush(cx),
-        }
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> task::Poll<io::Result<()>> {
+        delegate!(self => poll_flush(cx))
     }
-
-    fn poll_close(self: std::pin::Pin<&mut Self>, cx: &mut task::Context<'_>) -> task::Poll<Result<(), std::io::Error>> {
-        match self.get_mut() {
-            ConnectionAgnosticWrite::Tcp(w) => std::pin::Pin::new(w).poll_close(cx),
-            ConnectionAgnosticWrite::Ipc(w) => std::pin::Pin::new(w).poll_close(cx),
-        }
+    fn poll_close(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> task::Poll<Result<(), io::Error>> {
+        delegate!(self => poll_close(cx))
     }
 }
 
@@ -63,24 +56,24 @@ impl AsyncWrite for ConnectionAgnosticWrite {
 /// Results returned from underlying Neovim methods are mostly unwrapped, since we anyway cannot provide
 /// any meaningful falback logic on call side
 pub struct NeovimActions {
-    nvim: Neovim<ConnectionAgnosticWrite>,
+    nvim: Neovim<IoWrite>,
     join: JoinHandle<Result<(), Box<LoopError>>>,
 }
 
 impl NeovimActions {
-    pub async fn get_current_window_and_buffer(&mut self) -> (Window<ConnectionAgnosticWrite>, Buffer<ConnectionAgnosticWrite>) {
+    pub async fn get_current_window_and_buffer(&mut self) -> (Window<IoWrite>, Buffer<IoWrite>) {
         (self.nvim.get_current_win().await.unwrap(), self.nvim.get_current_buf().await.unwrap())
     }
 
-    pub async fn get_current_buffer(&mut self) -> Buffer<ConnectionAgnosticWrite> {
+    pub async fn get_current_buffer(&mut self) -> Buffer<IoWrite> {
         self.nvim.get_current_buf().await.unwrap()
     }
 
-    pub async fn create_substituting_output_buffer(&mut self) -> Buffer<ConnectionAgnosticWrite> {
+    pub async fn create_substituting_output_buffer(&mut self) -> Buffer<IoWrite> {
         self.create_buffer(&format!("e {}", TERM_URI)).await
     }
 
-    pub async fn create_split_output_buffer(&mut self, opt: &crate::cli::SplitOptions) -> Buffer<ConnectionAgnosticWrite> {
+    pub async fn create_split_output_buffer(&mut self, opt: &crate::cli::SplitOptions) -> Buffer<IoWrite> {
         let (ver_ratio, hor_ratio) = ("(winwidth(0) / 2) * 3", "(winheight(0) / 2) * 3");
         let cmd = if opt.split_right != 0u8 {
             format!("exe 'belowright ' . ({}/{}) . 'vsplit {}' | set winfixwidth", ver_ratio, opt.split_right + 1, TERM_URI)
@@ -104,7 +97,7 @@ impl NeovimActions {
         self.create_buffer(&cmd).await
     }
 
-    async fn create_buffer(&mut self, term_open_cmd: &str) -> Buffer<ConnectionAgnosticWrite> {
+    async fn create_buffer(&mut self, term_open_cmd: &str) -> Buffer<IoWrite> {
         let cmd = format!(" \
             | let g:page_shell_backup = [&shell, &shellcmdflag] \
             | let [&shell, &shellcmdflag] = ['/bin/sleep', ''] \
@@ -130,7 +123,7 @@ impl NeovimActions {
         buf_pty_path
     }
 
-    pub async fn mark_buffer_as_instance(&mut self, buffer: &Buffer<ConnectionAgnosticWrite>, inst_name: &str, inst_pty_path: &str) {
+    pub async fn mark_buffer_as_instance(&mut self, buffer: &Buffer<IoWrite>, inst_name: &str, inst_pty_path: &str) {
         log::trace!(target: "new instance", "{:?}->{}->{}", buffer.get_number().await, inst_name, inst_pty_path);
         let v = Value::from(vec![Value::from(inst_name), Value::from(inst_pty_path)]);
         if let Err(e) = buffer.set_var("page_instance", v).await {
@@ -138,7 +131,7 @@ impl NeovimActions {
         }
     }
 
-    pub async fn find_instance_buffer(&mut self, inst_name: &str) -> Option<(Buffer<ConnectionAgnosticWrite>, PathBuf)> {
+    pub async fn find_instance_buffer(&mut self, inst_name: &str) -> Option<(Buffer<IoWrite>, PathBuf)> {
         for buf in self.nvim.list_bufs().await.unwrap() {
             let inst_var = buf.get_var("page_instance").await;
             log::trace!(target: "instances", "{:?} => {}: {:?}", buf.get_number().await, inst_name, inst_var);
@@ -176,7 +169,7 @@ impl NeovimActions {
         }
     }
 
-    pub async fn focus_instance_buffer(&mut self, inst_buf: &Buffer<ConnectionAgnosticWrite>) {
+    pub async fn focus_instance_buffer(&mut self, inst_buf: &Buffer<IoWrite>) {
         log::trace!(target: "focus instance", "{:?}", inst_buf.get_number().await);
         if &self.get_current_buffer().await != inst_buf {
             let wins_open = self.nvim.list_wins().await.unwrap();
@@ -195,7 +188,7 @@ impl NeovimActions {
     }
 
 
-    pub async fn update_buffer_title(&mut self, buf: &Buffer<ConnectionAgnosticWrite>, buf_title: &str) {
+    pub async fn update_buffer_title(&mut self, buf: &Buffer<IoWrite>, buf_title: &str) {
         log::trace!(target: "update title", "{:?} => {}", buf.get_number().await, buf_title);
         let a = std::iter::once((0, buf_title.to_string()));
         let b = (1..99).map(|attempt_nr| (attempt_nr, format!("{}({})", buf_title, attempt_nr)));
@@ -267,7 +260,7 @@ impl NeovimActions {
         }
     }
 
-    pub async fn switch_to_window_and_buffer(&mut self, (win, buf): &(Window<ConnectionAgnosticWrite>, Buffer<ConnectionAgnosticWrite>)) {
+    pub async fn switch_to_window_and_buffer(&mut self, (win, buf): &(Window<IoWrite>, Buffer<IoWrite>)) {
         log::trace!(target: "set window and buffer", "Win:{:?} Buf:{:?}",  win.get_number().await, buf.get_number().await);
         if let Err(e) = self.nvim.set_current_win(win).await {
             log::error!(target: "set window and buffer", "Can't switch to window: {}", e);
@@ -277,7 +270,7 @@ impl NeovimActions {
         }
     }
 
-    pub async fn switch_to_buffer(&mut self, buf: &Buffer<ConnectionAgnosticWrite>) {
+    pub async fn switch_to_buffer(&mut self, buf: &Buffer<IoWrite>) {
         log::trace!(target: "set buffer", "{:?}", buf.get_number().await);
         self.nvim.set_current_buf(buf).await.unwrap();
     }
@@ -444,27 +437,25 @@ pub enum NotificationFromNeovim {
 }
 
 mod handler {
-    use super::{ConnectionAgnosticWrite, NotificationFromNeovim};
+    use super::{IoWrite, NotificationFromNeovim};
     use nvim_rs::Value;
-    use tokio::sync::mpsc;
-
     /// Receives and collects notifications from neovim side over IPC or TCP/IP
     #[derive(Clone)]
-    pub struct ConnectionAgnosticHandler {
-        pub tx: mpsc::Sender<NotificationFromNeovim>,
+    pub struct IoHandler {
+        pub tx: tokio::sync::mpsc::Sender<NotificationFromNeovim>,
         pub page_id: String,
     }
 
     #[async_trait::async_trait]
-    impl nvim_rs::Handler for ConnectionAgnosticHandler {
-        type Writer = ConnectionAgnosticWrite;
+    impl nvim_rs::Handler for IoHandler {
+        type Writer = IoWrite;
 
-        async fn handle_request(&self, request: String, args: Vec<Value>, _neovim: nvim_rs::Neovim<ConnectionAgnosticWrite>) -> Result<Value, Value> {
+        async fn handle_request(&self, request: String, args: Vec<Value>, _neovim: nvim_rs::Neovim<IoWrite>) -> Result<Value, Value> {
             log::warn!(target: "unhandled request", "{}: {:?}", request, args);
             Ok(Value::from(0))
         }
 
-        async fn handle_notify(&self, notification: String, args: Vec<Value>, _neovim: nvim_rs::Neovim<ConnectionAgnosticWrite>) {
+        async fn handle_notify(&self, notification: String, args: Vec<Value>, _neovim: nvim_rs::Neovim<IoWrite>) {
             log::trace!(target: "notification", "{}: {:?} ", notification, args);
             let page_id = args.get(0).and_then(Value::as_str);
             if page_id.map_or(true, |page_id| page_id != self.page_id) {
@@ -498,18 +489,17 @@ pub struct NeovimConnection {
     pub nvim_proc: Option<tokio::process::Child>,
     pub nvim_actions: NeovimActions,
     pub initial_buf_number: i64,
-    pub initial_win_and_buf: (Window<ConnectionAgnosticWrite>, Buffer<ConnectionAgnosticWrite>),
+    pub initial_win_and_buf: (Window<IoWrite>, Buffer<IoWrite>),
     pub rx: tokio::sync::mpsc::Receiver<NotificationFromNeovim>,
 }
 
 
 pub mod connection {
     use nvim_rs::{Neovim, error::LoopError};
-    use tokio::{process::Child, task::JoinHandle};
+    use tokio::task::JoinHandle;
     use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
-    use crate::{cli::Options, context, neovim::{ConnectionAgnosticRead, ConnectionAgnosticWrite, handler::ConnectionAgnosticHandler}};
-    use super::{NeovimConnection, NeovimActions};
+    use crate::{cli::Options, context, neovim::{IoRead, IoWrite, handler::IoHandler, NeovimConnection, NeovimActions}};
     use std::{path::{Path, PathBuf}, process};
 
     /// Connects to parent neovim session or spawns a new neovim process and connects to it through socket.
@@ -517,15 +507,15 @@ pub mod connection {
     pub async fn open(cli_ctx: &context::UsageContext) -> NeovimConnection {
         let page_id = cli_ctx.page_id.clone();
         let (tx, rx) = tokio::sync::mpsc::channel(16);
-        let handler = ConnectionAgnosticHandler { page_id, tx };
+        let handler = IoHandler { page_id, tx };
         let mut nvim_proc = None;
         let (nvim, join) = match cli_ctx.opt.address.as_deref() {
             Some(nvim_listen_addr) if nvim_listen_addr.parse::<std::net::SocketAddr>().is_ok() => {
                 let tcp = tokio::net::TcpStream::connect(nvim_listen_addr).await
                     .expect("Cannot connect to neoim at TCP/IP address");
                 let (rx, tx) = tokio::io::split(tcp);
-                let (rx, tx) = (ConnectionAgnosticRead::Tcp(rx.compat()), ConnectionAgnosticWrite::Tcp(tx.compat_write()));
-                let (nvim, io) = Neovim::<ConnectionAgnosticWrite>::new(rx, tx, handler);
+                let (rx, tx) = (IoRead::Tcp(rx.compat()), IoWrite::Tcp(tx.compat_write()));
+                let (nvim, io) = Neovim::<IoWrite>::new(rx, tx, handler);
                 let io_handle = tokio::task::spawn(io);
                 (nvim, io_handle)
             }
@@ -533,8 +523,8 @@ pub mod connection {
                 let ipc = parity_tokio_ipc::Endpoint::connect(nvim_listen_addr).await
                     .expect("Cannot connect to neovim at path");
                 let (rx, tx) = tokio::io::split(ipc);
-                let (rx, tx) = (ConnectionAgnosticRead::Ipc(rx.compat()), ConnectionAgnosticWrite::Ipc(tx.compat_write()));
-                let (nvim, io) = Neovim::<ConnectionAgnosticWrite>::new(rx, tx, handler);
+                let (rx, tx) = (IoRead::Ipc(rx.compat()), IoWrite::Ipc(tx.compat_write()));
+                let (nvim, io) = Neovim::<IoWrite>::new(rx, tx, handler);
                 let io_handle = tokio::task::spawn(io);
                 (nvim, io_handle)
             }
@@ -568,11 +558,11 @@ pub mod connection {
     /// Also prints protection from shell redirection that could cause some harm (see --help[-W])
     async fn create_new_neovim_process_ipc(
         cli_ctx: &context::UsageContext,
-        handler: ConnectionAgnosticHandler
+        handler: IoHandler
     ) -> (
-        Neovim<ConnectionAgnosticWrite>,
+        Neovim<IoWrite>,
         JoinHandle<Result<(), Box<LoopError>>>,
-        Child
+        tokio::process::Child
     ) {
         let context::UsageContext { opt, tmp_dir, page_id, print_protection, .. } = cli_ctx;
         if *print_protection {
@@ -584,11 +574,11 @@ pub mod connection {
         let e = loop {
             match parity_tokio_ipc::Endpoint::connect(&nvim_listen_addr).await {
                 Ok(ipc) => {
-                      let (rx, tx) = tokio::io::split(ipc);
-                      let (rx, tx) = (ConnectionAgnosticRead::Ipc(rx.compat()), ConnectionAgnosticWrite::Ipc(tx.compat_write()));
-                      let (neovim, io) = Neovim::<ConnectionAgnosticWrite>::new(rx, tx, handler);
-                      let io_handle = tokio::task::spawn(io);
-                      return (neovim, io_handle, nvim_proc)
+                    let (rx, tx) = tokio::io::split(ipc);
+                    let (rx, tx) = (IoRead::Ipc(rx.compat()), IoWrite::Ipc(tx.compat_write()));
+                    let (neovim, io) = Neovim::<IoWrite>::new(rx, tx, handler);
+                    let io_handle = tokio::task::spawn(io);
+                    return (neovim, io_handle, nvim_proc)
                 },
                 Err(e) => {
                     if let std::io::ErrorKind::NotFound = e.kind() {
@@ -596,7 +586,7 @@ pub mod connection {
                             break e
                         } else {
                             log::trace!(target: "cannot connect to child neovim", "[attempt #{}] address '{:?}': {:?}", i, nvim_listen_addr, e);
-                            std::thread::sleep(std::time::Duration::from_millis(16));
+                            tokio::time::sleep(std::time::Duration::from_millis(16)).await;
                             i += 1
                         }
                     } else {
@@ -621,7 +611,7 @@ pub mod connection {
     /// In this way neovim UI is displayed properly on top of page, and page as well is able to handle
     /// its own input to redirect it unto proper target (which is impossible with methods provided by neovim_lib).
     /// Also custom neovim config will be picked if it exists on corresponding locations.
-    fn spawn_child_nvim_process(opt: &Options, nvim_listen_addr: &Path) -> Child {
+    fn spawn_child_nvim_process(opt: &Options, nvim_listen_addr: &Path) -> tokio::process::Child {
         let nvim_args = {
             let mut a = String::new();
             a.push_str("--cmd 'set shortmess+=I' ");

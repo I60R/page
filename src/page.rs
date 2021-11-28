@@ -1,4 +1,4 @@
-use neovim::ConnectionAgnosticWrite;
+use neovim::IoWrite;
 use nvim_rs::Buffer;
 
 pub(crate) mod cli;
@@ -143,7 +143,7 @@ async fn manage_page_state(nvim_conn: &mut neovim::NeovimConnection, nvim_ctx: c
     };
 }
 
-async fn manage_output_buffer(nvim_conn: &mut neovim::NeovimConnection, buf: Buffer<ConnectionAgnosticWrite>, outp_ctx: context::OutputContext) {
+async fn manage_output_buffer(nvim_conn: &mut neovim::NeovimConnection, buf: Buffer<IoWrite>, outp_ctx: context::OutputContext) {
     log::info!(target: "context", "{:#?}", &outp_ctx);
     let mut outp_buf_actions = output_buffer_usage::begin(nvim_conn, &outp_ctx, buf);
     if let Some(inst_name) = outp_ctx.inst_usage.is_enabled() {
@@ -162,9 +162,9 @@ async fn manage_output_buffer(nvim_conn: &mut neovim::NeovimConnection, buf: Buf
 
 mod neovim_api_usage {
     use nvim_rs::Buffer;
-    use crate::{context::NeovimContext, neovim::{ConnectionAgnosticWrite, NeovimConnection}, neovim::OutputCommands};
+    use crate::{context::NeovimContext, neovim::{IoWrite, NeovimConnection}, neovim::OutputCommands};
 
-    type BufferAndPty = (Buffer<ConnectionAgnosticWrite>, std::path::PathBuf);
+    type BufferAndPty = (Buffer<IoWrite>, std::path::PathBuf);
 
     /// This struct implements actions that should be done before output buffer is available
     pub struct ApiActions<'a> {
@@ -243,7 +243,7 @@ mod neovim_api_usage {
 mod output_buffer_usage {
     use nvim_rs::Buffer;
 
-    use crate::{context::OutputContext, neovim::{ConnectionAgnosticWrite, NeovimConnection, NotificationFromNeovim}};
+    use crate::{context::OutputContext, neovim::{IoWrite, NeovimConnection, NotificationFromNeovim}};
     use std::{
         fs::{File, OpenOptions},
         io::{BufRead, Write},
@@ -253,11 +253,11 @@ mod output_buffer_usage {
     pub struct BufferActions<'a> {
         nvim_conn: &'a mut NeovimConnection,
         outp_ctx: &'a OutputContext,
-        buf: Buffer<ConnectionAgnosticWrite>,
+        buf: Buffer<IoWrite>,
         buf_pty: Option<File>,
     }
 
-    pub fn begin<'a>(nvim_conn: &'a mut NeovimConnection, outp_ctx: &'a OutputContext, buf: Buffer<ConnectionAgnosticWrite>) -> BufferActions<'a> {
+    pub fn begin<'a>(nvim_conn: &'a mut NeovimConnection, outp_ctx: &'a OutputContext, buf: Buffer<IoWrite>) -> BufferActions<'a> {
         BufferActions {
             nvim_conn,
             outp_ctx,
