@@ -71,6 +71,7 @@ impl NeovimActions {
 
     pub async fn create_substituting_output_buffer(&mut self) -> Buffer<IoWrite> {
         self.create_buffer(&format!("e {}", TERM_URI)).await
+            .expect("Error when creating output buffer")
     }
 
     pub async fn create_split_output_buffer(&mut self, opt: &crate::cli::SplitOptions) -> Buffer<IoWrite> {
@@ -95,11 +96,12 @@ impl NeovimActions {
             unreachable!()
         };
         self.create_buffer(&cmd).await
+            .expect("Error when creating split output buffer")
     }
 
-    async fn create_buffer(&mut self, term_open_cmd: &str) -> Buffer<IoWrite> {
+    async fn create_buffer(&mut self, term_open_cmd: &str) -> Result<Buffer<IoWrite>, Box<CallError>> {
         let cmd = format!(" \
-            | let g:page_shell_backup = [&shell, &shellcmdflag] \
+              let g:page_shell_backup = [&shell, &shellcmdflag] \
             | let [&shell, &shellcmdflag] = ['/bin/sleep', ''] \
             | {term_open_cmd} \
             | let [&shell, &shellcmdflag] = g:page_shell_backup \
@@ -107,10 +109,10 @@ impl NeovimActions {
             term_open_cmd = term_open_cmd
         );
         log::trace!(target: "create buffer", "{}", cmd);
-        self.nvim.command(&cmd).await.expect("Error when creating split output buffer");
+        self.nvim.command(&cmd).await?;
         let buf = self.get_current_buffer().await;
         log::trace!(target: "create buffer", "created: {:?}", buf.get_number().await);
-        buf
+        Ok(buf)
     }
 
     pub async fn get_current_buffer_pty_path(&mut self) -> PathBuf {
