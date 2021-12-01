@@ -1,6 +1,3 @@
-use neovim::IoWrite;
-use nvim_rs::Buffer;
-
 pub(crate) mod cli;
 pub(crate) mod neovim;
 pub(crate) mod context;
@@ -143,6 +140,8 @@ async fn manage_page_state(nvim_conn: &mut neovim::NeovimConnection, nvim_ctx: c
     };
 }
 
+
+use crate::neovim::{Buffer, IoWrite};
 async fn manage_output_buffer(nvim_conn: &mut neovim::NeovimConnection, buf: Buffer<IoWrite>, outp_ctx: context::OutputContext) {
     log::info!(target: "context", "{:#?}", &outp_ctx);
     let mut outp_buf_actions = output_buffer_usage::begin(nvim_conn, &outp_ctx, buf);
@@ -161,8 +160,7 @@ async fn manage_output_buffer(nvim_conn: &mut neovim::NeovimConnection, buf: Buf
 
 
 mod neovim_api_usage {
-    use nvim_rs::Buffer;
-    use crate::{context::NeovimContext, neovim::{IoWrite, NeovimConnection}, neovim::OutputCommands};
+    use crate::{context::NeovimContext, neovim::{Buffer, IoWrite, NeovimConnection, OutputCommands}};
 
     type BufferAndPty = (Buffer<IoWrite>, std::path::PathBuf);
 
@@ -241,13 +239,8 @@ mod neovim_api_usage {
 }
 
 mod output_buffer_usage {
-    use nvim_rs::Buffer;
-
-    use crate::{context::OutputContext, neovim::{IoWrite, NeovimConnection, NotificationFromNeovim}};
-    use std::{
-        fs::{File, OpenOptions},
-        io::{BufRead, Write},
-    };
+    use crate::{context::OutputContext, neovim::{Buffer, IoWrite, NeovimConnection, NotificationFromNeovim}};
+    use std::{fs::{File, OpenOptions}, io::{BufRead, Write}};
 
     /// This struct implements actions that should be done after output buffer is attached
     pub struct BufferActions<'a> {

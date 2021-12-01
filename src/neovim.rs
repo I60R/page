@@ -1,11 +1,12 @@
 /// A module that extends neovim api with methods required in page
 
 
-use nvim_rs::{Buffer, Value, Window, error::CallError, neovim::Neovim};
 use std::{io, path::PathBuf, pin::Pin, task};
-use nvim_rs::{compat::tokio::Compat, error::LoopError};
 use parity_tokio_ipc::Connection;
 use tokio::{io::{ReadHalf, WriteHalf}, net::TcpStream, task::JoinHandle};
+use nvim_rs::{compat::tokio::Compat, error::LoopError, error::CallError};
+
+pub use nvim_rs::{neovim::Neovim, Buffer, Window, Value};
 
 
 const TERM_URI: &str = concat!(
@@ -469,8 +470,7 @@ pub enum NotificationFromNeovim {
 }
 
 mod handler {
-    use super::{IoWrite, NotificationFromNeovim};
-    use nvim_rs::Value;
+    use super::{Neovim, IoWrite, NotificationFromNeovim, Value};
     /// Receives and collects notifications from neovim side over IPC or TCP/IP
     #[derive(Clone)]
     pub struct IoHandler {
@@ -482,12 +482,12 @@ mod handler {
     impl nvim_rs::Handler for IoHandler {
         type Writer = IoWrite;
 
-        async fn handle_request(&self, request: String, args: Vec<Value>, _neovim: nvim_rs::Neovim<IoWrite>) -> Result<Value, Value> {
+        async fn handle_request(&self, request: String, args: Vec<Value>, _neovim: Neovim<IoWrite>) -> Result<Value, Value> {
             log::warn!(target: "unhandled request", "{}: {:?}", request, args);
             Ok(Value::from(0))
         }
 
-        async fn handle_notify(&self, notification: String, args: Vec<Value>, _neovim: nvim_rs::Neovim<IoWrite>) {
+        async fn handle_notify(&self, notification: String, args: Vec<Value>, _neovim: Neovim<IoWrite>) {
             log::trace!(target: "notification", "{}: {:?} ", notification, args);
             let page_id = args.get(0).and_then(Value::as_str);
             if page_id.map_or(true, |page_id| page_id != self.page_id) {
@@ -527,11 +527,12 @@ pub struct NeovimConnection {
 
 
 pub mod connection {
-    use nvim_rs::{Neovim, error::LoopError};
+    use super::{Neovim, IoRead, IoWrite, handler::IoHandler, NeovimConnection, NeovimActions};
+    use crate::{cli::Options, context};
+
     use tokio::task::JoinHandle;
     use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
-    use crate::{cli::Options, context, neovim::{IoRead, IoWrite, handler::IoHandler, NeovimConnection, NeovimActions}};
     use std::{path::{Path, PathBuf}, process};
 
     /// Connects to parent neovim session or spawns a new neovim process and connects to it through socket.
@@ -593,7 +594,7 @@ pub mod connection {
         handler: IoHandler
     ) -> (
         Neovim<IoWrite>,
-        JoinHandle<Result<(), Box<LoopError>>>,
+        JoinHandle<Result<(), Box<nvim_rs::error::LoopError>>>,
         tokio::process::Child
     ) {
         let context::UsageContext { opt, tmp_dir, page_id, print_protection, .. } = cli_ctx;
