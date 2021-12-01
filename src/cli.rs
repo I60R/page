@@ -160,9 +160,13 @@ pub struct SplitOptions {
     #[structopt(display_order=906, short="U")]
     pub split_above_rows: Option<u8>,
 
-    /// Split below and resize to <split-below-rows> rows {n} ~ ~ ~
+    /// Split below and resize to <split-below-rows> rows {n} ^
     #[structopt(display_order=907, short="D")]
     pub split_below_rows: Option<u8>,
+
+    /// With any of -r -l -u -d -R -L -U -D open floating window instead of split [to not override data in the current terminal] {n} ~ ~ ~
+    #[structopt(display_order=908, short="+")]
+    pub popup: bool,
 }
 
 

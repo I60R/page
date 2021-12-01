@@ -75,25 +75,55 @@ impl NeovimActions {
     }
 
     pub async fn create_split_output_buffer(&mut self, opt: &crate::cli::SplitOptions) -> Buffer<IoWrite> {
-        let (ver_ratio, hor_ratio) = ("(winwidth(0) / 2) * 3", "(winheight(0) / 2) * 3");
-        let cmd = if opt.split_right != 0u8 {
-            format!("exe 'belowright ' . ({}/{}) . 'vsplit {}' | set winfixwidth", ver_ratio, opt.split_right + 1, TERM_URI)
-        } else if opt.split_left != 0u8 {
-            format!("exe 'aboveleft ' . ({}/{}) . 'vsplit {}' | set winfixwidth", ver_ratio, opt.split_left + 1, TERM_URI)
-        } else if opt.split_below != 0u8 {
-            format!("exe 'belowright ' . ({}/{}) . 'split {}' | set winfixheight", hor_ratio, opt.split_below + 1, TERM_URI)
-        } else if opt.split_above != 0u8 {
-            format!("exe 'aboveleft ' . ({}/{}) . 'split {}' | set winfixheight", hor_ratio, opt.split_above + 1, TERM_URI)
-        } else if let Some(split_right_cols) = opt.split_right_cols {
-            format!("belowright {}vsplit {} | set winfixwidth", split_right_cols, TERM_URI)
-        } else if let Some(split_left_cols) = opt.split_left_cols {
-            format!("aboveleft {}vsplit {} | set winfixwidth", split_left_cols, TERM_URI)
-        } else if let Some(split_below_rows) = opt.split_below_rows {
-            format!("belowright {}split {} | set winfixheight", split_below_rows, TERM_URI)
-        } else if let Some(split_above_rows) = opt.split_above_rows {
-            format!("aboveleft {}split {} | set winfixheight", split_above_rows, TERM_URI)
+        let cmd = if opt.popup {
+            let (w, h, r, c): (String, String, String, String);
+            if opt.split_right != 0u8 {
+                (w = format!("(((winwidth(0) / 2) * 3) / {})", opt.split_right + 1), h = "winheight(0)".into(), r = "0".into(), c = "winwidth(0)".into())
+            } else if opt.split_left != 0u8 {
+                (w = format!("(((winwidth(0) / 2) * 3) / {})", opt.split_left + 1), h = "winheight(0)".into(), r = "0".into(), c = "0".into())
+            } else if opt.split_below != 0u8 {
+                (h = format!("(((winheight(0) / 2) * 3) / {})", opt.split_below + 1), w = "winwidth(0)".into(), c = "0".into(), r = "winheight(0)".into())
+            } else if opt.split_above != 0u8 {
+                (h = format!("(((winheight(0) / 2) * 3) / {})", opt.split_above + 1), w = "winwidth(0)".into(), c = "0".into(), r = "0".into())
+            } else if let Some(split_right_cols) = opt.split_right_cols {
+                (w = split_right_cols.to_string(), h = "winheight(0)".into(), r = "0".into(), c = "winwidth(0)".into())
+            } else if let Some(split_left_cols) = opt.split_left_cols {
+                (w = split_left_cols.to_string(), h = "winheight(0)".into(), r = "0".into(), c = "0".into())
+            } else if let Some(split_below_rows) = opt.split_below_rows {
+                (h = split_below_rows.to_string(), w = "winwidth(0)".into(), c = "0".into(), r = "winheight(0)".into())
+            } else if let Some(split_above_rows) = opt.split_above_rows {
+                (h = split_above_rows.to_string(), w = "winwidth(0)".into(), c = "0".into(), r = "0".into())
+            } else {
+                unreachable!()
+            };
+            format!(" \
+                  call nvim_open_win(nvim_create_buf(0, 0), 1, {{ 'relative': 'editor', 'width': {w}, 'height': {h}, 'row': {r}, 'col': {c} }}) \
+                | e {t}
+                | setl winblend=25 \
+            ",
+                  w = w, h = h, r = r, c = c, t = TERM_URI,
+            )
         } else {
-            unreachable!()
+            let (ver_ratio, hor_ratio) = ("(winwidth(0) / 2) * 3", "(winheight(0) / 2) * 3");
+            if opt.split_right != 0u8 {
+                format!("exe 'belowright ' . ({}/{}) . 'vsplit {}' | set winfixwidth", ver_ratio, opt.split_right + 1, TERM_URI)
+            } else if opt.split_left != 0u8 {
+                format!("exe 'aboveleft ' . ({}/{}) . 'vsplit {}' | set winfixwidth", ver_ratio, opt.split_left + 1, TERM_URI)
+            } else if opt.split_below != 0u8 {
+                format!("exe 'belowright ' . ({}/{}) . 'split {}' | set winfixheight", hor_ratio, opt.split_below + 1, TERM_URI)
+            } else if opt.split_above != 0u8 {
+                format!("exe 'aboveleft ' . ({}/{}) . 'split {}' | set winfixheight", hor_ratio, opt.split_above + 1, TERM_URI)
+            } else if let Some(split_right_cols) = opt.split_right_cols {
+                format!("belowright {}vsplit {} | set winfixwidth", split_right_cols, TERM_URI)
+            } else if let Some(split_left_cols) = opt.split_left_cols {
+                format!("aboveleft {}vsplit {} | set winfixwidth", split_left_cols, TERM_URI)
+            } else if let Some(split_below_rows) = opt.split_below_rows {
+                format!("belowright {}split {} | set winfixheight", split_below_rows, TERM_URI)
+            } else if let Some(split_above_rows) = opt.split_above_rows {
+                format!("aboveleft {}split {} | set winfixheight", split_above_rows, TERM_URI)
+            } else {
+                unreachable!()
+            }
         };
         self.create_buffer(&cmd).await
             .expect("Error when creating split output buffer")
