@@ -62,12 +62,8 @@ pub struct NeovimActions {
 }
 
 impl NeovimActions {
-    pub async fn get_current_window_and_buffer(&mut self) -> (Window<IoWrite>, Buffer<IoWrite>) {
-        (self.nvim.get_current_win().await.unwrap(), self.nvim.get_current_buf().await.unwrap())
-    }
-
-    pub async fn get_current_buffer(&mut self) -> Buffer<IoWrite> {
-        self.nvim.get_current_buf().await.unwrap()
+    pub async fn get_current_buffer(&mut self) -> Result<Buffer<IoWrite>, Box<CallError>> {
+        self.nvim.get_current_buf().await
     }
 
     pub async fn create_substituting_output_buffer(&mut self) -> Buffer<IoWrite> {
@@ -141,7 +137,7 @@ impl NeovimActions {
         );
         log::trace!(target: "create buffer", "{}", cmd);
         self.nvim.command(&cmd).await?;
-        let buf = self.get_current_buffer().await;
+        let buf = self.get_current_buffer().await?;
         log::trace!(target: "create buffer", "created: {:?}", buf.get_number().await);
         Ok(buf)
     }
@@ -165,7 +161,8 @@ impl NeovimActions {
     }
 
     pub async fn find_instance_buffer(&mut self, inst_name: &str) -> Option<(Buffer<IoWrite>, PathBuf)> {
-        for buf in self.nvim.list_bufs().await.unwrap() {
+        let all_bufs = self.nvim.list_bufs().await.expect("Cannot list all buffers");
+        for buf in all_bufs {
             let inst_var = buf.get_var("page_instance").await;
             log::trace!(target: "instances", "{:?} => {}: {:?}", buf.get_number().await, inst_name, inst_var);
             match inst_var {
@@ -195,7 +192,7 @@ impl NeovimActions {
     pub async fn close_instance_buffer(&mut self, inst_name: &str) {
         log::trace!(target: "close instance", "{}", inst_name);
         if let Some((buf, _)) = self.find_instance_buffer(&inst_name).await {
-            let inst_id = buf.get_number().await.unwrap();
+            let inst_id = buf.get_number().await.expect("Cannot get instance id");
             if let Err(e) = self.nvim.command(&format!("exe 'bd!' . {}", inst_id)).await {
                 log::error!(target: "close instance", "Error when closing instance buffer: {}, {}", inst_name, e);
             }
@@ -204,20 +201,22 @@ impl NeovimActions {
 
     pub async fn focus_instance_buffer(&mut self, inst_buf: &Buffer<IoWrite>) {
         log::trace!(target: "focus instance", "{:?}", inst_buf.get_number().await);
-        if &self.get_current_buffer().await != inst_buf {
-            let wins_open = self.nvim.list_wins().await.unwrap();
-            log::trace!(target: "focus instance", "Winows open: {}", wins_open.len());
-            for win in wins_open {
-                if &win.get_buf().await.unwrap() == inst_buf {
+        let active_buf = self.get_current_buffer().await.expect("Cannot get currently active buffer");
+        if &active_buf != inst_buf {
+            let all_wins = self.nvim.list_wins().await.expect("Cannot get all active windows");
+            log::trace!(target: "focus instance", "Winows open: {}", all_wins.len());
+            for win in all_wins {
+                let buf = win.get_buf().await.expect("Cannot get buffer");
+                if &buf == inst_buf {
                     log::trace!(target: "focus instance", "Use window: {:?}", win.get_number().await);
-                    self.nvim.set_current_win(&win).await.unwrap();
+                    self.nvim.set_current_win(&win).await.expect("Cannot set active window");
                     return
                 }
             }
         } else {
             log::trace!(target: "focus instance", "Not in window");
         }
-        self.nvim.set_current_buf(inst_buf).await.unwrap();
+        self.nvim.set_current_buf(inst_buf).await.expect("Cannot set active buffer");
     }
 
 
@@ -238,7 +237,7 @@ impl NeovimActions {
                     }
                 }
                 _ => {
-                    self.nvim.command("redraw!").await.unwrap(); // To update statusline
+                    self.nvim.command("redraw!").await.expect("Cannot redraw"); // To update statusline
                     return
                 }
             }
@@ -303,9 +302,9 @@ impl NeovimActions {
         }
     }
 
-    pub async fn switch_to_buffer(&mut self, buf: &Buffer<IoWrite>) {
+    pub async fn switch_to_buffer(&mut self, buf: &Buffer<IoWrite>) -> Result<(), Box<CallError>>{
         log::trace!(target: "set buffer", "{:?}", buf.get_number().await);
-        self.nvim.set_current_buf(buf).await.unwrap();
+        self.nvim.set_current_buf(buf).await
     }
 
     pub async fn set_current_buffer_insert_mode(&mut self) {
@@ -338,12 +337,12 @@ impl NeovimActions {
     pub async fn notify_query_finished(&mut self, lines_read: usize) {
         log::trace!(target: "query finished", "Read {} lines", lines_read);
         let cmd = format!("redraw | echoh Comment | echom '-- [PAGE] {} lines read; has more --' | echoh None", lines_read);
-        self.nvim.command(&cmd).await.unwrap();
+        self.nvim.command(&cmd).await.expect("Cannot notify query finished");
     }
 
     pub async fn notify_end_of_input(&mut self) {
         log::trace!(target: "end input", "");
-        self.nvim.command("redraw | echoh Comment | echom '-- [PAGE] end of input --' | echoh None").await.unwrap();
+        self.nvim.command("redraw | echoh Comment | echom '-- [PAGE] end of input --' | echoh None").await.expect("Cannot notify end of input");
     }
 
     pub async fn get_var_or(&mut self, key: &str, default: &str) -> String {
@@ -567,13 +566,13 @@ pub mod connection {
                 (nvim, io_handle)
             }
         };
-        let mut nvim_actions = NeovimActions { nvim, join };
-        let initial_win_and_buf = nvim_actions.get_current_window_and_buffer().await;
-        let initial_buf_number = initial_win_and_buf.1.get_number().await.unwrap();
+        let initial_win = nvim.get_current_win().await.expect("Cannot get initial window");
+        let initial_buf = nvim.get_current_buf().await.expect("Cannot get initial buffer");
+        let initial_buf_number = initial_buf.get_number().await.expect("Cannot get initial buffer number");
         NeovimConnection {
-            nvim_actions,
+            nvim_actions: NeovimActions { nvim, join },
             initial_buf_number,
-            initial_win_and_buf,
+            initial_win_and_buf: (initial_win, initial_buf),
             rx,
             nvim_proc
         }

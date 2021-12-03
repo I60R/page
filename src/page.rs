@@ -29,7 +29,7 @@ fn _init_logger_() {
         .level(level_filter)
         .chain(std::io::stderr())
         .apply()
-        .unwrap();
+        .expect("Cannot initialize logger");
 }
 
 
@@ -38,7 +38,7 @@ async fn prefetch_lines(env_ctx: context::EnvContext) {
     let mut prefetched_lines = Vec::with_capacity(env_ctx.echo_lines);
     while env_ctx.echo_lines > prefetched_lines.len() {
         let mut line = String::new();
-        let remain = std::io::stdin().read_line(&mut line).unwrap();
+        let remain = std::io::stdin().read_line(&mut line).expect("Failed to prefetch line from stdin");
         prefetched_lines.push(line);
         if remain == 0usize {
             break
@@ -53,6 +53,7 @@ async fn prefetch_lines(env_ctx: context::EnvContext) {
 }
 
 fn _dump_prefetched_lines_and_exit_(lines: Vec<String>, filetype: &str) -> ! {
+    log::info!(target: "dump", "{}: {}", filetype, lines.len());
     use std::{io, process};
     let (stdout, mut stdout_lock);
     let mut bat_proc = None;
@@ -67,24 +68,27 @@ fn _dump_prefetched_lines_and_exit_(lines: Vec<String>, filetype: &str) -> ! {
                 .spawn()
             {
                 Ok(proc) => {
-                    bat_proc.get_or_insert(proc).stdin.as_mut().unwrap()
+                    log::info!(target: "dump", "use bat");
+                    bat_proc.get_or_insert(proc).stdin.as_mut().expect("Cannot get bat stdin")
                 }
-                _ => {
+                Err(e) => {
+                    log::warn!(target: "dump", "cannot spawn bat, use stdout: {:?}", e);
                     (stdout = io::stdout(), stdout_lock = stdout.lock());
                     &mut stdout_lock
                 }
             }
         } else {
+            log::info!(target: "dump", "use stdout");
             (stdout = io::stdout(), stdout_lock = stdout.lock());
             &mut stdout_lock
         }
     };
     for ln in lines {
-        io::Write::write(output, ln.as_bytes()).unwrap();
+        io::Write::write(output, ln.as_bytes()).expect("Cannot write line");
     }
-    output.flush().unwrap();
+    output.flush().expect("Cannot flush");
     if let Some(mut proc) = bat_proc {
-        proc.wait().unwrap();
+        proc.wait().expect("bat process ended unexpectedly");
     }
     process::exit(0)
 }
@@ -390,14 +394,14 @@ mod output_buffer_usage {
         pub async fn execute_disconnect_commands(&mut self) {
             let BufferActions { nvim_conn: NeovimConnection { nvim_actions, initial_win_and_buf, .. }, buf, outp_ctx, .. } = self;
             if outp_ctx.opt.command_auto {
-                let active_buf = nvim_actions.get_current_buffer().await;
+                let active_buf = nvim_actions.get_current_buffer().await.expect("Cannot get currently active buffer to execute PageDisconnect");
                 let switched = buf != &active_buf;
                 if switched {
-                    nvim_actions.switch_to_buffer(&buf).await;
+                    nvim_actions.switch_to_buffer(&buf).await.expect("Cannot switch back to page buffer");
                 }
                 nvim_actions.execute_disconnect_autocmd_on_current_buffer().await;
                 if switched {
-                    nvim_actions.switch_to_buffer(&active_buf).await;
+                    nvim_actions.switch_to_buffer(&active_buf).await.expect("Cannot switch back to active buffer");
                     if initial_win_and_buf.1 == active_buf && outp_ctx.restore_initial_buf_focus.is_vi_mode_insert() {
                         nvim_actions.set_current_buffer_insert_mode().await;
                     }
