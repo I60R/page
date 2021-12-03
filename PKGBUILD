@@ -23,7 +23,7 @@ pkgver() {
 prepare() {
     rustc_version=$([[ "$(rustc --version)" =~ rustc\ 1.([0-9]+).* ]] && echo "${BASH_REMATCH[1]}")
 
-    (($rustc_version >= 47)) && return 0;
+    (($rustc_version >= 50)) && return 0;
 
     # Set error color
     echo -e '\e[0;31m'

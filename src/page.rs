@@ -110,6 +110,7 @@ fn _warn_incompatible_options_(opt_ctx: &context::EnvContext) {
 
 async fn connect_neovim(cli_ctx: context::UsageContext) {
     log::info!(target: "context", "{:#?}", &cli_ctx);
+    _init_panic_hook_();
     let mut nvim_conn = neovim::connection::open(&cli_ctx).await;
     let nvim_ctx = if let Some(_) = nvim_conn.nvim_proc {
         context::connect_neovim::enter(cli_ctx).with_child_neovim_process_spawned()
@@ -118,6 +119,22 @@ async fn connect_neovim(cli_ctx: context::UsageContext) {
     };
     manage_page_state(&mut nvim_conn, nvim_ctx).await;
     neovim::connection::close(nvim_conn).await;
+}
+
+fn _init_panic_hook_() {
+    use std::{io, panic, process};
+    let default_panic_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |info| {
+        // If neovim died unexpectedly then it messes terminal, so we must reset it
+        let reset = process::Command::new("reset").spawn()
+            .and_then(|mut child| child.wait())
+            .and_then(|exit_code| exit_code.success()
+                .then(|| ()).ok_or_else(|| io::Error::new(io::ErrorKind::Other, format!("Reset exited with status: {}", exit_code))));
+        if let Err(e) = reset {
+            log::error!(target: "termreset", "Cannot reset terminal: {:?}", e);
+        }
+        default_panic_hook(info);
+    }));
 }
 
 async fn manage_page_state(nvim_conn: &mut neovim::NeovimConnection, nvim_ctx: context::NeovimContext) {
