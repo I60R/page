@@ -315,7 +315,7 @@ mod output_buffer_usage {
             if outp_ctx.inst_usage.is_enabled_and_should_be_focused() {
                 nvim_actions.focus_instance_buffer(&buf).await;
                 if outp_ctx.inst_usage.is_enabled_and_should_replace_its_content() {
-                    writeln!(self.get_buffer_pty(), "\x1B[3J\x1B[H\x1b[2J").expect("Cannot write clear screen sequence");
+                    writeln!(self.get_buffer_pty().await, "\x1B[3J\x1B[H\x1b[2J").expect("Cannot write clear screen sequence");
                 }
             }
         }
@@ -362,13 +362,13 @@ mod output_buffer_usage {
             if self.outp_ctx.input_from_pipe {
                 // First write all prefetched lines if any available
                 for ln in self.outp_ctx.prefetched_lines.as_slice() {
-                    write!(self.get_buffer_pty(), "{}", ln).expect("Cannot write next prefetched line");
+                    write!(self.get_buffer_pty().await, "{}", ln).expect("Cannot write next prefetched line");
                 }
                 // Then copy the rest of lines from stdin into buffer pty
                 let stdin = std::io::stdin();
                 let mut stdin_lock = stdin.lock();
                 if !self.outp_ctx.is_query_enabled() {
-                    std::io::copy(&mut stdin_lock, self.get_buffer_pty()).expect("Read from stdin failed unexpectedly");
+                    std::io::copy(&mut stdin_lock, self.get_buffer_pty().await).expect("Read from stdin failed unexpectedly");
                     return
                 }
                 // If query (-q) is enabled then wait for it
@@ -385,7 +385,7 @@ mod output_buffer_usage {
                         }
                     }
                     match stdin_lines.next() {
-                        Some(Ok(ln)) => writeln!(self.get_buffer_pty(), "{}", ln).expect("Cannot write next line"),
+                        Some(Ok(ln)) => writeln!(self.get_buffer_pty().await, "{}", ln).expect("Cannot write next line"),
                         Some(Err(e)) => {
                             log::warn!(target: "output", "Error reading line from stdin: {}", e);
                             break
@@ -428,9 +428,30 @@ mod output_buffer_usage {
 
         /// Returns PTY device associated with output buffer.
         /// This function ensures that PTY device is opened only once
-        fn get_buffer_pty(&mut self) -> &mut File {
-            let buf_pty_path = &self.outp_ctx.buf_pty_path;
-            self.buf_pty.get_or_insert_with(|| OpenOptions::new().append(true).open(buf_pty_path).expect("Cannot open page PTY"))
+        async fn get_buffer_pty(&mut self) -> &mut File {
+            let buf_pty = &mut self.buf_pty;
+            if let Some(buf_pty) = buf_pty {
+                return buf_pty
+            }
+            let mut i = 0;
+            loop {
+                match OpenOptions::new().append(true).open(&self.outp_ctx.buf_pty_path) {
+                    Ok(pty) => return buf_pty.get_or_insert(pty),
+                    Err(e) => {
+                        if let std::io::ErrorKind::NotFound = e.kind() {
+                            if i == 512 {
+                                panic!("Cannot open page PTY: {:?}", e)
+                            } else {
+                                log::info!(target: "pty", "cannot open page PTY: {}", i);
+                                tokio::time::sleep(std::time::Duration::from_millis(8)).await;
+                                i += 1;
+                            }
+                        } else {
+                            panic!("Unexpected error when opening page PTY: {:?}", e)
+                        }
+                    },
+                }
+            }
         }
     }
 
