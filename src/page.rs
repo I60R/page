@@ -3,7 +3,7 @@ pub(crate) mod neovim;
 pub(crate) mod context;
 
 
-#[tokio::main]
+#[tokio::main(worker_threads=2)]
 async fn main() {
     _init_logger_();
     let env_ctx = crate::context::gather_env::enter();

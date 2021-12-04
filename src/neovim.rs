@@ -517,7 +517,7 @@ mod handler {
 /// This struct contains all neovim-related data which is required by page
 /// after connection with neovim is established
 pub struct NeovimConnection {
-    pub nvim_proc: Option<tokio::process::Child>,
+    pub nvim_proc: Option<JoinHandle<tokio::process::Child>>,
     pub nvim_actions: NeovimActions,
     pub initial_buf_number: i64,
     pub initial_win_and_buf: (Window<IoWrite>, Buffer<IoWrite>),
@@ -527,12 +527,12 @@ pub struct NeovimConnection {
 
 pub mod connection {
     use super::{Neovim, IoRead, IoWrite, handler::IoHandler, NeovimConnection, NeovimActions};
-    use crate::{cli::Options, context};
+    use crate::context;
 
     use tokio::task::JoinHandle;
     use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
-    use std::{path::{Path, PathBuf}, process};
+    use std::{path::{Path, PathBuf}, fs};
 
     /// Connects to parent neovim session or spawns a new neovim process and connects to it through socket.
     /// Replacement for `nvim_rs::Session::new_child()`, since it uses --embed flag and steals page stdin
@@ -580,8 +580,9 @@ pub mod connection {
 
     /// Waits until child neovim closes. If no child neovim process spawned then it's safe to just exit from page
     pub async fn close(nvim_connection: NeovimConnection) {
-        if let Some(mut process) = nvim_connection.nvim_proc {
-            process.wait().await.expect("Neovim process died unexpectedly");
+        if let Some(process) = nvim_connection.nvim_proc {
+            process.await.expect("Neovim spawned with error")
+                .wait().await.expect("Neovim process died unexpectedly");
         }
         nvim_connection.nvim_actions.join.abort();
     }
@@ -594,14 +595,18 @@ pub mod connection {
     ) -> (
         Neovim<IoWrite>,
         JoinHandle<Result<(), Box<nvim_rs::error::LoopError>>>,
-        tokio::process::Child
+        JoinHandle<tokio::process::Child>
     ) {
         let context::UsageContext { opt, tmp_dir, page_id, print_protection, .. } = cli_ctx;
         if *print_protection {
             print_redirect_protection(&tmp_dir);
         }
-        let nvim_listen_addr = tmp_dir.clone().join(&format!("socket-{}", page_id));
-        let nvim_proc = spawn_child_nvim_process(opt, &nvim_listen_addr);
+        let nvim_listen_addr = tmp_dir.join(&format!("socket-{}", page_id));
+        let nvim_proc = tokio::task::spawn_blocking({
+            let (config, custom_args, nvim_listen_addr) = (opt.config.clone(), opt.arguments.clone(), nvim_listen_addr.clone());
+            move || spawn_child_nvim_process(config, custom_args, &nvim_listen_addr)
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(128)).await;
         let mut i = 0;
         let e = loop {
             match parity_tokio_ipc::Endpoint::connect(&nvim_listen_addr).await {
@@ -614,11 +619,11 @@ pub mod connection {
                 },
                 Err(e) => {
                     if let std::io::ErrorKind::NotFound = e.kind() {
-                        if i == 100 {
+                        if i == 512 {
                             break e
                         } else {
                             log::trace!(target: "cannot connect to child neovim", "[attempt #{}] address '{:?}': {:?}", i, nvim_listen_addr, e);
-                            tokio::time::sleep(std::time::Duration::from_millis(16)).await;
+                            tokio::time::sleep(std::time::Duration::from_millis(8)).await;
                             i += 1
                         }
                     } else {
@@ -643,26 +648,30 @@ pub mod connection {
     /// In this way neovim UI is displayed properly on top of page, and page as well is able to handle
     /// its own input to redirect it unto proper target (which is impossible with methods provided by neovim_lib).
     /// Also custom neovim config will be picked if it exists on corresponding locations.
-    fn spawn_child_nvim_process(opt: &Options, nvim_listen_addr: &Path) -> tokio::process::Child {
+    fn spawn_child_nvim_process(config: Option<String>, custom_args: Option<String>, nvim_listen_addr: &Path) -> tokio::process::Child {
         let nvim_args = {
             let mut a = String::new();
             a.push_str("--cmd 'set shortmess+=I' ");
             a.push_str("--listen ");
             a.push_str(&nvim_listen_addr.to_string_lossy());
-            if let Some(config) = opt.config.clone().or_else(default_config_path) {
+            if let Some(config) = config.or_else(default_config_path) {
                 a.push(' ');
                 a.push_str("-u ");
                 a.push_str(&config);
             }
-            if let Some(custom_args) = opt.arguments.as_ref() {
+            if let Some(custom_args) = custom_args.as_ref() {
                 a.push(' ');
                 a.push_str(custom_args);
             }
             shell_words::split(&a).expect("Cannot parse neovim arguments")
         };
         log::trace!(target: "new neovim process", "Args: {:?}", nvim_args);
+        let tty = fs::OpenOptions::new().read(true)
+            .open("/dev/tty")
+            .expect("Cannot open /dev/tty");
         tokio::process::Command::new("nvim").args(&nvim_args)
-            .stdin(process::Stdio::null())
+            .env_remove("RUST_LOG")
+            .stdin(tty)
             .spawn()
             .expect("Cannot spawn a child neovim process")
     }
