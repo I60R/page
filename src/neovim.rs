@@ -95,7 +95,7 @@ impl NeovimActions {
             };
             format!(" \
                   call nvim_open_win(nvim_create_buf(0, 0), 1, {{ 'relative': 'editor', 'width': {w}, 'height': {h}, 'row': {r}, 'col': {c} }}) \
-                | e {t}
+                | e {t} \
                 | setl winblend=25 \
             ",
                   w = w, h = h, r = r, c = c, t = TERM_URI,
@@ -380,6 +380,7 @@ impl OutputCommands {
         if !writeable {
             edit.push_str(" \
                 | setl nomodifiable \
+                | let map_opts = { 'noremap': v:true, 'nowait': v:true } \
                 | call nvim_buf_set_keymap(0, '', 'I', '<CMD> \
                     | setl scrolloff=0 \
                     | call cursor(9999999999, 9999999999) \
@@ -389,7 +390,7 @@ impl OutputCommands {
                     | redraw \
                     | echohl Comment | echo ''-- [PAGE] in the beginning of scroll --'' | echohl None \
                     | setl scrolloff=999 \
-                    <CR>', { 'noremap': v:true }) \
+                    <CR>', map_opts) \
                 | call nvim_buf_set_keymap(0, '', 'A', '<CMD> \
                     | setl scrolloff=0 \
                     | call cursor(1, 1) \
@@ -399,21 +400,23 @@ impl OutputCommands {
                     | redraw \
                     | echohl Comment | echo ''-- [PAGE] at the end of scroll --'' | echohl None \
                     | setl scrolloff=999 \
-                    <CR>', { 'noremap': v:true }) \
+                    <CR>', map_opts) \
                 | call nvim_buf_set_keymap(0, '', 'i', '<CMD> \
                     | call cursor(9999999999, 9999999999) \
                     | call search(''\\S'') \
                     | call timer_start(100, { -> execute(''au CursorMoved <buffer> ++once echo'') }) \
                     | redraw \
                     | echohl Comment | echo ''-- [PAGE] in the beginning --'' | echohl None \
-                    <CR>', { 'noremap': v:true }) \
+                    <CR>', map_opts) \
                 | call nvim_buf_set_keymap(0, '', 'a', '<CMD> \
                     | call cursor(1, 1) \
                     | call search(''\\S'', ''b'') \
                     | call timer_start(100, { -> execute(''au CursorMoved <buffer> ++once echo'') }) \
                     | redraw \
                     | echohl Comment | echo ''-- [PAGE] at the end --'' | echohl None \
-                    <CR>', { 'noremap': v:true }) \
+                    <CR>', map_opts) \
+                | call nvim_buf_set_keymap(0, '', 'u', '<C-u>', map_opts) \
+                | call nvim_buf_set_keymap(0, '', 'd', '<C-d>', map_opts) \
             ")
         }
         OutputCommands {
