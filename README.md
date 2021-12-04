@@ -54,7 +54,7 @@ OPTIONS:
                                  to <query-lines>]
     -f                           Cursor follows content of output buffer as it appears instead of
                                  keeping top position (like `tail -f`)
-    -F                           Cursor follows content of output and <FIlE> buffers as it appears
+    -F                           Cursor follows content of output and <FILE> buffers as it appears
                                  instead of keeping top position
     -t <filetype>                Set filetype on output buffer (to enable syntax highlighting)
                                  [pager: default; not works with text echoed by -O]
@@ -104,6 +104,8 @@ OPTIONS:
     -R <split-right-cols>        Split right and resize to <split-right-cols> columns
     -U <split-above-rows>        Split above and resize to <split-above-rows> rows
     -D <split-below-rows>        Split below and resize to <split-below-rows> rows
+                                  ^
+    -+                           With any of -r -l -u -d -R -L -U -D open floating window instead of split [to not override data in the current terminal]
                                   ~ ~ ~
     -h, --help                   Prints help information
     -V, --version                Prints version information
@@ -197,7 +199,8 @@ These commands are run on each `page` buffer creation:
 ```viml
 let b:page_alternate_bufnr={initial_buf_nr}
 let b:page_scrolloff_backup=&scrolloff
-setl scrollback=100000 scrolloff=999 signcolumn=no nonumber nomodifiable {filetype}
+set scrolloff=999
+setl scrollback=100000 signcolumn=no nonumber nomodifiable {filetype}
 exe 'au BufEnter <buffer> set scrolloff=999'
 exe 'au BufLeave <buffer> let &scrolloff=b:page_scrolloff_backup'
 {cmd_pre}

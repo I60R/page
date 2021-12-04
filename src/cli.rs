@@ -62,7 +62,7 @@ pub struct Options {
     #[structopt(display_order=5, short="f")]
     pub follow: bool,
 
-    /// Cursor follows content of output and <FIlE> buffers as it appears instead of keeping top position
+    /// Cursor follows content of output and <FILE> buffers as it appears instead of keeping top position
     #[structopt(display_order=6, short="F")]
     pub follow_all: bool,
 

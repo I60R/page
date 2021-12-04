@@ -248,9 +248,10 @@ impl NeovimActions {
         let options = format!(" \
             | let b:page_alternate_bufnr={initial_buf_nr} \
             | let b:page_scrolloff_backup=&scrolloff \
-            | setl scrollback=100000 scrolloff=999 signcolumn=no nonumber {ft} \
+            | set scrolloff=999 \
+            | setl scrollback=100000 signcolumn=no nonumber {ft} \
             {cmd_edit} \
-            | exe 'autocmd BufEnter <buffer> setl scrolloff=999' \
+            | exe 'autocmd BufEnter <buffer> set scrolloff=999' \
             | exe 'autocmd BufLeave <buffer> let &scrolloff=b:page_scrolloff_backup' \
             {cmd_pre} \
             | exe 'silent doautocmd User PageOpen' \
