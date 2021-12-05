@@ -16,16 +16,27 @@ fn _init_logger_() {
     let level_filter: log::LevelFilter = std::str::FromStr::from_str(level).expect("Cannot parse $RUST_LOG value");
     let exec_time = std::time::Instant::now();
     fern::Dispatch::new()
-        .format(move |cb, msg, record| cb.finish(
-            format_args!(
-                "\x1B[1m\x1B[4m[ {:010} | {module} | {target} | {importancy} ]\x1B[0m\n{message}\n",
-                exec_time.elapsed().as_micros(),
-                module = record.module_path().unwrap_or_default(),
-                target = record.target(),
-                importancy = record.level(),
-                message = msg
+        .format(move |cb, msg, record| {
+            let (module, target) = (record.module_path().unwrap_or_default(), record.target());
+            let (target, separator, module) = if module == target {
+                (target, "", "")
+            } else {
+                (target, " in ", module)
+            };
+            let color = if module.starts_with("page") { "" } else { "\x1B[0;90m" }; // grayscale
+            cb.finish(
+                format_args!(
+                    "\x1B[1m\x1B[4m[ {:010} | {importancy:5} | {target}{separator}{module} ]\x1B[0m\n{color}{message}\x1B[0m\n",
+                    exec_time.elapsed().as_micros(),
+                    importancy = record.level(),
+                    target = target,
+                    separator = separator,
+                    module = module,
+                    color = color,
+                    message = msg,
+                )
             )
-        ))
+        })
         .level(level_filter)
         .chain(std::io::stderr())
         .apply()
