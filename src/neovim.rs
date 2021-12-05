@@ -143,13 +143,23 @@ impl NeovimActions {
     }
 
     pub async fn get_current_buffer_pty_path(&mut self) -> PathBuf {
-        let buf_pty_path: PathBuf = self.nvim.eval("nvim_get_chan_info(&channel)").await.expect("Cannot get channel info")
-            .as_map().unwrap()
-            .iter().find(|(k, _)| k.as_str().map(|s| s == "pty").unwrap()).expect("Cannot find 'pty' on channel info")
-            .1.as_str().unwrap()
-            .into();
-        log::trace!(target: "use pty", "{}", buf_pty_path.display());
-        buf_pty_path
+        let pty_fetch_cmd = "\
+            local i = 0
+            while i < 256 do
+                local pty = vim.api.nvim_get_chan_info(vim.bo.channel).pty
+                if pty ~= '' then
+                    return { i, pty }
+                end
+                vim.wait(16, function() end)
+                i = i + 1
+            end
+            error 'No PTY on channel info' \
+        ".replace("\n            ", "\n");
+        log::trace!(target: "use pty", "{}", pty_fetch_cmd);
+        let pty_fetch = self.nvim.execute_lua(&pty_fetch_cmd, vec![]).await.expect("Cannot fetch PTY info");
+        let (i, buf_pty_path) = pty_fetch.as_array().and_then(|a| Some((a.get(0)?.as_u64()?, a.get(1)?.as_str()?))).expect("Wrong PTY info types");
+        log::trace!(target: "use pty", "attempts: {} => {}", i, buf_pty_path);
+        PathBuf::from(buf_pty_path)
     }
 
     pub async fn mark_buffer_as_instance(&mut self, buffer: &Buffer<IoWrite>, inst_name: &str, inst_pty_path: &str) {
@@ -623,7 +633,7 @@ pub mod connection {
                 },
                 Err(e) => {
                     if let std::io::ErrorKind::NotFound = e.kind() {
-                        if i == 512 {
+                        if i == 256 {
                             break e
                         } else {
                             log::trace!(target: "cannot connect to child neovim", "[attempt #{}] address '{:?}': {:?}", i, nvim_listen_addr, e);

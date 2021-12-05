@@ -439,7 +439,7 @@ mod output_buffer_usage {
                     Ok(pty) => return buf_pty.get_or_insert(pty),
                     Err(e) => {
                         if let std::io::ErrorKind::NotFound = e.kind() {
-                            if i == 512 {
+                            if i == 128 {
                                 panic!("Cannot open page PTY: {:?}", e)
                             } else {
                                 log::info!(target: "pty", "cannot open page PTY: {}", i);
