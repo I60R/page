@@ -21,6 +21,7 @@ shell-words = "1.0.0"
 term_size = "0.3.2"
 log = "0.4.14"
 fern = "0.6.0"
+indoc = "1.0.3"
 structopt = { version = "0.3.22", default-features = false, features = [ "color", "wrap_help" ] }
 
 [build-dependencies]

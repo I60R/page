@@ -257,15 +257,14 @@ mod neovim_api_usage {
         /// Also sets some nvim options for better reading experience
         pub async fn create_oneoff_output_buffer(&mut self) -> BufferAndPty {
             let ApiActions { nvim_conn: NeovimConnection { nvim_actions, initial_buf_number, .. }, nvim_ctx } = self;
-            let buf = if nvim_ctx.outp_buf_usage.is_create_split() {
+            let buf_and_pty = if nvim_ctx.outp_buf_usage.is_create_split() {
                 nvim_actions.create_split_output_buffer(&nvim_ctx.opt.output.split).await
             } else {
                 nvim_actions.create_substituting_output_buffer().await
             };
-            let buf_pty_path = nvim_actions.get_current_buffer_pty_path().await;
             let outp_buf_opts = OutputCommands::for_output_buffer(&nvim_ctx.page_id, &nvim_ctx.opt.output);
             nvim_actions.prepare_output_buffer(*initial_buf_number, outp_buf_opts).await;
-            (buf, buf_pty_path)
+            buf_and_pty
         }
     }
 }
@@ -440,29 +439,8 @@ mod output_buffer_usage {
         /// Returns PTY device associated with output buffer.
         /// This function ensures that PTY device is opened only once
         async fn get_buffer_pty(&mut self) -> &mut File {
-            let buf_pty = &mut self.buf_pty;
-            if let Some(buf_pty) = buf_pty {
-                return buf_pty
-            }
-            let mut i = 0;
-            loop {
-                match OpenOptions::new().append(true).open(&self.outp_ctx.buf_pty_path) {
-                    Ok(pty) => return buf_pty.get_or_insert(pty),
-                    Err(e) => {
-                        if let std::io::ErrorKind::NotFound = e.kind() {
-                            if i == 128 {
-                                panic!("Cannot open page PTY: {:?}", e)
-                            } else {
-                                log::info!(target: "pty", "cannot open page PTY: {}", i);
-                                tokio::time::sleep(std::time::Duration::from_millis(8)).await;
-                                i += 1;
-                            }
-                        } else {
-                            panic!("Unexpected error when opening page PTY: {:?}", e)
-                        }
-                    },
-                }
-            }
+            let buf_pty_path = &self.outp_ctx.buf_pty_path;
+            self.buf_pty.get_or_insert_with(|| OpenOptions::new().append(true).open(buf_pty_path).expect("Cannot open PTY device"))
         }
     }
 

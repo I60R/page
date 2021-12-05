@@ -1,18 +1,13 @@
 /// A module that extends neovim api with methods required in page
 
 
-use std::{io, path::PathBuf, pin::Pin, task};
+use std::{io, path::PathBuf, pin::Pin, task, convert::TryInto};
 use parity_tokio_ipc::Connection;
 use tokio::{io::{ReadHalf, WriteHalf}, net::TcpStream, task::JoinHandle};
 use nvim_rs::{compat::tokio::Compat, error::LoopError, error::CallError};
+use indoc::{indoc, formatdoc};
 
 pub use nvim_rs::{neovim::Neovim, Buffer, Window, Value};
-
-
-const TERM_URI: &str = concat!(
-    "term://",     // Shell will be temporarily replaced with /bin/sleep
-    "2147483647d"  // This will sleep for i32::MAX days
-);
 
 pub enum IoRead {
     Ipc(Compat<ReadHalf<Connection>>),
@@ -66,100 +61,111 @@ impl NeovimActions {
         self.nvim.get_current_buf().await
     }
 
-    pub async fn create_substituting_output_buffer(&mut self) -> Buffer<IoWrite> {
-        self.create_buffer(&format!("e {}", TERM_URI)).await
-            .expect("Error when creating output buffer")
+    pub async fn create_substituting_output_buffer(&mut self) -> (Buffer<IoWrite>, PathBuf) {
+        let cmd = indoc! {"
+            local buf = vim.api.nvim_create_buf(true, false)
+            vim.api.nvim_set_current_buf(buf)
+        "};
+        self.create_buffer(&cmd).await.expect("Error when creating output buffer")
     }
 
-    pub async fn create_split_output_buffer(&mut self, opt: &crate::cli::SplitOptions) -> Buffer<IoWrite> {
+    pub async fn create_split_output_buffer(&mut self, opt: &crate::cli::SplitOptions) -> (Buffer<IoWrite>, PathBuf) {
         let cmd = if opt.popup {
-            let (w, h, r, c): (String, String, String, String);
-            if opt.split_right != 0u8 {
-                (w = format!("(((winwidth(0) / 2) * 3) / {})", opt.split_right + 1), h = "winheight(0)".into(), r = "0".into(), c = "winwidth(0)".into())
-            } else if opt.split_left != 0u8 {
-                (w = format!("(((winwidth(0) / 2) * 3) / {})", opt.split_left + 1), h = "winheight(0)".into(), r = "0".into(), c = "0".into())
-            } else if opt.split_below != 0u8 {
-                (h = format!("(((winheight(0) / 2) * 3) / {})", opt.split_below + 1), w = "winwidth(0)".into(), c = "0".into(), r = "winheight(0)".into())
-            } else if opt.split_above != 0u8 {
-                (h = format!("(((winheight(0) / 2) * 3) / {})", opt.split_above + 1), w = "winwidth(0)".into(), c = "0".into(), r = "0".into())
+            let ratio = |w_or_h, size| {
+                format!("math.floor((({} / 2) * 3) / {})", w_or_h, size + 1)
+            };
+            let (width, height, row, col): (String, String, &str, &str);
+            if opt.split_right != 0 {
+                (width = ratio("w", opt.split_right), height = "h".into(), row = "0", col = "w")
+            } else if opt.split_left != 0 {
+                (width = ratio("w", opt.split_left),  height = "h".into(), row = "0", col = "0")
+            } else if opt.split_below != 0 {
+                (width = "w".into(), height = ratio("h", opt.split_below), row = "h", col = "0")
+            } else if opt.split_above != 0 {
+                (width = "w".into(), height = ratio("h", opt.split_above), row = "0", col = "0")
             } else if let Some(split_right_cols) = opt.split_right_cols {
-                (w = split_right_cols.to_string(), h = "winheight(0)".into(), r = "0".into(), c = "winwidth(0)".into())
+                (width = split_right_cols.to_string(), height = "h".into(), row = "0", col = "w")
             } else if let Some(split_left_cols) = opt.split_left_cols {
-                (w = split_left_cols.to_string(), h = "winheight(0)".into(), r = "0".into(), c = "0".into())
+                (width = split_left_cols.to_string(),  height = "h".into(), row = "0", col = "0")
             } else if let Some(split_below_rows) = opt.split_below_rows {
-                (h = split_below_rows.to_string(), w = "winwidth(0)".into(), c = "0".into(), r = "winheight(0)".into())
+                (width = "w".into(), height = split_below_rows.to_string(), row = "h", col = "0")
             } else if let Some(split_above_rows) = opt.split_above_rows {
-                (h = split_above_rows.to_string(), w = "winwidth(0)".into(), c = "0".into(), r = "0".into())
+                (width = "w".into(), height = split_above_rows.to_string(), row = "0", col = "0")
             } else {
                 unreachable!()
             };
-            format!(" \
-                  call nvim_open_win(nvim_create_buf(0, 0), 1, {{ 'relative': 'editor', 'width': {w}, 'height': {h}, 'row': {r}, 'col': {c} }}) \
-                | e {t} \
-                | setl winblend=25 \
+            formatdoc! {"
+                local w, h = vim.api.nvim_win_get_width(0), vim.api.nvim_win_get_height(0)
+                local buf = vim.api.nvim_create_buf(true, false)
+                local win = vim.api.nvim_open_win(buf, true, {{ relative = 'editor', width = {w}, height = {h}, row = {r}, col = {c} }})
+                vim.api.nvim_set_current_win(win)
+                vim.api.nvim_win_set_option(win, 'winblend', 25)
             ",
-                  w = w, h = h, r = r, c = c, t = TERM_URI,
-            )
+                  w = width, h = height, r = row, c = col,
+            }
         } else {
-            let (ver_ratio, hor_ratio) = ("(winwidth(0) / 2) * 3", "(winheight(0) / 2) * 3");
-            if opt.split_right != 0u8 {
-                format!("exe 'belowright ' . ({}/{}) . 'vsplit {}' | set winfixwidth", ver_ratio, opt.split_right + 1, TERM_URI)
-            } else if opt.split_left != 0u8 {
-                format!("exe 'aboveleft ' . ({}/{}) . 'vsplit {}' | set winfixwidth", ver_ratio, opt.split_left + 1, TERM_URI)
-            } else if opt.split_below != 0u8 {
-                format!("exe 'belowright ' . ({}/{}) . 'split {}' | set winfixheight", hor_ratio, opt.split_below + 1, TERM_URI)
-            } else if opt.split_above != 0u8 {
-                format!("exe 'aboveleft ' . ({}/{}) . 'split {}' | set winfixheight", hor_ratio, opt.split_above + 1, TERM_URI)
+            let ratio = |w_or_h, size| {
+                format!("' .. tostring(math.floor((({} / 2) * 3) / {})) .. '", w_or_h, size + 1)
+            };
+            let (direction, size, cmd, option): (&str, String, &str, &str);
+            if opt.split_right != 0 {
+                (direction = "belowright", size = ratio("w", opt.split_right), cmd = "vsplit", option = "winfixwidth")
+            } else if opt.split_left != 0 {
+                (direction = "aboveleft",  size = ratio("w", opt.split_left),  cmd = "vsplit", option = "winfixwidth")
+            } else if opt.split_below != 0 {
+                (direction = "belowright", size = ratio("h", opt.split_below), cmd = "split", option = "winfixheight")
+            } else if opt.split_above != 0 {
+                (direction = "aboveleft",  size = ratio("h", opt.split_above), cmd = "split", option = "winfixheight")
             } else if let Some(split_right_cols) = opt.split_right_cols {
-                format!("belowright {}vsplit {} | set winfixwidth", split_right_cols, TERM_URI)
+                (direction = "belowright", size = split_right_cols.to_string(), cmd = "vsplit", option = "winfixwidth")
             } else if let Some(split_left_cols) = opt.split_left_cols {
-                format!("aboveleft {}vsplit {} | set winfixwidth", split_left_cols, TERM_URI)
+                (direction = "aboveleft",  size = split_left_cols.to_string(),  cmd = "vsplit", option = "winfixwidth")
             } else if let Some(split_below_rows) = opt.split_below_rows {
-                format!("belowright {}split {} | set winfixheight", split_below_rows, TERM_URI)
+                (direction = "belowright", size = split_below_rows.to_string(), cmd = "split", option = "winfixheight")
             } else if let Some(split_above_rows) = opt.split_above_rows {
-                format!("aboveleft {}split {} | set winfixheight", split_above_rows, TERM_URI)
+                (direction = "aboveleft",  size = split_above_rows.to_string(), cmd = "split", option = "winfixheight")
             } else {
                 unreachable!()
+            };
+            formatdoc! {"
+                local prev_win, win = vim.api.nvim_get_current_win()
+                local w, h = vim.api.nvim_win_get_width(prev_win), vim.api.nvim_win_get_height(prev_win)
+                local function do_nothing() end
+                vim.cmd('{d} {s}{c}')
+                local buf = vim.api.nvim_create_buf(true, false)
+                vim.api.nvim_set_current_buf(buf)
+                vim.api.nvim_win_set_option(win, '{o}', true)
+            ",
+                d = direction, s = size, c = cmd, o = option
             }
         };
         self.create_buffer(&cmd).await
             .expect("Error when creating split output buffer")
     }
 
-    async fn create_buffer(&mut self, term_open_cmd: &str) -> Result<Buffer<IoWrite>, Box<CallError>> {
-        let cmd = format!(" \
-              let g:page_shell_backup = [&shell, &shellcmdflag] \
-            | let [&shell, &shellcmdflag] = ['/bin/sleep', ''] \
-            | {term_open_cmd} \
-            | let [&shell, &shellcmdflag] = g:page_shell_backup \
+    async fn create_buffer(&mut self, window_open_cmd: &str) -> Result<(Buffer<IoWrite>, PathBuf), Box<CallError>> {
+        // Shell will be temporarily replaced with /bin/sleep that will halt for i32::MAX days
+        let cmd = formatdoc! {"
+            local shell, shellcmdflag = vim.o.shell, vim.o.shellcmdflag
+            vim.o.shell, vim.o.shellcmdflag = '/bin/sleep', ''
+            {window_open_cmd}
+            local chan = vim.api.nvim_call_function('termopen', {{ '2147483647d' }})
+            vim.o.shell, vim.o.shellcmdflag = shell, shellcmdflag
+            local pty = vim.api.nvim_get_chan_info(chan).pty
+            if pty == '' then error 'No PTY on channel' end
+            return {{ buf, pty }}
         ",
-            term_open_cmd = term_open_cmd
-        );
+            window_open_cmd = window_open_cmd
+        };
         log::trace!(target: "create buffer", "{}", cmd);
-        self.nvim.command(&cmd).await?;
-        let buf = self.get_current_buffer().await?;
-        log::trace!(target: "create buffer", "created: {:?}", buf.get_number().await);
-        Ok(buf)
-    }
-
-    pub async fn get_current_buffer_pty_path(&mut self) -> PathBuf {
-        let pty_fetch_cmd = "\
-            local i = 0
-            while i < 256 do
-                local pty = vim.api.nvim_get_chan_info(vim.bo.channel).pty
-                if pty ~= '' then
-                    return { i, pty }
-                end
-                vim.wait(16, function() end)
-                i = i + 1
-            end
-            error 'No PTY on channel info' \
-        ".replace("\n            ", "\n");
-        log::trace!(target: "use pty", "{}", pty_fetch_cmd);
-        let pty_fetch = self.nvim.execute_lua(&pty_fetch_cmd, vec![]).await.expect("Cannot fetch PTY info");
-        let (i, buf_pty_path) = pty_fetch.as_array().and_then(|a| Some((a.get(0)?.as_u64()?, a.get(1)?.as_str()?))).expect("Wrong PTY info types");
-        log::trace!(target: "use pty", "attempts: {} => {}", i, buf_pty_path);
-        PathBuf::from(buf_pty_path)
+        let tup: Vec<Value> = self.nvim.execute_lua(&cmd, vec![]).await?.clone().try_into()?;
+        let (buf_val, pty_val) = (
+            tup.get(0).ok_or_else(|| CallError::NeovimError(None, "No buf handle".into()))?.clone(),
+            tup.get(1).ok_or_else(|| CallError::NeovimError(None, "No pty handle".into()))?.clone(),
+        );
+        let buf = Buffer::new(buf_val, self.nvim.clone());
+        let pty = PathBuf::from(pty_val.as_str().ok_or_else(|| CallError::NeovimError(None, "PTY not a string".into()))?);
+        Ok((buf, pty))
     }
 
     pub async fn mark_buffer_as_instance(&mut self, buffer: &Buffer<IoWrite>, inst_name: &str, inst_pty_path: &str) {
