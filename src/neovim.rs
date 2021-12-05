@@ -175,22 +175,14 @@ impl NeovimActions {
         for buf in all_bufs {
             let inst_var = buf.get_var("page_instance").await;
             log::trace!(target: "instances", "{:?} => {}: {:?}", buf.get_number().await, inst_name, inst_var);
-            match inst_var {
-                Err(e) => {
-                    let descr = e.to_string();
-                    if descr != "1 - Key 'page_instance' not found"
-                    && descr != "1 - Key not found: page_instance" { // For newer neovim versions
-                        panic!("Error when getting instance mark: {}", e);
-                    }
-                }
+            match inst_var.map_err(|e| *e) {
+                Err(CallError::NeovimError(_, msg)) if msg == "Key not found: page_instance" => continue,
+                Err(e) => panic!("Error when getting instance mark: {:?}", e),
                 Ok(v) => {
-                    if let Some(arr) = v.as_array().map(|a|a.iter().map(Value::as_str).collect::<Vec<_>>()) {
-                        if let [Some(inst_name_found), Some(inst_pty_path)] = arr[..] {
-                            log::trace!(target: "found instance", "{}->{}", inst_name_found, inst_pty_path);
-                            if inst_name == inst_name_found {
-                                let sink = PathBuf::from(inst_pty_path.to_string());
-                                return Some((buf, sink))
-                            }
+                    if let Some((inst_name_found, inst_pty_path)) = v.as_array().and_then(|a| Some((a.get(0)?.as_str()?, a.get(1)?.as_str()?))) {
+                        log::trace!(target: "found instance", "{}->{}", inst_name_found, inst_pty_path);
+                        if inst_name == inst_name_found {
+                            return Some((buf, PathBuf::from(inst_pty_path.to_string())))
                         }
                     }
                 }

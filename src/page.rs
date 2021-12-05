@@ -69,7 +69,7 @@ fn _dump_prefetched_lines_and_exit_(lines: Vec<String>, filetype: &str) -> ! {
     let (stdout, mut stdout_lock);
     let mut bat_proc = None;
     let output: &mut dyn io::Write = {
-        if !filetype.is_empty() {
+        if !filetype.is_empty() && filetype != "pager" {
             match process::Command::new("bat")
                 .arg("--plain")
                 .arg("--paging=never")
