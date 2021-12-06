@@ -147,7 +147,7 @@ impl NeovimActions {
         // Shell will be temporarily replaced with /bin/sleep that will halt for i32::MAX days
         let cmd = formatdoc! {"
             local shell, shellcmdflag = vim.o.shell, vim.o.shellcmdflag
-            vim.o.shell, vim.o.shellcmdflag = '/bin/sleep', ''
+            vim.o.shell, vim.o.shellcmdflag = 'sleep', ''
             {window_open_cmd}
             local chan = vim.api.nvim_call_function('termopen', {{ '2147483647d' }})
             vim.o.shell, vim.o.shellcmdflag = shell, shellcmdflag
