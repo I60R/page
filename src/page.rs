@@ -256,13 +256,13 @@ mod neovim_api_usage {
         /// Creates a new output buffer using split window if required.
         /// Also sets some nvim options for better reading experience
         pub async fn create_oneoff_output_buffer(&mut self) -> BufferAndPty {
-            let ApiActions { nvim_conn: NeovimConnection { nvim_actions, initial_buf_number, .. }, nvim_ctx } = self;
+            let ApiActions { nvim_conn: NeovimConnection { nvim_actions, initial_buf_number, channel, .. }, nvim_ctx } = self;
             let buf_and_pty = if nvim_ctx.outp_buf_usage.is_create_split() {
                 nvim_actions.create_split_output_buffer(&nvim_ctx.opt.output.split).await
             } else {
                 nvim_actions.create_substituting_output_buffer().await
             };
-            let outp_buf_opts = OutputCommands::for_output_buffer(&nvim_ctx.page_id, &nvim_ctx.opt.output);
+            let outp_buf_opts = OutputCommands::for_output_buffer(&nvim_ctx.page_id, *channel, &nvim_ctx.opt.output);
             nvim_actions.prepare_output_buffer(*initial_buf_number, outp_buf_opts).await;
             buf_and_pty
         }
@@ -325,7 +325,7 @@ mod output_buffer_usage {
             if outp_ctx.inst_usage.is_enabled_and_should_be_focused() {
                 nvim_actions.focus_instance_buffer(&buf).await;
                 if outp_ctx.inst_usage.is_enabled_and_should_replace_its_content() {
-                    writeln!(self.get_buffer_pty().await, "\x1B[3J\x1B[H\x1b[2J").expect("Cannot write clear screen sequence");
+                    writeln!(self.get_buffer_pty(), "\x1B[3J\x1B[H\x1b[2J").expect("Cannot write clear screen sequence");
                 }
             }
         }
@@ -372,13 +372,13 @@ mod output_buffer_usage {
             if self.outp_ctx.input_from_pipe {
                 // First write all prefetched lines if any available
                 for ln in self.outp_ctx.prefetched_lines.as_slice() {
-                    write!(self.get_buffer_pty().await, "{}", ln).expect("Cannot write next prefetched line");
+                    write!(self.get_buffer_pty(), "{}", ln).expect("Cannot write next prefetched line");
                 }
                 // Then copy the rest of lines from stdin into buffer pty
                 let stdin = std::io::stdin();
                 let mut stdin_lock = stdin.lock();
                 if !self.outp_ctx.is_query_enabled() {
-                    std::io::copy(&mut stdin_lock, self.get_buffer_pty().await).expect("Read from stdin failed unexpectedly");
+                    std::io::copy(&mut stdin_lock, self.get_buffer_pty()).expect("Read from stdin failed unexpectedly");
                     return
                 }
                 // If query (-q) is enabled then wait for it
@@ -395,7 +395,7 @@ mod output_buffer_usage {
                         }
                     }
                     match stdin_lines.next() {
-                        Some(Ok(ln)) => writeln!(self.get_buffer_pty().await, "{}", ln).expect("Cannot write next line"),
+                        Some(Ok(ln)) => writeln!(self.get_buffer_pty(), "{}", ln).expect("Cannot write next line"),
                         Some(Err(e)) => {
                             log::warn!(target: "output", "Error reading line from stdin: {}", e);
                             break
@@ -438,7 +438,7 @@ mod output_buffer_usage {
 
         /// Returns PTY device associated with output buffer.
         /// This function ensures that PTY device is opened only once
-        async fn get_buffer_pty(&mut self) -> &mut File {
+        fn get_buffer_pty(&mut self) -> &mut File {
             let buf_pty_path = &self.outp_ctx.buf_pty_path;
             self.buf_pty.get_or_insert_with(|| OpenOptions::new().append(true).open(buf_pty_path).expect("Cannot open PTY device"))
         }

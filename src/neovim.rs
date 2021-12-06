@@ -454,18 +454,19 @@ impl OutputCommands {
         cmds
     }
 
-    pub fn for_output_buffer(page_id: &str, opt: &crate::cli::OutputOptions) -> OutputCommands {
+    pub fn for_output_buffer(page_id: &str, channel: u64, opt: &crate::cli::OutputOptions) -> OutputCommands {
         let mut cmds = Self::create_with(opt.command.as_deref().unwrap_or_default(), opt.writable);
         cmds.ft = format!("vim.bo.filetype = '{}'", opt.filetype);
         if opt.query_lines != 0usize {
             cmds.pre = formatdoc! {r#"
                 {prefix}
-                vim.cmd 'command! -nargs=? Page call rpcnotify(0, "page_fetch_lines", "{page_id}", <args>)'
-                vim.cmd 'autocmd BufEnter <buffer> command! -nargs=? Page call rpcnotify(0, "page_fetch_lines", "{page_id}", <args>)'
-                vim.cmd 'autocmd BufDelete <buffer> call rpcnotify(0, "page_buffer_closed", "{page_id}")'
+                vim.cmd 'command! -nargs=? Page call rpcnotify({channel}, "page_fetch_lines", "{page_id}", <args>)'
+                vim.cmd 'autocmd BufEnter <buffer> command! -nargs=? Page call rpcnotify({channel}, "page_fetch_lines", "{page_id}", <args>)'
+                vim.cmd 'autocmd BufDelete <buffer> call rpcnotify({channel}, "page_buffer_closed", "{page_id}")'
             "#,
                 prefix = cmds.pre,
                 page_id = page_id,
+                channel = channel,
             };
         }
         if opt.pwd {
@@ -546,6 +547,7 @@ pub struct NeovimConnection {
     pub nvim_proc: Option<JoinHandle<tokio::process::Child>>,
     pub nvim_actions: NeovimActions,
     pub initial_buf_number: i64,
+    pub channel: u64,
     pub initial_win_and_buf: (Window<IoWrite>, Buffer<IoWrite>),
     pub rx: tokio::sync::mpsc::Receiver<NotificationFromNeovim>,
 }
@@ -592,15 +594,17 @@ pub mod connection {
                 (nvim, io_handle)
             }
         };
+        let channel = nvim.get_api_info().await.expect("No API info").get(0).expect("No channel").as_u64().expect("Channel not a number");
         let initial_win = nvim.get_current_win().await.expect("Cannot get initial window");
         let initial_buf = nvim.get_current_buf().await.expect("Cannot get initial buffer");
         let initial_buf_number = initial_buf.get_number().await.expect("Cannot get initial buffer number");
         NeovimConnection {
+            nvim_proc,
             nvim_actions: NeovimActions { nvim, join },
             initial_buf_number,
+            channel,
             initial_win_and_buf: (initial_win, initial_buf),
-            rx,
-            nvim_proc
+            rx
         }
     }
 
