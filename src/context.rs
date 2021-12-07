@@ -107,7 +107,7 @@ pub struct UsageContext {
     pub opt: crate::cli::Options,
     pub page_id: String,
     pub tmp_dir: std::path::PathBuf,
-    pub prefetched_lines: Vec<String>,
+    pub prefetched_lines: check_usage::PrefetchedLines,
     pub input_from_pipe: bool,
     pub print_protection: bool,
     pub outp_buf_implied: bool,
@@ -127,9 +127,10 @@ impl UsageContext {
 pub mod check_usage {
     use super::{EnvContext, UsageContext};
 
-    pub fn enter(prefetched_lines: Vec<String>, env_ctx: EnvContext) -> UsageContext {
+    pub fn enter(prefetched_lines_vec: Vec<String>, env_ctx: EnvContext) -> UsageContext {
         let outp_buf_implied = env_ctx.is_output_buffer_creation_implied();
         let EnvContext { input_from_pipe, opt, split_buf_implied, .. } = env_ctx;
+        let prefetched_lines = PrefetchedLines(prefetched_lines_vec);
         let tmp_dir = {
             let d = std::env::temp_dir().join("neovim-page");
             std::fs::create_dir_all(&d).expect("Cannot create temporary directory for page");
@@ -157,6 +158,13 @@ pub mod check_usage {
             prefetched_lines,
         }
     }
+    pub struct PrefetchedLines(pub Vec<String>);
+
+    impl std::fmt::Debug for PrefetchedLines {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{} Strings", self.0.len())
+        }
+    }
 }
 
 
@@ -165,7 +173,7 @@ pub mod check_usage {
 pub struct NeovimContext {
     pub opt: crate::cli::Options,
     pub page_id: String,
-    pub prefetched_lines: Vec<String>,
+    pub prefetched_lines: check_usage::PrefetchedLines,
     pub inst_usage: connect_neovim::InstanceUsage,
     pub outp_buf_usage: connect_neovim::OutputBufferUsage,
     pub nvim_child_proc_spawned: bool,
@@ -281,7 +289,7 @@ pub mod connect_neovim {
 pub struct OutputContext {
     pub opt: crate::cli::Options,
     pub buf_pty_path: std::path::PathBuf,
-    pub prefetched_lines: Vec<String>,
+    pub prefetched_lines: check_usage::PrefetchedLines,
     pub inst_usage: connect_neovim::InstanceUsage,
     pub restore_initial_buf_focus: output_buffer_available::RestoreInitialBufferFocus,
     pub input_from_pipe: bool,

@@ -371,7 +371,7 @@ mod output_buffer_usage {
         pub async fn handle_output(&mut self) {
             if self.outp_ctx.input_from_pipe {
                 // First write all prefetched lines if any available
-                for ln in self.outp_ctx.prefetched_lines.as_slice() {
+                for ln in self.outp_ctx.prefetched_lines.0.as_slice() {
                     write!(self.get_buffer_pty(), "{}", ln).expect("Cannot write next prefetched line");
                 }
                 // Then copy the rest of lines from stdin into buffer pty
@@ -391,7 +391,11 @@ mod output_buffer_usage {
                         match self.nvim_conn.rx.recv().await {
                             Some(NotificationFromNeovim::FetchLines(n)) => s.next_part(n),
                             Some(NotificationFromNeovim::FetchPart) => s.next_part(self.outp_ctx.opt.output.query_lines),
-                            _ => break
+                            Some(NotificationFromNeovim::BufferClosed) => return,
+                            None => {
+                                log::info!(target: "output", "Neovim was closed, not all input is shown");
+                                std::process::exit(0)
+                            }
                         }
                     }
                     match stdin_lines.next() {
@@ -428,6 +432,10 @@ mod output_buffer_usage {
                 }
                 nvim_actions.execute_disconnect_autocmd_on_current_buffer().await;
                 if switched {
+                    if !active_buf.is_loaded().await.expect("Cannot check if buffer loaded") {
+                        // Page buffer probably was closed in autocommand
+                        return
+                    }
                     nvim_actions.switch_to_buffer(&active_buf).await.expect("Cannot switch back to active buffer");
                     if initial_win_and_buf.1 == active_buf && outp_ctx.restore_initial_buf_focus.is_vi_mode_insert() {
                         nvim_actions.set_current_buffer_insert_mode().await;
