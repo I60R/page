@@ -129,7 +129,7 @@ async fn connect_neovim(cli_ctx: context::UsageContext) {
         context::connect_neovim::enter(cli_ctx)
     };
     manage_page_state(&mut nvim_conn, nvim_ctx).await;
-    neovim::connection::close(nvim_conn).await;
+    neovim::connection::close_and_exit(&mut nvim_conn).await;
 }
 
 fn _init_panic_hook_() {
@@ -270,15 +270,17 @@ mod neovim_api_usage {
 }
 
 mod output_buffer_usage {
-    use crate::{context::OutputContext, neovim::{Buffer, IoWrite, NeovimConnection, NotificationFromNeovim}};
-    use std::{fs::{File, OpenOptions}, io::{BufRead, Write}};
+    use crate::{context::OutputContext, neovim::{self, Buffer, IoWrite, NeovimConnection, NotificationFromNeovim}};
+
+    use tokio::io::AsyncWriteExt;
+    use std::io::{self, BufRead};
 
     /// This struct implements actions that should be done after output buffer is attached
     pub struct BufferActions<'a> {
         nvim_conn: &'a mut NeovimConnection,
         outp_ctx: &'a OutputContext,
         buf: Buffer<IoWrite>,
-        buf_pty: Option<File>,
+        buf_pty: Option<tokio::fs::File>,
     }
 
     pub fn begin<'a>(nvim_conn: &'a mut NeovimConnection, outp_ctx: &'a OutputContext, buf: Buffer<IoWrite>) -> BufferActions<'a> {
@@ -325,7 +327,7 @@ mod output_buffer_usage {
             if outp_ctx.inst_usage.is_enabled_and_should_be_focused() {
                 nvim_actions.focus_instance_buffer(&buf).await;
                 if outp_ctx.inst_usage.is_enabled_and_should_replace_its_content() {
-                    writeln!(self.get_buffer_pty(), "\x1B[3J\x1B[H\x1b[2J").expect("Cannot write clear screen sequence");
+                    self.get_buffer_pty().await.write_all(b"\x1B[3J\x1B[H\x1b[2J").await.expect("Cannot write clear screen sequence");
                 }
             }
         }
@@ -372,17 +374,27 @@ mod output_buffer_usage {
             if self.outp_ctx.input_from_pipe {
                 // First write all prefetched lines if any available
                 for ln in self.outp_ctx.prefetched_lines.0.as_slice() {
-                    write!(self.get_buffer_pty(), "{}", ln).expect("Cannot write next prefetched line");
+                    self.display_line(ln.as_bytes()).await.expect("Cannot write next prefetched line");
                 }
                 // Then copy the rest of lines from stdin into buffer pty
                 let stdin = std::io::stdin();
-                let mut stdin_lock = stdin.lock();
+                let (mut buf, mut stdin_lines) = (String::with_capacity(4096), stdin.lock());
                 if !self.outp_ctx.is_query_enabled() {
-                    std::io::copy(&mut stdin_lock, self.get_buffer_pty()).expect("Read from stdin failed unexpectedly");
-                    return
+                    loop {
+                        match stdin_lines.read_line(&mut buf) {
+                            Ok(0) => return,
+                            Ok(_) => {
+                                self.display_line(buf.as_bytes()).await.expect("Write to PTY failed unexpectedly");
+                                buf.clear();
+                            }
+                            Err(e) => {
+                                log::warn!(target: "output", "Error reading line from stdin: {}", e);
+                                return
+                            }
+                        }
+                    }
                 }
                 // If query (-q) is enabled then wait for it
-                let mut stdin_lines = stdin_lock.lines();
                 let mut s = QueryState::default();
                 s.next_part(self.outp_ctx.opt.output.query_lines);
                 loop {
@@ -393,19 +405,22 @@ mod output_buffer_usage {
                             Some(NotificationFromNeovim::FetchPart) => s.next_part(self.outp_ctx.opt.output.query_lines),
                             Some(NotificationFromNeovim::BufferClosed) => return,
                             None => {
-                                log::info!(target: "output", "Neovim was closed, not all input is shown");
-                                std::process::exit(0)
+                                log::info!(target: "output", "Neovim was closed, not all pages are shown");
+                                neovim::connection::close_and_exit(self.nvim_conn).await
                             }
                         }
                     }
-                    match stdin_lines.next() {
-                        Some(Ok(ln)) => writeln!(self.get_buffer_pty(), "{}", ln).expect("Cannot write next line"),
-                        Some(Err(e)) => {
-                            log::warn!(target: "output", "Error reading line from stdin: {}", e);
+                    match stdin_lines.read_line(&mut buf) {
+                        Ok(0) => {
+                            self.nvim_conn.nvim_actions.notify_query_finished(s.how_many_lines_was_sent()).await;
                             break
                         }
-                        None => {
-                            self.nvim_conn.nvim_actions.notify_query_finished(s.how_many_lines_was_sent()).await;
+                        Ok(_) => {
+                            self.display_line(buf.as_bytes()).await.expect("Cannot write next line");
+                            buf.clear()
+                        }
+                        Err(e) => {
+                            log::warn!(target: "output", "Error reading line from stdin: {}", e);
                             break
                         }
                     }
@@ -416,6 +431,28 @@ mod output_buffer_usage {
             if self.outp_ctx.print_output_buf_pty {
                 println!("{}", self.outp_ctx.buf_pty_path.to_string_lossy());
             }
+        }
+
+        /// Writes line to PTY device and gracefully handles failures: if error occurs then page waits for
+        /// "page_buffer_closed" notification that's sent on BufDelete event and signals that buffer was
+        /// closed intentionally, so page must just exit. If no such notification was arrived then page
+        /// crashes with the received IO error
+        async fn display_line(&mut self, ln: &[u8]) -> io::Result<()> {
+            if let Err(e) = self.get_buffer_pty().await.write_all(ln).await {
+                log::info!(target: "writeline", "got error: {:?}", e);
+                match tokio::time::timeout(std::time::Duration::from_secs(1), self.nvim_conn.rx.recv()).await {
+                    Ok(Some(NotificationFromNeovim::BufferClosed)) => {
+                        log::info!(target: "writeline", "Buffer was closed, not all input is shown");
+                        neovim::connection::close_and_exit(self.nvim_conn).await
+                    },
+                    Ok(None) if self.nvim_conn.nvim_proc.is_some() => {
+                        log::info!(target: "writeline", "Neovim was closed, not all input is shown");
+                        neovim::connection::close_and_exit(self.nvim_conn).await
+                    },
+                    _ => return Err(e),
+                }
+            }
+            Ok(())
         }
 
         /// Executes PageDisconnect autocommand if -C flag was provided.
@@ -446,9 +483,12 @@ mod output_buffer_usage {
 
         /// Returns PTY device associated with output buffer.
         /// This function ensures that PTY device is opened only once
-        fn get_buffer_pty(&mut self) -> &mut File {
-            let buf_pty_path = &self.outp_ctx.buf_pty_path;
-            self.buf_pty.get_or_insert_with(|| OpenOptions::new().append(true).open(buf_pty_path).expect("Cannot open PTY device"))
+        async fn get_buffer_pty(&mut self) -> &mut tokio::fs::File {
+            if let Some(ref mut pty) = self.buf_pty {
+                pty
+            } else {
+                self.buf_pty.insert(tokio::fs::OpenOptions::new().append(true).open(&self.outp_ctx.buf_pty_path).await.expect("Cannot open PTY device"))
+            }
         }
     }
 

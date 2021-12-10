@@ -253,7 +253,7 @@ impl NeovimActions {
     }
 
     pub async fn prepare_output_buffer(&mut self, initial_buf_nr: i64, cmds: OutputCommands) {
-        let options = formatdoc! {"
+        let options = formatdoc! {r#"
             vim.b.page_alternate_bufnr = {initial_buf_nr}
             if vim.wo.scrolloff > 999 or vim.wo.scrolloff < 0 then
                 vim.g.page_scrolloff_backup = 0
@@ -265,16 +265,18 @@ impl NeovimActions {
             {cmd_edit}
             vim.cmd 'autocmd BufEnter <buffer> lua vim.wo.scrolloff = 999'
             vim.cmd 'autocmd BufLeave <buffer> lua vim.wo.scrolloff = vim.g.page_scrolloff_backup'
+            {cmd_notify_closed}
             {cmd_pre}
             vim.cmd 'silent doautocmd User PageOpen | redraw'
             {cmd_provided_by_user}
             {cmd_post}
-        ",
+        "#,
             ft = cmds.ft,
             initial_buf_nr = initial_buf_nr,
             cmd_edit = cmds.edit,
-            cmd_provided_by_user = cmds.provided_by_user,
+            cmd_notify_closed = cmds.notify_closed,
             cmd_pre = cmds.pre,
+            cmd_provided_by_user = cmds.provided_by_user,
             cmd_post = cmds.post,
         };
         log::trace!(target: "prepare output", "{}", options);
@@ -385,9 +387,10 @@ impl NeovimActions {
 pub struct OutputCommands {
     edit: String,
     ft: String,
+    notify_closed: String,
     pre: String,
-    post: String,
     provided_by_user: String,
+    post: String,
 }
 
 impl OutputCommands {
@@ -443,6 +446,7 @@ impl OutputCommands {
             ft: String::new(),
             pre: String::new(),
             post: String::new(),
+            notify_closed: String::new(),
             edit,
             provided_by_user,
         }
@@ -457,12 +461,17 @@ impl OutputCommands {
     pub fn for_output_buffer(page_id: &str, channel: u64, opt: &crate::cli::OutputOptions) -> OutputCommands {
         let mut cmds = Self::create_with(opt.command.as_deref().unwrap_or_default(), opt.writable);
         cmds.ft = format!("vim.bo.filetype = '{}'", opt.filetype);
+        cmds.notify_closed = formatdoc! {r#"
+            vim.cmd 'autocmd BufDelete <buffer> silent! call rpcnotify({channel}, "page_buffer_closed", "{page_id}")'
+        "#,
+            channel = channel,
+            page_id = page_id,
+        };
         if opt.query_lines != 0usize {
             cmds.pre = formatdoc! {r#"
                 {prefix}
                 vim.cmd 'command! -nargs=? Page call rpcnotify({channel}, "page_fetch_lines", "{page_id}", <args>)'
                 vim.cmd 'autocmd BufEnter <buffer> command! -nargs=? Page call rpcnotify({channel}, "page_fetch_lines", "{page_id}", <args>)'
-                vim.cmd 'autocmd BufDelete <buffer> call rpcnotify({channel}, "page_buffer_closed", "{page_id}")'
             "#,
                 prefix = cmds.pre,
                 page_id = page_id,
@@ -609,12 +618,13 @@ pub mod connection {
     }
 
     /// Waits until child neovim closes. If no child neovim process spawned then it's safe to just exit from page
-    pub async fn close(nvim_connection: NeovimConnection) {
-        if let Some(process) = nvim_connection.nvim_proc {
+    pub async fn close_and_exit(nvim_connection: &mut NeovimConnection) -> ! {
+        if let Some(ref mut process) = nvim_connection.nvim_proc {
             process.await.expect("Neovim spawned with error")
                 .wait().await.expect("Neovim process died unexpectedly");
         }
         nvim_connection.nvim_actions.join.abort();
+        std::process::exit(0)
     }
 
     /// Creates a new session using UNIX socket.
