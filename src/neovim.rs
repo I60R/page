@@ -61,12 +61,19 @@ impl NeovimActions {
         self.nvim.get_current_buf().await
     }
 
-    pub async fn create_substituting_output_buffer(&mut self) -> (Buffer<IoWrite>, PathBuf) {
+    pub async fn create_replacing_output_buffer(&mut self) -> (Buffer<IoWrite>, PathBuf) {
+        let cmd = indoc! {"
+            local buf = vim.api.nvim_get_current_buf()
+        "};
+        self.create_buffer(cmd).await.expect("Error when creating output buffer from current")
+    }
+
+    pub async fn create_switching_output_buffer(&mut self) -> (Buffer<IoWrite>, PathBuf) {
         let cmd = indoc! {"
             local buf = vim.api.nvim_create_buf(true, false)
             vim.api.nvim_set_current_buf(buf)
         "};
-        self.create_buffer(&cmd).await.expect("Error when creating output buffer")
+        self.create_buffer(cmd).await.expect("Error when creating output buffer")
     }
 
     pub async fn create_split_output_buffer(&mut self, opt: &crate::cli::SplitOptions) -> (Buffer<IoWrite>, PathBuf) {
