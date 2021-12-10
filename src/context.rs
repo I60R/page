@@ -5,7 +5,7 @@
 #[derive(Debug)]
 pub struct EnvContext {
     pub opt: crate::cli::Options,
-    pub echo_lines: usize,
+    pub prefetch_lines_count: usize,
     pub input_from_pipe: bool,
     pub split_buf_implied: bool,
 }
@@ -80,23 +80,23 @@ pub mod gather_env {
             }
             // Override -O by -o, -p and -x flags and when page don't read from pipe
             if opt.output_open || opt.pty_path_print || opt.instance_close.is_some() || !input_from_pipe {
-                opt.output.open_lines = None;
+                opt.output.noopen_lines = None;
             }
             opt
         };
-        let echo_lines = opt.output.open_lines.clone()
+        let prefetch_lines_count = opt.output.noopen_lines.clone()
             .map(|number| match number {
                 Some(pos @ 0..) => pos as usize,
                 neg @ (Some(_) | None) => {
                     let term_height = term_size::dimensions().map(|(_w, h)| h).expect("Cannot get terminal height");
-                    term_height.saturating_sub(neg.unwrap_or(2).abs() as usize)
+                    term_height.saturating_sub(neg.unwrap_or(3).abs() as usize)
                 }
             })
             .unwrap_or(0);
         {
             let mut env_ctx = EnvContext {
                 opt,
-                echo_lines,
+                prefetch_lines_count,
                 input_from_pipe,
                 split_buf_implied: false,
             };

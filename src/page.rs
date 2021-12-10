@@ -46,17 +46,15 @@ fn _init_logger_() {
 
 async fn prefetch_lines(env_ctx: context::EnvContext) {
     log::info!(target: "context", "{:#?}", &env_ctx);
-    let mut prefetched_lines = Vec::with_capacity(env_ctx.echo_lines + 1);
-    while prefetched_lines.len() < env_ctx.echo_lines {
-        let mut line = String::new();
+    let mut prefetched_lines = Vec::with_capacity(env_ctx.prefetch_lines_count + 1);
+    while prefetched_lines.len() <= env_ctx.prefetch_lines_count {
+        let mut line = String::with_capacity(512);
         let remain = std::io::stdin().read_line(&mut line).expect("Failed to prefetch line from stdin");
+        line.shrink_to_fit();
         prefetched_lines.push(line);
         if remain == 0 {
             _dump_prefetched_lines_and_exit_(prefetched_lines, &env_ctx.opt.output.filetype)
         }
-    }
-    if env_ctx.echo_lines - prefetched_lines.len() > 0 {
-        _dump_prefetched_lines_and_exit_(prefetched_lines, &env_ctx.opt.output.filetype)
     }
     _warn_incompatible_options_(&env_ctx);
     let cli_ctx = context::check_usage::enter(prefetched_lines, env_ctx);
@@ -380,7 +378,7 @@ mod output_buffer_usage {
                 }
                 // Then copy the rest of lines from stdin into buffer pty
                 let stdin = std::io::stdin();
-                let (mut buf, mut stdin_lines) = (String::with_capacity(4096), stdin.lock());
+                let (mut buf, mut stdin_lines) = (String::with_capacity(2048), stdin.lock());
                 if !self.outp_ctx.is_query_enabled() {
                     loop {
                         match stdin_lines.read_line(&mut buf) {
