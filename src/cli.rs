@@ -9,7 +9,7 @@ use structopt::{
 #[structopt(
     author,
     about,
-    global_settings = &[ColoredHelp, DisableHelpSubcommand, UnifiedHelpMessage],
+    global_settings = &[ColoredHelp, DisableHelpSubcommand, UnifiedHelpMessage, AllowNegativeNumbers],
     group = splits_arg_group(),
     group = back_arg_group(),
     group = follow_arg_group(),
@@ -103,10 +103,10 @@ pub struct OutputOptions {
     #[structopt(display_order=104, short="e")]
     pub command: Option<String>,
 
-    /// Prefetch <open-lines> from page's stdin: if input is smaller then print it to stdout and exit without neovim usage [empty: term
-    /// height; 0: disabled and default; ignored with -o, -p, -x and when page isn't piped]
+    /// Prefetch <open-lines> from page's stdin: if input is smaller then print it to stdout and exit without neovim usage [empty: term height - 3 (space for prompt);
+    /// negative: term height - <open-lines>; 0: disabled and default; ignored with -o, -p, -x and when page isn't piped]
     #[structopt(display_order=1, short="O")]
-    pub open_lines: Option<Option<usize>>,
+    pub open_lines: Option<Option<isize>>,
 
     /// Read no more than <query-lines> from page's stdin: next lines should be fetched by invoking :Page <query> command on neovim side
     /// [0: disabled and default; <query> is optional and defaults to <query-lines>]

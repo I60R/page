@@ -46,16 +46,16 @@ fn _init_logger_() {
 
 async fn prefetch_lines(env_ctx: context::EnvContext) {
     log::info!(target: "context", "{:#?}", &env_ctx);
-    let mut prefetched_lines = Vec::with_capacity(env_ctx.echo_lines);
-    while env_ctx.echo_lines > prefetched_lines.len() {
+    let mut prefetched_lines = Vec::with_capacity(env_ctx.echo_lines + 1);
+    while prefetched_lines.len() < env_ctx.echo_lines {
         let mut line = String::new();
         let remain = std::io::stdin().read_line(&mut line).expect("Failed to prefetch line from stdin");
         prefetched_lines.push(line);
-        if remain == 0usize {
-            break
+        if remain == 0 {
+            _dump_prefetched_lines_and_exit_(prefetched_lines, &env_ctx.opt.output.filetype)
         }
     }
-    if env_ctx.echo_lines - prefetched_lines.len() > 0usize {
+    if env_ctx.echo_lines - prefetched_lines.len() > 0 {
         _dump_prefetched_lines_and_exit_(prefetched_lines, &env_ctx.opt.output.filetype)
     }
     _warn_incompatible_options_(&env_ctx);

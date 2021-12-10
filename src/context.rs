@@ -85,7 +85,13 @@ pub mod gather_env {
             opt
         };
         let echo_lines = opt.output.open_lines.clone()
-            .map(|e| e.unwrap_or_else(|| term_size::dimensions().map(|(_w, h)| h).expect("Cannot get terminal height")))
+            .map(|number| match number {
+                Some(pos @ 0..) => pos as usize,
+                neg @ (Some(_) | None) => {
+                    let term_height = term_size::dimensions().map(|(_w, h)| h).expect("Cannot get terminal height");
+                    term_height.saturating_sub(neg.unwrap_or(2).abs() as usize)
+                }
+            })
             .unwrap_or(0);
         {
             let mut env_ctx = EnvContext {
