@@ -18,7 +18,7 @@ impl EnvContext {
 
     pub fn is_split_flag_given_without_address(&self) -> bool {
         let EnvContext { opt, .. } = self;
-        opt.address.is_none() && opt.output.split.implied
+        opt.address.is_none() && opt.is_output_split_implied()
     }
 
     pub fn is_back_flag_given_without_address(&self) -> bool {
@@ -44,15 +44,17 @@ pub mod gather_env {
             }
             opt
         };
-        let mut term_height = None;
+        let term_height = once_cell::unsync::Lazy::new(|| {
+            term_size::dimensions().map(|(_w, h)| h).expect("Cannot get terminal height")
+        });
         let prefetch_lines_count = match opt.output.noopen_lines.clone() {
             Some(Some(positive_number @ 0..)) => positive_number as usize,
-            Some(negative_or_none) => term_height.get_or_insert_with(get_terminal_height).saturating_sub(negative_or_none.unwrap_or(3).abs() as usize),
+            Some(negative_or_none) => term_height.saturating_sub(negative_or_none.unwrap_or(3).abs() as usize),
             None => 0
         };
         let query_lines_count = match opt.output.query_lines.clone() {
             Some(Some(positive_number @ 0..)) => positive_number as usize,
-            Some(negative_or_none) => term_height.get_or_insert_with(get_terminal_height).saturating_sub(negative_or_none.unwrap_or(3).abs() as usize),
+            Some(negative_or_none) => term_height.saturating_sub(negative_or_none.unwrap_or(3).abs() as usize),
             None => 0
         };
         EnvContext {
@@ -61,10 +63,6 @@ pub mod gather_env {
             query_lines_count,
             input_from_pipe,
         }
-    }
-
-    fn get_terminal_height() -> usize {
-        term_size::dimensions().map(|(_width, height)| height).expect("Cannot get terminal height")
     }
 }
 
@@ -181,9 +179,9 @@ pub mod connect_neovim {
         } else {
             InstanceUsage::Disabled
         };
-        let outp_buf_usage = if opt.output.split.implied {
+        let outp_buf_usage = if opt.is_output_split_implied() {
             OutputBufferUsage::CreateSplit
-        } else if input_from_pipe || opt.output.implied {
+        } else if input_from_pipe || opt.is_output_implied() {
             OutputBufferUsage::CreateSubstituting
         } else {
             OutputBufferUsage::Disabled

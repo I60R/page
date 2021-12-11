@@ -93,15 +93,53 @@ pub struct Options {
     pub files: Vec<String>,
 
     #[structopt(flatten)]
-    pub output: OutputOptions
+    pub output: OutputOptions,
+
+    #[structopt(skip)]
+    output_implied: once_cell::unsync::OnceCell<bool>,
+
+    #[structopt(skip)]
+    output_split_implied: once_cell::unsync::OnceCell<bool>,
+}
+
+impl Options {
+    pub fn is_output_implied(&self) -> bool {
+        *self.output_implied.get_or_init(
+            || (self.instance_close.is_none() && self.files.is_empty())
+            || self.back
+            || self.back_restore
+            || self.follow
+            || self.follow_all
+            || self.output_open
+            || self.pty_path_print
+            || self.instance.is_some()
+            || self.instance_append.is_some()
+            || self.command_post.is_some()
+            || self.output.command.is_some()
+            || self.output.pwd
+            || self.output.filetype != "pager"
+        )
+    }
+
+    pub fn is_output_split_implied(&self) -> bool {
+        *self.output_split_implied.get_or_init(
+            || self.output.split.split_left_cols.is_some()
+            || self.output.split.split_right_cols.is_some()
+            || self.output.split.split_above_rows.is_some()
+            || self.output.split.split_below_rows.is_some()
+            || self.output.split.split_left > 0u8
+            || self.output.split.split_right > 0u8
+            || self.output.split.split_above > 0u8
+            || self.output.split.split_below > 0u8
+        )
+    }
+
+
 }
 
 // Options that are required on output buffer creation
 #[derive(StructOpt, Debug)]
 pub struct OutputOptions {
-    #[structopt(skip)]
-    pub implied: bool,
-
     /// Run command in output buffer after it was created
     #[structopt(display_order=104, short="e")]
     pub command: Option<String>,
@@ -136,9 +174,6 @@ pub struct OutputOptions {
 // Options for split
 #[derive(StructOpt, Debug)]
 pub struct SplitOptions {
-    #[structopt(skip)]
-    pub implied: bool,
-
     /// Split left  with ratio: window_width  * 3 / (<l-provided> + 1)
     #[structopt(display_order=900, short="l", parse(from_occurrences))]
     pub split_left: u8,
@@ -204,32 +239,5 @@ fn splits_arg_group() -> ArgGroup<'static> {
 
 
 pub fn get_options() -> Options {
-    let mut opt = Options::from_args();
-    opt.output.split.implied =
-        !! opt.output.split.split_left_cols.is_some()
-        || opt.output.split.split_right_cols.is_some()
-        || opt.output.split.split_above_rows.is_some()
-        || opt.output.split.split_below_rows.is_some()
-        || opt.output.split.split_left > 0u8
-        || opt.output.split.split_right > 0u8
-        || opt.output.split.split_above > 0u8
-        || opt.output.split.split_below > 0u8;
-    opt.output.implied =
-        !! (
-            !! opt.instance_close.is_none()
-            && opt.files.is_empty()
-        )
-        || opt.back
-        || opt.back_restore
-        || opt.follow
-        || opt.follow_all
-        || opt.output_open
-        || opt.pty_path_print
-        || opt.instance.is_some()
-        || opt.instance_append.is_some()
-        || opt.command_post.is_some()
-        || opt.output.command.is_some()
-        || opt.output.pwd
-        || opt.output.filetype != "pager";
-    opt
+    Options::from_args()
 }

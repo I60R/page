@@ -270,15 +270,14 @@ mod neovim_api_usage {
 mod output_buffer_usage {
     use crate::{context::OutputContext, neovim::{self, Buffer, IoWrite, NeovimConnection, NotificationFromNeovim}};
 
-    use tokio::io::AsyncWriteExt;
-    use std::io::{self, BufRead};
+    use std::io::{self, BufRead, Write};
 
     /// This struct implements actions that should be done after output buffer is attached
     pub struct BufferActions<'a> {
         nvim_conn: &'a mut NeovimConnection,
         outp_ctx: &'a OutputContext,
         buf: Buffer<IoWrite>,
-        buf_pty: Option<tokio::fs::File>,
+        buf_pty: once_cell::unsync::OnceCell<std::fs::File>,
     }
 
     pub fn begin<'a>(nvim_conn: &'a mut NeovimConnection, outp_ctx: &'a OutputContext, buf: Buffer<IoWrite>) -> BufferActions<'a> {
@@ -286,7 +285,7 @@ mod output_buffer_usage {
             nvim_conn,
             outp_ctx,
             buf,
-            buf_pty: None,
+            buf_pty: once_cell::unsync::OnceCell::new(),
         }
     }
 
@@ -325,7 +324,7 @@ mod output_buffer_usage {
             if outp_ctx.inst_usage.is_enabled_and_should_be_focused() {
                 nvim_actions.focus_instance_buffer(&buf).await;
                 if outp_ctx.inst_usage.is_enabled_and_should_replace_its_content() {
-                    self.get_buffer_pty().await.write_all(b"\x1B[3J\x1B[H\x1b[2J").await.expect("Cannot write clear screen sequence");
+                    self.get_buffer_pty().write_all(b"\x1B[3J\x1B[H\x1b[2J").expect("Cannot write clear screen sequence");
                 }
             }
         }
@@ -436,7 +435,7 @@ mod output_buffer_usage {
         /// closed intentionally, so page must just exit. If no such notification was arrived then page
         /// crashes with the received IO error
         async fn display_line(&mut self, ln: &[u8]) -> io::Result<()> {
-            if let Err(e) = self.get_buffer_pty().await.write_all(ln).await {
+            if let Err(e) = self.get_buffer_pty().write_all(ln) {
                 log::info!(target: "writeline", "got error: {:?}", e);
                 match tokio::time::timeout(std::time::Duration::from_secs(1), self.nvim_conn.rx.recv()).await {
                     Ok(Some(NotificationFromNeovim::BufferClosed)) => {
@@ -481,12 +480,9 @@ mod output_buffer_usage {
 
         /// Returns PTY device associated with output buffer.
         /// This function ensures that PTY device is opened only once
-        async fn get_buffer_pty(&mut self) -> &mut tokio::fs::File {
-            if let Some(ref mut pty) = self.buf_pty {
-                pty
-            } else {
-                self.buf_pty.insert(tokio::fs::OpenOptions::new().append(true).open(&self.outp_ctx.buf_pty_path).await.expect("Cannot open PTY device"))
-            }
+        fn get_buffer_pty(&mut self) -> &mut std::fs::File {
+            self.buf_pty.get_or_init(|| std::fs::OpenOptions::new().append(true).open(&self.outp_ctx.buf_pty_path).expect("Cannot open PTY device"));
+            self.buf_pty.get_mut().unwrap()
         }
     }
 
