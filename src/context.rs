@@ -6,8 +6,8 @@
 pub struct EnvContext {
     pub opt: crate::cli::Options,
     pub prefetch_lines_count: usize,
+    pub query_lines_count: usize,
     pub input_from_pipe: bool,
-    pub split_buf_implied: bool,
 }
 
 impl EnvContext {
@@ -17,53 +17,13 @@ impl EnvContext {
     }
 
     pub fn is_split_flag_given_without_address(&self) -> bool {
-        let EnvContext { opt, split_buf_implied, .. } = self;
-        opt.address.is_none() && *split_buf_implied
+        let EnvContext { opt, .. } = self;
+        opt.address.is_none() && opt.output.split.implied
     }
 
     pub fn is_back_flag_given_without_address(&self) -> bool {
         let EnvContext { opt, .. } = self;
         opt.address.is_none() && (opt.back || opt.back_restore)
-    }
-
-    pub fn is_query_flag_given_without_reading_from_pipe(&self) -> bool {
-        let EnvContext { opt, input_from_pipe, .. } = self;
-        opt.output.query_lines != 0usize && !input_from_pipe
-    }
-
-    pub fn is_output_buffer_creation_implied(&self) -> bool {
-        let EnvContext { opt, .. } = self;
-        let unrevoked = {
-            // These options if set revokes output buffer creation
-            !! opt.instance_close.is_none()
-            && opt.files.is_empty()
-        };
-        !! unrevoked
-        || opt.back
-        || opt.back_restore
-        || opt.follow
-        || opt.follow_all
-        || opt.output_open
-        || opt.pty_path_print
-        || opt.instance.is_some()
-        || opt.instance_append.is_some()
-        || opt.command_post.is_some()
-        || opt.output.command.is_some()
-        || opt.output.pwd
-        || opt.output.query_lines != 0usize
-        || opt.output.filetype.as_str() != "pager"
-    }
-
-    pub fn is_split_creation_implied(&self) -> bool {
-        let EnvContext { opt, .. } = self;
-        !! opt.output.split.split_left_cols.is_some()
-        || opt.output.split.split_right_cols.is_some()
-        || opt.output.split.split_above_rows.is_some()
-        || opt.output.split.split_below_rows.is_some()
-        || opt.output.split.split_left != 0u8
-        || opt.output.split.split_right != 0u8
-        || opt.output.split.split_above != 0u8
-        || opt.output.split.split_below != 0u8
     }
 }
 
@@ -84,25 +44,27 @@ pub mod gather_env {
             }
             opt
         };
-        let prefetch_lines_count = opt.output.noopen_lines.clone()
-            .map(|number| match number {
-                Some(pos @ 0..) => pos as usize,
-                neg @ (Some(_) | None) => {
-                    let term_height = term_size::dimensions().map(|(_w, h)| h).expect("Cannot get terminal height");
-                    term_height.saturating_sub(neg.unwrap_or(3).abs() as usize)
-                }
-            })
-            .unwrap_or(0);
-        {
-            let mut env_ctx = EnvContext {
-                opt,
-                prefetch_lines_count,
-                input_from_pipe,
-                split_buf_implied: false,
-            };
-            env_ctx.split_buf_implied = env_ctx.is_split_creation_implied();
-            env_ctx
+        let mut term_height = None;
+        let prefetch_lines_count = match opt.output.noopen_lines.clone() {
+            Some(Some(positive_number @ 0..)) => positive_number as usize,
+            Some(negative_or_none) => term_height.get_or_insert_with(get_terminal_height).saturating_sub(negative_or_none.unwrap_or(3).abs() as usize),
+            None => 0
+        };
+        let query_lines_count = match opt.output.query_lines.clone() {
+            Some(Some(positive_number @ 0..)) => positive_number as usize,
+            Some(negative_or_none) => term_height.get_or_insert_with(get_terminal_height).saturating_sub(negative_or_none.unwrap_or(3).abs() as usize),
+            None => 0
+        };
+        EnvContext {
+            opt,
+            prefetch_lines_count,
+            query_lines_count,
+            input_from_pipe,
         }
+    }
+
+    fn get_terminal_height() -> usize {
+        term_size::dimensions().map(|(_width, height)| height).expect("Cannot get terminal height")
     }
 }
 
@@ -114,10 +76,9 @@ pub struct UsageContext {
     pub page_id: String,
     pub tmp_dir: std::path::PathBuf,
     pub prefetched_lines: check_usage::PrefetchedLines,
+    pub query_lines_count: usize,
     pub input_from_pipe: bool,
     pub print_protection: bool,
-    pub outp_buf_implied: bool,
-    pub split_buf_implied: bool,
 }
 
 impl UsageContext {
@@ -134,8 +95,7 @@ pub mod check_usage {
     use super::{EnvContext, UsageContext};
 
     pub fn enter(prefetched_lines_vec: Vec<String>, env_ctx: EnvContext) -> UsageContext {
-        let outp_buf_implied = env_ctx.is_output_buffer_creation_implied();
-        let EnvContext { input_from_pipe, opt, split_buf_implied, .. } = env_ctx;
+        let EnvContext { input_from_pipe, opt, query_lines_count, .. } = env_ctx;
         let prefetched_lines = PrefetchedLines(prefetched_lines_vec);
         let tmp_dir = {
             let d = std::env::temp_dir().join("neovim-page");
@@ -159,9 +119,8 @@ pub mod check_usage {
             page_id,
             input_from_pipe,
             print_protection,
-            split_buf_implied,
-            outp_buf_implied,
             prefetched_lines,
+            query_lines_count,
         }
     }
     pub struct PrefetchedLines(pub Vec<String>);
@@ -180,6 +139,7 @@ pub struct NeovimContext {
     pub opt: crate::cli::Options,
     pub page_id: String,
     pub prefetched_lines: check_usage::PrefetchedLines,
+    pub query_lines_count: usize,
     pub inst_usage: connect_neovim::InstanceUsage,
     pub outp_buf_usage: connect_neovim::OutputBufferUsage,
     pub nvim_child_proc_spawned: bool,
@@ -205,7 +165,7 @@ pub mod connect_neovim {
 
     pub fn enter(cli_ctx: UsageContext) -> NeovimContext {
         let should_focus_on_existed_instance_buffer = cli_ctx.is_focus_on_existed_instance_buffer_implied();
-        let UsageContext { opt, page_id, input_from_pipe, outp_buf_implied, split_buf_implied, prefetched_lines, .. } = cli_ctx;
+        let UsageContext { opt, input_from_pipe, page_id, prefetched_lines, query_lines_count, .. } = cli_ctx;
         let inst_usage = if let Some(name) = opt.instance.clone() {
             InstanceUsage::Enabled {
                 name,
@@ -221,9 +181,9 @@ pub mod connect_neovim {
         } else {
             InstanceUsage::Disabled
         };
-        let outp_buf_usage = if split_buf_implied {
+        let outp_buf_usage = if opt.output.split.implied {
             OutputBufferUsage::CreateSplit
-        } else if input_from_pipe || outp_buf_implied {
+        } else if input_from_pipe || opt.output.implied {
             OutputBufferUsage::CreateSubstituting
         } else {
             OutputBufferUsage::Disabled
@@ -232,6 +192,7 @@ pub mod connect_neovim {
             opt,
             page_id,
             prefetched_lines,
+            query_lines_count,
             inst_usage,
             outp_buf_usage,
             input_from_pipe,
@@ -296,6 +257,7 @@ pub struct OutputContext {
     pub opt: crate::cli::Options,
     pub buf_pty_path: std::path::PathBuf,
     pub prefetched_lines: check_usage::PrefetchedLines,
+    pub query_lines_count: usize,
     pub inst_usage: connect_neovim::InstanceUsage,
     pub restore_initial_buf_focus: output_buffer_available::RestoreInitialBufferFocus,
     pub input_from_pipe: bool,
@@ -312,7 +274,7 @@ impl OutputContext {
     }
 
     pub fn is_query_enabled(&self) -> bool {
-        self.opt.output.query_lines != 0
+        self.query_lines_count != 0
     }
 }
 
@@ -320,7 +282,7 @@ pub mod output_buffer_available {
     use crate::context::{NeovimContext, OutputContext};
 
     pub fn enter(nvim_ctx: NeovimContext, buf_pty_path: std::path::PathBuf) -> OutputContext {
-        let NeovimContext { opt, nvim_child_proc_spawned, inst_usage, input_from_pipe, prefetched_lines, .. } = nvim_ctx;
+        let NeovimContext { opt, nvim_child_proc_spawned, input_from_pipe, inst_usage, prefetched_lines, query_lines_count, .. } = nvim_ctx;
         let restore_initial_buf_focus = if !nvim_child_proc_spawned && opt.back {
             RestoreInitialBufferFocus::ViModeNormal
         } else if !nvim_child_proc_spawned && opt.back_restore {
@@ -333,6 +295,7 @@ pub mod output_buffer_available {
             opt,
             buf_pty_path,
             prefetched_lines,
+            query_lines_count,
             inst_usage,
             input_from_pipe,
             nvim_child_proc_spawned,

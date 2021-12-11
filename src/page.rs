@@ -46,8 +46,9 @@ fn _init_logger_() {
 
 async fn prefetch_lines(env_ctx: context::EnvContext) {
     log::info!(target: "context", "{:#?}", &env_ctx);
-    let mut prefetched_lines = Vec::with_capacity(env_ctx.prefetch_lines_count + 1);
-    while prefetched_lines.len() <= env_ctx.prefetch_lines_count {
+    let wanted = env_ctx.prefetch_lines_count + 1 % (env_ctx.prefetch_lines_count + 1); // add 1 if greater than zero!
+    let mut prefetched_lines = Vec::with_capacity(wanted);
+    while prefetched_lines.len() < wanted {
         let mut line = String::with_capacity(512);
         let remain = std::io::stdin().read_line(&mut line).expect("Failed to prefetch line from stdin");
         line.shrink_to_fit();
@@ -111,9 +112,6 @@ fn _warn_incompatible_options_(opt_ctx: &context::EnvContext) {
     }
     if opt_ctx.is_back_flag_given_without_address() {
         log::warn!(target: "usage", "Switch back (-b -B) is ignored if address (-a or $NVIM_LISTEN_ADDRESS) isn't set");
-    }
-    if opt_ctx.is_query_flag_given_without_reading_from_pipe() {
-        log::warn!(target: "usage", "Query (-q) is ignored when page doesn't read input from pipe");
     }
 }
 
@@ -262,7 +260,7 @@ mod neovim_api_usage {
             } else {
                 nvim_actions.create_switching_output_buffer().await
             };
-            let outp_buf_opts = OutputCommands::for_output_buffer(&nvim_ctx.page_id, *channel, &nvim_ctx.opt.output);
+            let outp_buf_opts = OutputCommands::for_output_buffer(&nvim_ctx.page_id, *channel, nvim_ctx.query_lines_count, &nvim_ctx.opt.output);
             nvim_actions.prepare_output_buffer(*initial_buf_number, outp_buf_opts).await;
             buf_and_pty
         }
@@ -396,13 +394,13 @@ mod output_buffer_usage {
                 }
                 // If query (-q) is enabled then wait for it
                 let mut s = QueryState::default();
-                s.next_part(self.outp_ctx.opt.output.query_lines);
+                s.next_part(self.outp_ctx.query_lines_count);
                 loop {
                     if s.is_whole_part_sent() {
                         self.nvim_conn.nvim_actions.notify_query_finished(s.how_many_lines_was_sent()).await;
                         match self.nvim_conn.rx.recv().await {
                             Some(NotificationFromNeovim::FetchLines(n)) => s.next_part(n),
-                            Some(NotificationFromNeovim::FetchPart) => s.next_part(self.outp_ctx.opt.output.query_lines),
+                            Some(NotificationFromNeovim::FetchPart) => s.next_part(self.outp_ctx.query_lines_count),
                             Some(NotificationFromNeovim::BufferClosed) => return,
                             None => {
                                 log::info!(target: "output", "Neovim was closed, not all pages are shown");

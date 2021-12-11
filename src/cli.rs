@@ -99,6 +99,9 @@ pub struct Options {
 // Options that are required on output buffer creation
 #[derive(StructOpt, Debug)]
 pub struct OutputOptions {
+    #[structopt(skip)]
+    pub implied: bool,
+
     /// Run command in output buffer after it was created
     #[structopt(display_order=104, short="e")]
     pub command: Option<String>,
@@ -108,10 +111,11 @@ pub struct OutputOptions {
     #[structopt(display_order=1, short="O")]
     pub noopen_lines: Option<Option<isize>>,
 
-    /// Read no more than <query-lines> from page's stdin: next lines should be fetched by invoking :Page <query> command on neovim side
-    /// [0: disabled and default; <query> is optional and defaults to <query-lines>]
-    #[structopt(display_order=4, short="q", default_value="0", hide_default_value=true)]
-    pub query_lines: usize,
+    /// Read no more than <query-lines> from page's stdin: next lines should be fetched by invoking :Page <query> command or 'r' keypress on neovim side
+    /// [empty: term height - 2 (space for tab and buffer lines); negative: term height - <query-lines>; 0: disabled and default; <query> is optional and defaults to <query-lines>;
+    /// doesn't take effect on <FILE> buffers]
+    #[structopt(display_order=4, short="q")]
+    pub query_lines: Option<Option<isize>>,
 
     /// Set filetype on output buffer (to enable syntax highlighting) [pager: default; not works with text echoed by -O]
     #[structopt(display_order=7, short="t", default_value="pager", hide_default_value=true)]
@@ -132,6 +136,9 @@ pub struct OutputOptions {
 // Options for split
 #[derive(StructOpt, Debug)]
 pub struct SplitOptions {
+    #[structopt(skip)]
+    pub implied: bool,
+
     /// Split left  with ratio: window_width  * 3 / (<l-provided> + 1)
     #[structopt(display_order=900, short="l", parse(from_occurrences))]
     pub split_left: u8,
@@ -197,5 +204,32 @@ fn splits_arg_group() -> ArgGroup<'static> {
 
 
 pub fn get_options() -> Options {
-    Options::from_args()
+    let mut opt = Options::from_args();
+    opt.output.split.implied =
+        !! opt.output.split.split_left_cols.is_some()
+        || opt.output.split.split_right_cols.is_some()
+        || opt.output.split.split_above_rows.is_some()
+        || opt.output.split.split_below_rows.is_some()
+        || opt.output.split.split_left > 0u8
+        || opt.output.split.split_right > 0u8
+        || opt.output.split.split_above > 0u8
+        || opt.output.split.split_below > 0u8;
+    opt.output.implied =
+        !! (
+            !! opt.instance_close.is_none()
+            && opt.files.is_empty()
+        )
+        || opt.back
+        || opt.back_restore
+        || opt.follow
+        || opt.follow_all
+        || opt.output_open
+        || opt.pty_path_print
+        || opt.instance.is_some()
+        || opt.instance_append.is_some()
+        || opt.command_post.is_some()
+        || opt.output.command.is_some()
+        || opt.output.pwd
+        || opt.output.filetype != "pager";
+    opt
 }

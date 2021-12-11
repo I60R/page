@@ -447,6 +447,7 @@ impl OutputCommands {
                 vim.api.nvim_buf_set_keymap(0, '', 'a', '<CMD>lua _G.page_bound(false, "at the end")<CR>', map_opts)
                 vim.api.nvim_buf_set_keymap(0, '', 'u', '<C-u>', map_opts)
                 vim.api.nvim_buf_set_keymap(0, '', 'd', '<C-d>', map_opts)
+                vim.api.nvim_buf_set_keymap(0, '', 'x', 'G', map_opts)
             "#})
         }
         OutputCommands {
@@ -465,7 +466,7 @@ impl OutputCommands {
         cmds
     }
 
-    pub fn for_output_buffer(page_id: &str, channel: u64, opt: &crate::cli::OutputOptions) -> OutputCommands {
+    pub fn for_output_buffer(page_id: &str, channel: u64, query_lines_count: usize, opt: &crate::cli::OutputOptions) -> OutputCommands {
         let mut cmds = Self::create_with(opt.command.as_deref().unwrap_or_default(), opt.writable);
         cmds.ft = format!("vim.bo.filetype = '{}'", opt.filetype);
         cmds.notify_closed = formatdoc! {r#"
@@ -474,16 +475,28 @@ impl OutputCommands {
             channel = channel,
             page_id = page_id,
         };
-        if opt.query_lines != 0usize {
+        if query_lines_count != 0 {
             cmds.pre = formatdoc! {r#"
                 {prefix}
-                vim.cmd 'command! -nargs=? Page call rpcnotify({channel}, "page_fetch_lines", "{page_id}", <args>)'
-                vim.cmd 'autocmd BufEnter <buffer> command! -nargs=? Page call rpcnotify({channel}, "page_fetch_lines", "{page_id}", <args>)'
+                vim.b.page_query_size = {query_lines_count}
+                local query = 'command! -nargs=? Page call rpcnotify({channel}, "page_fetch_lines", "{page_id}", <args>)'
+                vim.cmd(query)
+                vim.cmd('autocmd BufEnter <buffer> ' .. query)
             "#,
+                query_lines_count = query_lines_count,
                 prefix = cmds.pre,
                 page_id = page_id,
                 channel = channel,
             };
+            if !opt.writable {
+                cmds.pre.push_str(&formatdoc! {r#"
+                    vim.api.nvim_buf_set_keymap(0, '', 'r', '<CMD>call rpcnotify({channel}, "page_fetch_lines", "{page_id}", b:page_query_size * v:count1)<CR>', map_opts)
+                    vim.api.nvim_buf_set_keymap(0, '', 'R', '<CMD>call rpcnotify({channel}, "page_fetch_lines", "{page_id}", 99999)<CR>', map_opts)
+                "#,
+                    page_id = page_id,
+                    channel = channel,
+                })
+            }
         }
         if opt.pwd {
             cmds.pre = formatdoc! {r#"
