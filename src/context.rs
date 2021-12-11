@@ -270,10 +270,6 @@ impl OutputContext {
         }
         self
     }
-
-    pub fn is_query_enabled(&self) -> bool {
-        self.query_lines_count != 0
-    }
 }
 
 pub mod output_buffer_available {

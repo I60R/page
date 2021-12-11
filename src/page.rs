@@ -369,65 +369,75 @@ mod output_buffer_usage {
         /// and user might redirect into it directly
         pub async fn handle_output(&mut self) {
             if self.outp_ctx.input_from_pipe {
-                // First write all prefetched lines if any available
-                for ln in self.outp_ctx.prefetched_lines.0.as_slice() {
-                    self.display_line(ln.as_bytes()).await.expect("Cannot write next prefetched line");
-                }
-                // Then copy the rest of lines from stdin into buffer pty
-                let stdin = std::io::stdin();
-                let (mut buf, mut stdin_lines) = (String::with_capacity(2048), stdin.lock());
-                if !self.outp_ctx.is_query_enabled() {
+                if self.outp_ctx.query_lines_count != 0 {
+                    self.handle_query_output().await;
+                } else {
+                    // First write all prefetched lines if any available
+                    for ln in &self.outp_ctx.prefetched_lines.0[..] {
+                        self.display_line(ln.as_bytes()).await.expect("Cannot write next prefetched line");
+                    }
+                    // Then copy the rest of lines from stdin into buffer pty
+                    let stdin = std::io::stdin();
+                    let (mut buf, mut stdin_lines) = (String::with_capacity(2048), stdin.lock());
                     loop {
                         match stdin_lines.read_line(&mut buf) {
-                            Ok(0) => return,
+                            Ok(0) => break,
                             Ok(_) => {
-                                self.display_line(buf.as_bytes()).await.expect("Write to PTY failed unexpectedly");
+                                self.display_line(buf.as_bytes()).await.expect("Cannot write next line");
                                 buf.clear();
                             }
                             Err(e) => {
                                 log::warn!(target: "output", "Error reading line from stdin: {}", e);
-                                return
+                                break
                             }
                         }
                     }
                 }
-                // If query (-q) is enabled then wait for it
-                let mut s = QueryState::default();
-                s.next_part(self.outp_ctx.query_lines_count);
-                loop {
-                    if s.is_whole_part_sent() {
-                        self.nvim_conn.nvim_actions.notify_query_finished(s.how_many_lines_was_sent()).await;
-                        match self.nvim_conn.rx.recv().await {
-                            Some(NotificationFromNeovim::FetchLines(n)) => s.next_part(n),
-                            Some(NotificationFromNeovim::FetchPart) => s.next_part(self.outp_ctx.query_lines_count),
-                            Some(NotificationFromNeovim::BufferClosed) => return,
-                            None => {
-                                log::info!(target: "output", "Neovim was closed, not all pages are shown");
-                                neovim::connection::close_and_exit(self.nvim_conn).await
-                            }
-                        }
-                    }
-                    match stdin_lines.read_line(&mut buf) {
-                        Ok(0) => {
-                            self.nvim_conn.nvim_actions.notify_query_finished(s.how_many_lines_was_sent()).await;
-                            break
-                        }
-                        Ok(_) => {
-                            self.display_line(buf.as_bytes()).await.expect("Cannot write next line");
-                            buf.clear()
-                        }
-                        Err(e) => {
-                            log::warn!(target: "output", "Error reading line from stdin: {}", e);
-                            break
-                        }
-                    }
-                    s.line_sent();
-                }
-                self.nvim_conn.nvim_actions.notify_end_of_input().await;
             }
             if self.outp_ctx.print_output_buf_pty {
                 println!("{}", self.outp_ctx.buf_pty_path.to_string_lossy());
             }
+        }
+
+        // If query (-q) is enabled then wait for it
+        async fn handle_query_output(&mut self) {
+            let mut s = QueryState::default();
+            s.next_part(self.outp_ctx.query_lines_count);
+            // First write all prefetched lines if any available
+            let mut prefetched_lines_iter = self.outp_ctx.prefetched_lines.0.iter();
+            loop {
+                self.update_query_state(&mut s).await;
+                match prefetched_lines_iter.next() {
+                    Some(ln) => self.display_line(ln.as_bytes()).await.expect("Cannot write next prefetched queried line"),
+                    None => {
+                        log::info!(target: "output", "Proceed with stdin");
+                        break
+                    }
+                }
+                s.line_sent();
+            }
+            // Then copy the rest of lines from stdin into buffer pty
+            let stdin = std::io::stdin();
+            let (mut buf, mut stdin_lines) = (String::with_capacity(2048), stdin.lock());
+            loop {
+                self.update_query_state(&mut s).await;
+                match stdin_lines.read_line(&mut buf) {
+                    Ok(0) => {
+                        self.nvim_conn.nvim_actions.notify_query_finished(s.how_many_lines_was_sent()).await;
+                        break
+                    }
+                    Ok(_) => {
+                        self.display_line(buf.as_bytes()).await.expect("Cannot write next queried line");
+                        buf.clear()
+                    }
+                    Err(e) => {
+                        log::warn!(target: "output", "Error reading queried line from stdin: {}", e);
+                        break
+                    }
+                }
+                s.line_sent();
+            }
+            self.nvim_conn.nvim_actions.notify_end_of_input().await;
         }
 
         /// Writes line to PTY device and gracefully handles failures: if error occurs then page waits for
@@ -450,6 +460,26 @@ mod output_buffer_usage {
                 }
             }
             Ok(())
+        }
+
+        /// If the whole queried part was sent waits for notifications from neovim, processes some
+        /// or schedules further query in write loop
+        async fn update_query_state(&mut self, s: &mut QueryState) {
+            if s.is_whole_part_sent() {
+                self.nvim_conn.nvim_actions.notify_query_finished(s.how_many_lines_was_sent()).await;
+                match self.nvim_conn.rx.recv().await {
+                    Some(NotificationFromNeovim::FetchLines(n)) => s.next_part(n),
+                    Some(NotificationFromNeovim::FetchPart) => s.next_part(self.outp_ctx.query_lines_count),
+                    Some(NotificationFromNeovim::BufferClosed) => {
+                        log::info!(target: "output-state", "Buffer closed");
+                        neovim::connection::close_and_exit(self.nvim_conn).await
+                    },
+                    None => {
+                        log::info!(target: "output-state", "Neovim closed");
+                        neovim::connection::close_and_exit(self.nvim_conn).await
+                    }
+                }
+            }
         }
 
         /// Executes PageDisconnect autocommand if -C flag was provided.
@@ -485,7 +515,6 @@ mod output_buffer_usage {
             self.buf_pty.get_mut().unwrap()
         }
     }
-
 
     /// Encapsulates state of querying lines from neovim side with :Page <count> command.
     /// Used only when -q <count> argument is provided
