@@ -440,11 +440,38 @@ impl OutputCommands {
                     _G.page_bound(top, message, move)
                     vim.wo.scrolloff = 0
                 end
+                _G.page_close = function()
+                    local buf = vim.api.nvim_get_current_buf()
+                    if buf ~= vim.b.page_alternate_bufnr and vim.api.nvim_buf_is_loaded(vim.b.page_alternate_bufnr) then
+                        vim.api.nvim_set_current_buf(vim.b.page_alternate_bufnr)
+                    end
+                    vim.api.nvim_buf_delete(buf, { force = true })
+                    local exit = true
+                    for _, b in ipairs(vim.api.nvim_list_bufs()) do
+                        local bt = vim.api.nvim_buf_get_option(b, 'buftype')
+                        if bt == "" or bt == "acwrite" or bt == "terminal" or bt == "prompt" then
+                            local bm = vim.api.nvim_buf_get_option(b, 'modified')
+                            if bm then
+                                exit = false
+                                break
+                            end
+                            local bl = vim.api.nvim_buf_get_lines(b, 0, -1, false)
+                            if #bl ~= 0 and bl[1] ~= "" and #bl > 1 then
+                                exit = false
+                                break
+                            end
+                        end
+                    end
+                    if exit then
+                        vim.cmd "qa!"
+                    end
+                end
                 local map_opts = { nowait = true }
                 vim.api.nvim_buf_set_keymap(0, '', 'I', '<CMD>lua _G.page_scroll(true, "in the beginning of scroll")<CR>', map_opts)
                 vim.api.nvim_buf_set_keymap(0, '', 'A', '<CMD>lua _G.page_scroll(false, "at the end of scroll")<CR>', map_opts)
                 vim.api.nvim_buf_set_keymap(0, '', 'i', '<CMD>lua _G.page_bound(true, "in the beginning")<CR>', map_opts)
                 vim.api.nvim_buf_set_keymap(0, '', 'a', '<CMD>lua _G.page_bound(false, "at the end")<CR>', map_opts)
+                vim.api.nvim_buf_set_keymap(0, '', 'q', '<CMD>lua _G.page_close()<CR>', map_opts)
                 vim.api.nvim_buf_set_keymap(0, '', 'u', '<C-u>', map_opts)
                 vim.api.nvim_buf_set_keymap(0, '', 'd', '<C-d>', map_opts)
                 vim.api.nvim_buf_set_keymap(0, '', 'x', 'G', map_opts)

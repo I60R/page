@@ -159,7 +159,7 @@ pub struct OutputOptions {
     #[structopt(display_order=7, short="t", default_value="pager", hide_default_value=true)]
     pub filetype: String,
 
-    /// Allow to ender into INSERT/TERMINAL mode by pressing i, I, a, A keys and undo/delete with u, d instead of remapping them [ignored on connected instance output buffer] {n} ~ ~ ~
+    /// Do not remap i, I, a, A, u, d, x, q (and r, R with -q) keys [wouldn't unmap on connected instance output buffer] {n} ~ ~ ~
     #[structopt(display_order=11, short="w")]
     pub writable: bool,
 
