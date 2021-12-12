@@ -253,7 +253,7 @@ mod neovim_api_usage {
         /// Also sets some nvim options for better reading experience
         pub async fn create_oneoff_output_buffer(&mut self) -> BufferAndPty {
             let ApiActions { nvim_conn: NeovimConnection { nvim_actions, initial_buf_number, channel, nvim_proc, .. }, nvim_ctx } = self;
-            let buf_and_pty = if nvim_proc.is_some() {
+            let buf_and_pty = if nvim_proc.is_some() && nvim_ctx.opt.files.is_empty() {
                 nvim_actions.create_replacing_output_buffer().await
             } else if nvim_ctx.outp_buf_usage.is_create_split() {
                 nvim_actions.create_split_output_buffer(&nvim_ctx.opt.output.split).await
