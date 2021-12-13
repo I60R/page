@@ -1,7 +1,7 @@
 /// A module that extends neovim api with methods required in page
 
 
-use std::{io, path::PathBuf, pin::Pin, task, convert::TryInto};
+use std::{io, path::PathBuf, pin::Pin, task, convert::TryFrom};
 use parity_tokio_ipc::Connection;
 use tokio::{io::{ReadHalf, WriteHalf}, net::TcpStream, task::JoinHandle};
 use nvim_rs::{compat::tokio::Compat, error::LoopError, error::CallError};
@@ -61,14 +61,14 @@ impl NeovimActions {
         self.nvim.get_current_buf().await
     }
 
-    pub async fn create_replacing_output_buffer(&mut self) -> (Buffer<IoWrite>, PathBuf) {
+    pub async fn create_replacing_output_buffer(&mut self) -> OutputBuffer {
         let cmd = indoc! {"
             local buf = vim.api.nvim_get_current_buf()
         "};
         self.create_buffer(cmd).await.expect("Error when creating output buffer from current")
     }
 
-    pub async fn create_switching_output_buffer(&mut self) -> (Buffer<IoWrite>, PathBuf) {
+    pub async fn create_switching_output_buffer(&mut self) -> OutputBuffer {
         let cmd = indoc! {"
             local buf = vim.api.nvim_create_buf(true, false)
             vim.api.nvim_set_current_buf(buf)
@@ -76,7 +76,7 @@ impl NeovimActions {
         self.create_buffer(cmd).await.expect("Error when creating output buffer")
     }
 
-    pub async fn create_split_output_buffer(&mut self, opt: &crate::cli::SplitOptions) -> (Buffer<IoWrite>, PathBuf) {
+    pub async fn create_split_output_buffer(&mut self, opt: &crate::cli::SplitOptions) -> OutputBuffer {
         let cmd = if opt.popup {
             let ratio = |w_or_h, size| {
                 format!("math.floor((({} / 2) * 3) / {})", w_or_h, size + 1)
@@ -150,7 +150,7 @@ impl NeovimActions {
             .expect("Error when creating split output buffer")
     }
 
-    async fn create_buffer(&mut self, window_open_cmd: &str) -> Result<(Buffer<IoWrite>, PathBuf), Box<CallError>> {
+    async fn create_buffer(&mut self, window_open_cmd: &str) -> Result<OutputBuffer, String> {
         // Shell will be temporarily replaced with /bin/sleep that will halt for i32::MAX days
         let cmd = formatdoc! {"
             local shell, shellcmdflag = vim.o.shell, vim.o.shellcmdflag
@@ -159,21 +159,16 @@ impl NeovimActions {
             local chan = vim.api.nvim_call_function('termopen', {{ '2147483647d' }})
             vim.o.shell, vim.o.shellcmdflag = shell, shellcmdflag
             local pty = vim.api.nvim_get_chan_info(chan).pty
-            if pty == '' then error 'No PTY on channel' end
+            if pty == nil or pty == '' then error 'No PTY on channel' end
             return {{ buf, pty }}
         ",
             window_open_cmd = window_open_cmd
         };
         log::trace!(target: "create buffer", "{}", cmd);
-        let tup: Vec<Value> = self.nvim.exec_lua(&cmd, vec![]).await?.clone().try_into()?;
-        let (buf_val, pty_val) = (
-            tup.get(0).ok_or_else(|| CallError::NeovimError(None, "No buf handle".into()))?.clone(),
-            tup.get(1).ok_or_else(|| CallError::NeovimError(None, "No pty handle".into()))?.clone(),
-        );
-        let buf = Buffer::new(buf_val, self.nvim.clone());
-        let pty = PathBuf::from(pty_val.as_str().ok_or_else(|| CallError::NeovimError(None, "PTY not a string".into()))?);
-        Ok((buf, pty))
+        let v = self.nvim.exec_lua(&cmd, vec![]).await.expect("Cannot create buffer");
+        OutputBuffer::try_from((v, &self.nvim))
     }
+
 
     pub async fn mark_buffer_as_instance(&mut self, buffer: &Buffer<IoWrite>, inst_name: &str, inst_pty_path: &str) {
         log::trace!(target: "new instance", "{:?}->{}->{}", buffer.get_number().await, inst_name, inst_pty_path);
@@ -183,55 +178,59 @@ impl NeovimActions {
         }
     }
 
-    pub async fn find_instance_buffer(&mut self, inst_name: &str) -> Option<(Buffer<IoWrite>, PathBuf)> {
-        let all_bufs = self.nvim.list_bufs().await.expect("Cannot list all buffers");
-        for buf in all_bufs {
-            let inst_var = buf.get_var("page_instance").await;
-            log::trace!(target: "instances", "{:?} => {}: {:?}", buf.get_number().await, inst_name, inst_var);
-            match inst_var.map_err(|e| *e) {
-                Err(CallError::NeovimError(_, msg)) if msg == "Key not found: page_instance" => continue,
-                Err(e) => panic!("Error when getting instance mark: {:?}", e),
-                Ok(v) => {
-                    if let Some((inst_name_found, inst_pty_path)) = v.as_array().and_then(|a| Some((a.get(0)?.as_str()?, a.get(1)?.as_str()?))) {
-                        log::trace!(target: "found instance", "{}->{}", inst_name_found, inst_pty_path);
-                        if inst_name == inst_name_found {
-                            return Some((buf, PathBuf::from(inst_pty_path.to_string())))
-                        }
-                    }
-                }
+    pub async fn find_instance_buffer(&mut self, inst_name: &str) -> Option<OutputBuffer> {
+        log::trace!(target: "find instance", "{}", inst_name);
+        let value = self.on_instance(inst_name, "return { buf, pty_path }").await.expect("Cannot find instance buffer");
+        if value.is_nil() {
+            return None
+        }
+        match OutputBuffer::try_from((value, &self.nvim)) {
+            Ok(b) => Some(b),
+            Err(e) => {
+                log::error!(target: "find instance", "Wrong response: {}", e);
+                None
             }
-        };
-        None
+        }
     }
 
     pub async fn close_instance_buffer(&mut self, inst_name: &str) {
         log::trace!(target: "close instance", "{}", inst_name);
-        if let Some((buf, _)) = self.find_instance_buffer(&inst_name).await {
-            let inst_id = buf.get_number().await.expect("Cannot get instance id");
-            if let Err(e) = self.nvim.command(&format!("exe 'bd!' . {}", inst_id)).await {
-                log::error!(target: "close instance", "Error when closing instance buffer: {}, {}", inst_name, e);
-            }
+        if let Err(e) = self.on_instance(inst_name, "vim.api.nvim_buf_delete(buf, {{ force = true }})").await {
+            log::error!(target: "close instance", "Error when closing instance buffer: {}, {}", inst_name, e);
         }
     }
 
-    pub async fn focus_instance_buffer(&mut self, inst_buf: &Buffer<IoWrite>) {
-        log::trace!(target: "focus instance", "{:?}", inst_buf.get_number().await);
-        let active_buf = self.get_current_buffer().await.expect("Cannot get currently active buffer");
-        if &active_buf != inst_buf {
-            let all_wins = self.nvim.list_wins().await.expect("Cannot get all active windows");
-            log::trace!(target: "focus instance", "Winows open: {}", all_wins.len());
-            for win in all_wins {
-                let buf = win.get_buf().await.expect("Cannot get buffer");
-                if &buf == inst_buf {
-                    log::trace!(target: "focus instance", "Use window: {:?}", win.get_number().await);
-                    self.nvim.set_current_win(&win).await.expect("Cannot set active window");
+    pub async fn focus_instance_buffer(&mut self, inst_name: &str) {
+        log::trace!(target: "focus instance", "{}", inst_name);
+        let cmd = indoc! {"
+            local active_buf = vim.api.nvim_get_current_buf()
+            if active_buf == buf then return end
+            for _, win in ipairs(vim.api.nvim_list_wins()) do
+                local win_buf = vim.api.nvim_win_get_buf(win)
+                if win_buf == buf then
+                    vim.api.nvim_set_current_win(win)
                     return
-                }
-            }
-        } else {
-            log::trace!(target: "focus instance", "Not in window");
-        }
-        self.nvim.set_current_buf(inst_buf).await.expect("Cannot set active buffer");
+                end
+            end
+            vim.api.nvim_set_current_buf(buf)
+        "};
+        self.on_instance(inst_name, cmd).await.expect("Cannot focus on instance buffer");
+    }
+
+    async fn on_instance(&mut self, inst_name: &str, action: &str) -> Result<Value, Box<CallError>> {
+        let cmd = formatdoc! {"
+            for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+                local inst_name, pty_path
+                local ok = pcall(function() inst_name, pty_path = unpack(vim.api.nvim_buf_get_var(buf, 'page_instance')) end)
+                if ok and inst_name == '{inst_name}' then
+                    {action}
+                end
+            end
+        ",
+            inst_name = inst_name,
+            action = action,
+        };
+        self.nvim.exec_lua(&cmd, vec![]).await
     }
 
 
@@ -390,6 +389,22 @@ impl NeovimActions {
     }
 }
 
+pub struct OutputBuffer {
+    pub buf: Buffer<IoWrite>,
+    pub pty_path: PathBuf,
+}
+
+impl TryFrom<(Value, &Neovim<IoWrite>)> for OutputBuffer {
+    type Error = String;
+
+    fn try_from((val, nvim): (Value, &Neovim<IoWrite>)) -> Result<Self, Self::Error> {
+        let tup = val.as_array().ok_or("Response is not an array")?;
+        let (buf_val, pty_val) = (tup.get(0).ok_or("No buf handle")?, tup.get(1).ok_or("No pty handle")?.as_str().ok_or("PTY not a string")?);
+        let (buf, pty) = (Buffer::new(buf_val.clone(), nvim.clone()), PathBuf::from(pty_val));
+        Ok(OutputBuffer { buf, pty_path: pty })
+    }
+}
+
 /// This struct provides commands that would be run on output buffer after creation
 pub struct OutputCommands {
     edit: String,
@@ -410,7 +425,7 @@ impl OutputCommands {
         if !writeable {
             edit.push_str(indoc! {r#"
                 vim.bo.modifiable = false
-                _G.echo_notification = function(message)
+                _G.page_echo_notification = function(message)
                     vim.defer_fn(function()
                         vim.api.nvim_echo({{ '-- [PAGE] ' .. message .. ' --', 'Comment' }, }, false, {})
                         vim.cmd 'au CursorMoved <buffer> ++once echo'
@@ -426,7 +441,7 @@ impl OutputCommands {
                     vim.api.nvim_call_function('cursor', { row, col })
                     vim.api.nvim_call_function('search', search)
                     if move ~= nil then move() end
-                    _G.echo_notification(message)
+                    _G.page_echo_notification(message)
                 end
                 _G.page_scroll = function(top, message)
                     vim.wo.scrolloff = 0

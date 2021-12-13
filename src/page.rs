@@ -153,18 +153,18 @@ async fn manage_page_state(nvim_conn: &mut neovim::NeovimConnection, nvim_ctx: c
         return
     }
     if let Some(inst_name) = nvim_ctx.inst_usage.is_enabled() {
-        if let Some((buf, buf_pty_path)) = api_actions.find_instance_buffer(inst_name).await {
-            let outp_ctx = context::output_buffer_available::enter(nvim_ctx, buf_pty_path);
-            manage_output_buffer(nvim_conn, buf, outp_ctx).await
+        if let Some(outp) = api_actions.find_instance_buffer(inst_name).await {
+            let outp_ctx = context::output_buffer_available::enter(nvim_ctx, outp.pty_path);
+            manage_output_buffer(nvim_conn, outp.buf, outp_ctx).await
         } else {
-            let (buf, buf_pty_path) = api_actions.create_instance_output_buffer(inst_name).await;
-            let outp_ctx = context::output_buffer_available::enter(nvim_ctx, buf_pty_path).with_new_instance_output_buffer();
-            manage_output_buffer(nvim_conn, buf, outp_ctx).await
+            let outp = api_actions.create_instance_output_buffer(inst_name).await;
+            let outp_ctx = context::output_buffer_available::enter(nvim_ctx, outp.pty_path).with_new_instance_output_buffer();
+            manage_output_buffer(nvim_conn, outp.buf, outp_ctx).await
         }
     } else {
-        let (buf, buf_pty_path) = api_actions.create_oneoff_output_buffer().await;
-        let outp_ctx = context::output_buffer_available::enter(nvim_ctx, buf_pty_path);
-        manage_output_buffer(nvim_conn, buf, outp_ctx).await
+        let outp = api_actions.create_oneoff_output_buffer().await;
+        let outp_ctx = context::output_buffer_available::enter(nvim_ctx, outp.pty_path);
+        manage_output_buffer(nvim_conn, outp.buf, outp_ctx).await
     };
 }
 
@@ -175,7 +175,7 @@ async fn manage_output_buffer(nvim_conn: &mut neovim::NeovimConnection, buf: Buf
     let mut outp_buf_actions = output_buffer_usage::begin(nvim_conn, &outp_ctx, buf);
     if let Some(inst_name) = outp_ctx.inst_usage.is_enabled() {
         outp_buf_actions.update_instance_buffer_title(inst_name).await;
-        outp_buf_actions.focus_on_instance_buffer().await;
+        outp_buf_actions.focus_on_instance_buffer(inst_name).await;
     } else {
         outp_buf_actions.update_buffer_title().await;
     }
@@ -188,9 +188,7 @@ async fn manage_output_buffer(nvim_conn: &mut neovim::NeovimConnection, buf: Buf
 
 
 mod neovim_api_usage {
-    use crate::{context::NeovimContext, neovim::{Buffer, IoWrite, NeovimConnection, OutputCommands}};
-
-    type BufferAndPty = (Buffer<IoWrite>, std::path::PathBuf);
+    use crate::{context::NeovimContext, neovim::{NeovimConnection, OutputBuffer, OutputCommands}};
 
     /// This struct implements actions that should be done before output buffer is available
     pub struct ApiActions<'a> {
@@ -238,22 +236,22 @@ mod neovim_api_usage {
         }
 
         /// Returns buffer marked as instance and path to PTY device associated with it (if some exists)
-        pub async fn find_instance_buffer(&mut self, inst_name: &str) -> Option<BufferAndPty> {
+        pub async fn find_instance_buffer(&mut self, inst_name: &str) -> Option<OutputBuffer> {
             self.nvim_conn.nvim_actions.find_instance_buffer(inst_name).await
         }
 
         /// Creates a new output buffer and then marks it as instance buffer
-        pub async fn create_instance_output_buffer(&mut self, inst_name: &str) -> BufferAndPty {
-            let (buf, buf_pty_path) = self.create_oneoff_output_buffer().await;
-            self.nvim_conn.nvim_actions.mark_buffer_as_instance(&buf, inst_name, &buf_pty_path.to_string_lossy()).await;
-            (buf, buf_pty_path)
+        pub async fn create_instance_output_buffer(&mut self, inst_name: &str) -> OutputBuffer {
+            let outp = self.create_oneoff_output_buffer().await;
+            self.nvim_conn.nvim_actions.mark_buffer_as_instance(&outp.buf, inst_name, &outp.pty_path.to_string_lossy()).await;
+            outp
         }
 
         /// Creates a new output buffer using split window if required.
         /// Also sets some nvim options for better reading experience
-        pub async fn create_oneoff_output_buffer(&mut self) -> BufferAndPty {
+        pub async fn create_oneoff_output_buffer(&mut self) -> OutputBuffer {
             let ApiActions { nvim_conn: NeovimConnection { nvim_actions, initial_buf_number, channel, nvim_proc, .. }, nvim_ctx } = self;
-            let buf_and_pty = if nvim_proc.is_some() && nvim_ctx.opt.files.is_empty() {
+            let outp = if nvim_proc.is_some() && nvim_ctx.opt.files.is_empty() {
                 nvim_actions.create_replacing_output_buffer().await
             } else if nvim_ctx.outp_buf_usage.is_create_split() {
                 nvim_actions.create_split_output_buffer(&nvim_ctx.opt.output.split).await
@@ -262,7 +260,7 @@ mod neovim_api_usage {
             };
             let outp_buf_opts = OutputCommands::for_output_buffer(&nvim_ctx.page_id, *channel, nvim_ctx.query_lines_count, &nvim_ctx.opt.output);
             nvim_actions.prepare_output_buffer(*initial_buf_number, outp_buf_opts).await;
-            buf_and_pty
+            outp
         }
     }
 }
@@ -319,10 +317,10 @@ mod output_buffer_usage {
 
         /// Resets instance buffer focus and content.
         /// This is required to provide some functionality not available through neovim API
-        pub async fn focus_on_instance_buffer(&mut self) {
-            let BufferActions { outp_ctx, buf, nvim_conn: NeovimConnection { nvim_actions, .. }, .. } = self;
+        pub async fn focus_on_instance_buffer(&mut self, inst_name: &str) {
+            let BufferActions { outp_ctx, nvim_conn: NeovimConnection { nvim_actions, .. }, .. } = self;
             if outp_ctx.inst_usage.is_enabled_and_should_be_focused() {
-                nvim_actions.focus_instance_buffer(&buf).await;
+                nvim_actions.focus_instance_buffer(inst_name).await;
                 if outp_ctx.inst_usage.is_enabled_and_should_replace_its_content() {
                     self.get_buffer_pty().write_all(b"\x1B[3J\x1B[H\x1b[2J").expect("Cannot write clear screen sequence");
                 }
