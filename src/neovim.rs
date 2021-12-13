@@ -170,10 +170,10 @@ impl NeovimActions {
     }
 
 
-    pub async fn mark_buffer_as_instance(&mut self, buffer: &Buffer<IoWrite>, inst_name: &str, inst_pty_path: &str) {
-        log::trace!(target: "new instance", "{:?}->{}->{}", buffer.get_number().await, inst_name, inst_pty_path);
+    pub async fn mark_buffer_as_instance(&mut self, buf: &Buffer<IoWrite>, inst_name: &str, inst_pty_path: &str) {
+        log::trace!(target: "new instance", "{:?}->{}->{}", buf.get_value(), inst_name, inst_pty_path);
         let v = Value::from(vec![Value::from(inst_name), Value::from(inst_pty_path)]);
-        if let Err(e) = buffer.set_var("page_instance", v).await {
+        if let Err(e) = buf.set_var("page_instance", v).await {
             log::error!(target: "new instance", "Error when setting instance mark: {}", e);
         }
     }
@@ -235,7 +235,7 @@ impl NeovimActions {
 
 
     pub async fn update_buffer_title(&mut self, buf: &Buffer<IoWrite>, buf_title: &str) {
-        log::trace!(target: "update title", "{:?} => {}", buf.get_number().await, buf_title);
+        log::trace!(target: "update title", "{:?} => {}", buf.get_value(), buf_title);
         let a = std::iter::once((0, buf_title.to_string()));
         let b = (1..99).map(|attempt_nr| (attempt_nr, format!("{}({})", buf_title, attempt_nr)));
         for (attempt_nr, name) in a.chain(b) {
@@ -323,7 +323,7 @@ impl NeovimActions {
     }
 
     pub async fn switch_to_buffer(&mut self, buf: &Buffer<IoWrite>) -> Result<(), Box<CallError>>{
-        log::trace!(target: "set buffer", "{:?}", buf.get_number().await);
+        log::trace!(target: "set buffer", "{:?}", buf.get_value());
         self.nvim.set_current_buf(buf).await
     }
 
@@ -389,6 +389,8 @@ impl NeovimActions {
     }
 }
 
+
+/// This struct holds output buffer together with path to its PTY
 pub struct OutputBuffer {
     pub buf: Buffer<IoWrite>,
     pub pty_path: PathBuf,
@@ -453,7 +455,7 @@ impl OutputCommands {
                         move = function() vim.api.nvim_feedkeys('z-M', 'nx', false) end
                     end
                     _G.page_bound(top, message, move)
-                    vim.wo.scrolloff = 0
+                    vim.wo.scrolloff = 999
                 end
                 _G.page_close = function()
                     local buf = vim.api.nvim_get_current_buf()
@@ -481,15 +483,17 @@ impl OutputCommands {
                         vim.cmd "qa!"
                     end
                 end
-                local map_opts = { nowait = true }
-                vim.api.nvim_buf_set_keymap(0, '', 'I', '<CMD>lua _G.page_scroll(true, "in the beginning of scroll")<CR>', map_opts)
-                vim.api.nvim_buf_set_keymap(0, '', 'A', '<CMD>lua _G.page_scroll(false, "at the end of scroll")<CR>', map_opts)
-                vim.api.nvim_buf_set_keymap(0, '', 'i', '<CMD>lua _G.page_bound(true, "in the beginning")<CR>', map_opts)
-                vim.api.nvim_buf_set_keymap(0, '', 'a', '<CMD>lua _G.page_bound(false, "at the end")<CR>', map_opts)
-                vim.api.nvim_buf_set_keymap(0, '', 'q', '<CMD>lua _G.page_close()<CR>', map_opts)
-                vim.api.nvim_buf_set_keymap(0, '', 'u', '<C-u>', map_opts)
-                vim.api.nvim_buf_set_keymap(0, '', 'd', '<C-d>', map_opts)
-                vim.api.nvim_buf_set_keymap(0, '', 'x', 'G', map_opts)
+                local function page_map(key, expr)
+                    vim.api.nvim_buf_set_keymap(0, '', key, expr, { nowait = true })
+                end
+                page_map('I', '<CMD>lua _G.page_scroll(true, "in the beginning of scroll")<CR>')
+                page_map('A', '<CMD>lua _G.page_scroll(false, "at the end of scroll")<CR>')
+                page_map('i', '<CMD>lua _G.page_bound(true, "in the beginning")<CR>')
+                page_map('a', '<CMD>lua _G.page_bound(false, "at the end")<CR>')
+                page_map('q', '<CMD>lua _G.page_close()<CR>')
+                page_map('u', '<C-u>')
+                page_map('d', '<C-d>')
+                page_map('x', 'G')
             "#})
         }
         OutputCommands {
@@ -532,8 +536,8 @@ impl OutputCommands {
             };
             if !opt.writable {
                 cmds.pre.push_str(&formatdoc! {r#"
-                    vim.api.nvim_buf_set_keymap(0, '', 'r', '<CMD>call rpcnotify({channel}, "page_fetch_lines", "{page_id}", b:page_query_size * v:count1)<CR>', map_opts)
-                    vim.api.nvim_buf_set_keymap(0, '', 'R', '<CMD>call rpcnotify({channel}, "page_fetch_lines", "{page_id}", 99999)<CR>', map_opts)
+                    page_map('r', '<CMD>call rpcnotify({channel}, "page_fetch_lines", "{page_id}", b:page_query_size * v:count1)<CR>')
+                    page_map('R', '<CMD>call rpcnotify({channel}, "page_fetch_lines", "{page_id}", 99999)<CR>')
                 "#,
                     page_id = page_id,
                     channel = channel,
