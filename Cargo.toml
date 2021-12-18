@@ -34,4 +34,4 @@ lto = true
 
 [[bin]]
 name = "page"
-path = "src/page.rs"
+path = "src/pager/main.rs"

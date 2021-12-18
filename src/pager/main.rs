@@ -1,12 +1,17 @@
+extern crate page;
+
 pub(crate) mod cli;
 pub(crate) mod neovim;
 pub(crate) mod context;
+
+pub type NeovimConnection = page::connection::NeovimConnection<neovim::NeovimActions>;
+pub type NeovimBuffer = page::connection::Buffer<page::connection::IoWrite>;
 
 
 #[tokio::main(worker_threads=2)]
 async fn main() {
     _init_logger_();
-    let env_ctx = crate::context::gather_env::enter();
+    let env_ctx = context::gather_env::enter();
     prefetch_lines(env_ctx).await;
 }
 
@@ -118,14 +123,21 @@ fn _warn_incompatible_options_(opt_ctx: &context::EnvContext) {
 async fn connect_neovim(cli_ctx: context::UsageContext) {
     log::info!(target: "context", "{:#?}", &cli_ctx);
     _init_panic_hook_();
-    let mut nvim_conn = neovim::connection::open(&cli_ctx).await;
+    let mut nvim_conn = page::connection::open(
+        &cli_ctx.tmp_dir,
+        &cli_ctx.page_id,
+        &cli_ctx.opt.address,
+        &cli_ctx.opt.config,
+        &cli_ctx.opt.config,
+        cli_ctx.print_protection
+    ).await;
     let nvim_ctx = if let Some(_) = nvim_conn.nvim_proc {
         context::connect_neovim::enter(cli_ctx).with_child_neovim_process_spawned()
     } else {
         context::connect_neovim::enter(cli_ctx)
     };
     manage_page_state(&mut nvim_conn, nvim_ctx).await;
-    neovim::connection::close_and_exit(&mut nvim_conn).await;
+    page::connection::close_and_exit(&mut nvim_conn).await;
 }
 
 fn _init_panic_hook_() {
@@ -144,7 +156,7 @@ fn _init_panic_hook_() {
     }));
 }
 
-async fn manage_page_state(nvim_conn: &mut neovim::NeovimConnection, nvim_ctx: context::NeovimContext) {
+async fn manage_page_state(nvim_conn: &mut NeovimConnection, nvim_ctx: context::NeovimContext) {
     log::info!(target: "context", "{:#?}", &nvim_ctx);
     let mut api_actions = neovim_api_usage::begin(nvim_conn, &nvim_ctx);
     api_actions.close_page_instance_buffer().await;
@@ -169,8 +181,7 @@ async fn manage_page_state(nvim_conn: &mut neovim::NeovimConnection, nvim_ctx: c
 }
 
 
-use crate::neovim::{Buffer, IoWrite};
-async fn manage_output_buffer(nvim_conn: &mut neovim::NeovimConnection, buf: Buffer<IoWrite>, outp_ctx: context::OutputContext) {
+async fn manage_output_buffer(nvim_conn: &mut NeovimConnection, buf: NeovimBuffer, outp_ctx: context::OutputContext) {
     log::info!(target: "context", "{:#?}", &outp_ctx);
     let mut outp_buf_actions = output_buffer_usage::begin(nvim_conn, &outp_ctx, buf);
     if let Some(inst_name) = outp_ctx.inst_usage.is_enabled() {
@@ -188,7 +199,8 @@ async fn manage_output_buffer(nvim_conn: &mut neovim::NeovimConnection, buf: Buf
 
 
 mod neovim_api_usage {
-    use crate::{context::NeovimContext, neovim::{NeovimConnection, OutputBuffer, OutputCommands}};
+    use super::NeovimConnection;
+    use crate::{context::NeovimContext, neovim::{OutputBuffer, OutputCommands}};
 
     /// This struct implements actions that should be done before output buffer is available
     pub struct ApiActions<'a> {
@@ -266,19 +278,20 @@ mod neovim_api_usage {
 }
 
 mod output_buffer_usage {
-    use crate::{context::OutputContext, neovim::{self, Buffer, IoWrite, NeovimConnection, NotificationFromNeovim}};
-
-    use std::io::{self, BufRead, Write};
+    use super::{NeovimConnection, NeovimBuffer};
+    use crate::context::OutputContext;
+    use page::connection::NotificationFromNeovim;
+    use std::io::{BufRead, Write, self};
 
     /// This struct implements actions that should be done after output buffer is attached
     pub struct BufferActions<'a> {
         nvim_conn: &'a mut NeovimConnection,
         outp_ctx: &'a OutputContext,
-        buf: Buffer<IoWrite>,
+        buf: NeovimBuffer,
         buf_pty: once_cell::unsync::OnceCell<std::fs::File>,
     }
 
-    pub fn begin<'a>(nvim_conn: &'a mut NeovimConnection, outp_ctx: &'a OutputContext, buf: Buffer<IoWrite>) -> BufferActions<'a> {
+    pub fn begin<'a>(nvim_conn: &'a mut NeovimConnection, outp_ctx: &'a OutputContext, buf: NeovimBuffer) -> BufferActions<'a> {
         BufferActions {
             nvim_conn,
             outp_ctx,
@@ -448,11 +461,11 @@ mod output_buffer_usage {
                 match tokio::time::timeout(std::time::Duration::from_secs(1), self.nvim_conn.rx.recv()).await {
                     Ok(Some(NotificationFromNeovim::BufferClosed)) => {
                         log::info!(target: "writeline", "Buffer was closed, not all input is shown");
-                        neovim::connection::close_and_exit(self.nvim_conn).await
+                        page::connection::close_and_exit(self.nvim_conn).await
                     },
                     Ok(None) if self.nvim_conn.nvim_proc.is_some() => {
                         log::info!(target: "writeline", "Neovim was closed, not all input is shown");
-                        neovim::connection::close_and_exit(self.nvim_conn).await
+                        page::connection::close_and_exit(self.nvim_conn).await
                     },
                     _ => return Err(e),
                 }
@@ -470,11 +483,11 @@ mod output_buffer_usage {
                     Some(NotificationFromNeovim::FetchPart) => s.next_part(self.outp_ctx.query_lines_count),
                     Some(NotificationFromNeovim::BufferClosed) => {
                         log::info!(target: "output-state", "Buffer closed");
-                        neovim::connection::close_and_exit(self.nvim_conn).await
+                        page::connection::close_and_exit(self.nvim_conn).await
                     },
                     None => {
                         log::info!(target: "output-state", "Neovim closed");
-                        neovim::connection::close_and_exit(self.nvim_conn).await
+                        page::connection::close_and_exit(self.nvim_conn).await
                     }
                 }
             }

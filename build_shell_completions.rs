@@ -1,7 +1,7 @@
 use structopt::clap::Shell;
 use std::{env, fs, error::Error, path::PathBuf};
 
-include!("src/cli.rs");
+include!("src/pager/cli.rs");
 
 
 fn main() -> Result<(), Box<dyn Error>> {
