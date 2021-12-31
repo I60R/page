@@ -129,7 +129,7 @@ async fn connect_neovim(cli_ctx: context::UsageContext) {
         &cli_ctx.opt.config,
         cli_ctx.print_protection
     ).await;
-    let nvim_ctx = if let Some(_) = nvim_conn.nvim_proc {
+    let nvim_ctx = if nvim_conn.nvim_proc.is_some() {
         context::connect_neovim::enter(cli_ctx).with_child_neovim_process_spawned()
     } else {
         context::connect_neovim::enter(cli_ctx)
@@ -241,7 +241,7 @@ mod neovim_api_usage {
                 }
             }
             if nvim_ctx.is_split_flag_given_with_files() {
-                nvim_actions.switch_to_window_and_buffer(&initial_win_and_buf).await
+                nvim_actions.switch_to_window_and_buffer(initial_win_and_buf).await
             }
         }
 
@@ -308,7 +308,7 @@ mod output_buffer_usage {
             if let Some(ref buf_name) = outp_ctx.opt.name {
                 buf_title.insert_str(0, buf_name);
             }
-            nvim_actions.update_buffer_title(&buf, &buf_title).await;
+            nvim_actions.update_buffer_title(buf, &buf_title).await;
         }
 
         /// This function updates instance buffer title depending on its name and -n value.
@@ -323,7 +323,7 @@ mod output_buffer_usage {
                     buf_title.push_str(buf_name);
                 }
             }
-            nvim_actions.update_buffer_title(&buf, &buf_title).await;
+            nvim_actions.update_buffer_title(buf, &buf_title).await;
         }
 
         /// Resets instance buffer focus and content.
@@ -346,7 +346,7 @@ mod output_buffer_usage {
                 nvim_actions.execute_connect_autocmd_on_current_buffer().await;
             }
             if let Some(ref command) = outp_ctx.opt.command_post {
-                nvim_actions.execute_command_post(&command).await;
+                nvim_actions.execute_command_post(command).await;
             }
         }
 
@@ -366,7 +366,7 @@ mod output_buffer_usage {
             if outp_ctx.restore_initial_buf_focus.is_disabled() {
                 return
             }
-            nvim_actions.switch_to_window_and_buffer(&initial_win_and_buf).await;
+            nvim_actions.switch_to_window_and_buffer(initial_win_and_buf).await;
             if outp_ctx.restore_initial_buf_focus.is_vi_mode_insert() {
                 nvim_actions.set_current_buffer_insert_mode().await;
             }
@@ -501,7 +501,7 @@ mod output_buffer_usage {
                 let active_buf = nvim_actions.get_current_buffer().await.expect("Cannot get currently active buffer to execute PageDisconnect");
                 let switched = buf != &active_buf;
                 if switched {
-                    nvim_actions.switch_to_buffer(&buf).await.expect("Cannot switch back to page buffer");
+                    nvim_actions.switch_to_buffer(buf).await.expect("Cannot switch back to page buffer");
                 }
                 nvim_actions.execute_disconnect_autocmd_on_current_buffer().await;
                 if switched {

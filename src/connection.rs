@@ -106,7 +106,7 @@ async fn create_new_neovim_process_ipc(
     task::JoinHandle<tokio::process::Child>
 ) {
     if print_protection {
-        print_redirect_protection(&tmp_dir);
+        print_redirect_protection(tmp_dir);
     }
     let nvim_listen_addr = tmp_dir.join(&format!("socket-{}", page_id));
     let nvim_proc = tokio::task::spawn_blocking({
@@ -144,7 +144,7 @@ async fn create_new_neovim_process_ipc(
 
 /// This is hack to prevent behavior (or bug) in some shells (see --help[-W])
 fn print_redirect_protection(tmp_dir: &Path) {
-    let d = tmp_dir.clone().join("DO-NOT-REDIRECT-OUTSIDE-OF-NVIM-TERM(--help[-W])");
+    let d = tmp_dir.join("DO-NOT-REDIRECT-OUTSIDE-OF-NVIM-TERM(--help[-W])");
     if let Err(e) = std::fs::create_dir_all(&d) {
         panic!("Cannot create protection directory '{}': {:?}", d.display(), e)
     }

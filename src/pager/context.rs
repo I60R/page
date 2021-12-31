@@ -47,12 +47,12 @@ pub mod gather_env {
         let term_height = once_cell::unsync::Lazy::new(|| {
             term_size::dimensions().map(|(_w, h)| h).expect("Cannot get terminal height")
         });
-        let prefetch_lines_count = match opt.output.noopen_lines.clone() {
+        let prefetch_lines_count = match opt.output.noopen_lines {
             Some(Some(positive_number @ 0..)) => positive_number as usize,
             Some(negative_or_none) => term_height.saturating_sub(negative_or_none.unwrap_or(3).abs() as usize),
             None => 0
         };
-        let query_lines_count = match opt.output.query_lines.clone() {
+        let query_lines_count = match opt.output.query_lines {
             Some(Some(positive_number @ 0..)) => positive_number as usize,
             Some(negative_or_none) => term_height.saturating_sub(negative_or_none.unwrap_or(3).abs() as usize),
             None => 0
