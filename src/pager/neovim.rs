@@ -1,7 +1,7 @@
 /// A module that extends neovim api with methods required in page
 use nvim_rs::{neovim::Neovim, error::CallError, Buffer, Window, Value};
 use indoc::{indoc, formatdoc};
-use page::connection::IoWrite;
+use connection::IoWrite;
 use std::{path::PathBuf, convert::TryFrom};
 
 

@@ -33,6 +33,10 @@ clap_generate = "3.0.0-rc.10"
 [profile.release]
 lto = true
 
+[lib]
+name = "connection"
+path = "src/connection.rs"
+
 [[bin]]
 name = "page"
 path = "src/pager/main.rs"
