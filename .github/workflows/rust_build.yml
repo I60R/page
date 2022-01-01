@@ -1,0 +1,53 @@
+name: Rust Build
+
+on:
+
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+
+  CARGO_TERM_COLOR: always
+
+jobs:
+
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu, macos, windows]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Checkout source code
+      uses: actions/checkout@v2
+
+    #- name: Install clippy from rust toolchain
+    #  uses: actions-rs/toolchain@v1
+    #  with:
+    #    toolchain: stable
+    #    default: true
+    #    profile: minimal # minimal component installation (ie, no documentation)
+    #    components: clippy
+    #
+    #- name: Run clippy
+    #  uses: actions-rs/cargo@v1
+    #  with:
+    #    command: clippy
+    #    args: --locked --all-targets --all-features
+    
+    - name: Build on ${{ matrix.os }}
+      run: cargo build --verbose --release
+    
+    #- name: Run tests
+    #  run: cargo test --verbose
+
+    - name: Upload binary for ${{ matrix.os }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: page-${{ matrix.os }}
+        path: target/release/page
+        if-no-files-found: error
+        retention-days: 7
