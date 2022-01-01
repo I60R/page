@@ -109,7 +109,7 @@ async fn create_new_neovim_process_ipc(
         print_redirect_protection(tmp_dir);
     }
     let nvim_listen_addr = tmp_dir.join(&format!("socket-{}", page_id));
-    let nvim_proc = tokio::task::spawn_blocking({
+    let mut nvim_proc = tokio::task::spawn_blocking({
         let (config, custom_args, nvim_listen_addr) = (config.clone(), custom_args.clone(), nvim_listen_addr.clone());
         move || spawn_child_nvim_process(config, custom_args, &nvim_listen_addr)
     });
@@ -118,6 +118,7 @@ async fn create_new_neovim_process_ipc(
     let e = loop {
         match parity_tokio_ipc::Endpoint::connect(&nvim_listen_addr).await {
             Ok(ipc) => {
+                log::trace!(target: "child neovim spawned", "attempts={}", i);
                 let (rx, tx) = tokio::io::split(ipc);
                 let (rx, tx) = (IoRead::Ipc(rx.compat()), IoWrite::Ipc(tx.compat_write()));
                 let (neovim, io) = Neovim::<IoWrite>::new(rx, tx, handler);
@@ -128,18 +129,28 @@ async fn create_new_neovim_process_ipc(
                 if let std::io::ErrorKind::NotFound = e.kind() {
                     if i == 256 {
                         break e
-                    } else {
-                        log::trace!(target: "cannot connect to child neovim", "[attempt #{}] address '{:?}': {:?}", i, nvim_listen_addr, e);
-                        tokio::time::sleep(std::time::Duration::from_millis(8)).await;
-                        i += 1
                     }
+                    use std::task::Poll::*;
+                    match futures::poll!(std::pin::Pin::new(&mut nvim_proc)) {
+                        Ready(Err(join_e)) => break {
+                            log::error!(target: "child neovim didn't start", "{}", join_e);
+                            join_e.into()
+                        },
+                        Ready(Ok(child)) => {
+                            log::error!(target: "child neovim finished", "{:?}", child);
+                            break e
+                        },
+                        Pending => { },
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(16)).await;
+                    i += 1
                 } else {
                     break e
                 }
             }
         }
     };
-    panic!("Cannot connect to neovim: {:?}", e);
+    panic!("Cannot connect to neovim: attempts={}, address={:?}, {:?}", i, nvim_listen_addr, e);
 }
 
 /// This is hack to prevent behavior (or bug) in some shells (see --help[-W])
@@ -173,15 +184,24 @@ fn spawn_child_nvim_process(config: Option<String>, custom_args: Option<String>,
         shell_words::split(&a).expect("Cannot parse neovim arguments")
     };
     log::trace!(target: "new neovim process", "Args: {:?}", nvim_args);
-    let tty = fs::OpenOptions::new().read(true)
-        .open("/dev/tty")
-        .expect("Cannot open /dev/tty");
+    let term = current_term();
     tokio::process::Command::new("nvim").args(&nvim_args)
         .env_remove("RUST_LOG")
-        .stdin(tty)
+        .stdin(term)
         .spawn()
         .expect("Cannot spawn a child neovim process")
 }
+
+fn current_term() -> fs::File {
+    fs::OpenOptions::new().read(true).open(
+        #[cfg(windows)]
+        "CON:",
+        #[cfg(not(windows))]
+        "/dev/tty",
+    )
+        .expect("Cannot open current terminal device")
+}
+
 
 /// Returns path to custom neovim config if it's present in corresponding locations
 fn default_config_path() -> Option<String> {
