@@ -51,21 +51,34 @@ async fn prefetch_lines(env_ctx: context::EnvContext) {
     log::info!(target: "context", "{:#?}", &env_ctx);
     let wanted = env_ctx.prefetch_lines_count + 1 % (env_ctx.prefetch_lines_count + 1); // add 1 if greater than zero!
     let mut prefetched_lines = Vec::with_capacity(wanted);
-    while prefetched_lines.len() < wanted {
-        let mut line = String::with_capacity(512);
-        let remain = std::io::stdin().read_line(&mut line).expect("Failed to prefetch line from stdin");
-        line.shrink_to_fit();
-        prefetched_lines.push(line);
-        if remain == 0 {
-            _dump_prefetched_lines_and_exit_(prefetched_lines, &env_ctx.opt.output.filetype)
+    'readln: while prefetched_lines.len() < wanted {
+        let mut ln = Vec::with_capacity(512);
+        use std::io::Read;
+        for b in std::io::stdin().bytes() {
+            match b {
+                Err(e) => {
+                    panic!("Failed to prefetch line from stdin: {}", e)
+                }
+                Ok(b'\n') => {
+                    ln.push(b'\n');
+                    ln.shrink_to_fit();
+                    prefetched_lines.push(ln);
+                    continue 'readln;
+                }
+                Ok(b) => {
+                    ln.push(b)
+                }
+            }
         }
+        prefetched_lines.push(ln);
+        _dump_prefetched_lines_and_exit_(prefetched_lines, &env_ctx.opt.output.filetype)
     }
     _warn_incompatible_options_(&env_ctx);
     let cli_ctx = context::check_usage::enter(prefetched_lines, env_ctx);
     connect_neovim(cli_ctx).await;
 }
 
-fn _dump_prefetched_lines_and_exit_(lines: Vec<String>, filetype: &str) -> ! {
+fn _dump_prefetched_lines_and_exit_(lines: Vec<Vec<u8>>, filetype: &str) -> ! {
     log::info!(target: "dump", "{}: {}", filetype, lines.len());
     use std::{io, process};
     let (stdout, mut stdout_lock);
@@ -97,7 +110,7 @@ fn _dump_prefetched_lines_and_exit_(lines: Vec<String>, filetype: &str) -> ! {
         }
     };
     for ln in lines {
-        io::Write::write(output, ln.as_bytes()).expect("Cannot write line");
+        io::Write::write_all(output, &ln).expect("Cannot write line");
     }
     output.flush().expect("Cannot flush");
     if let Some(mut proc) = bat_proc {
@@ -279,7 +292,7 @@ mod output_buffer_usage {
     use super::{NeovimConnection, NeovimBuffer};
     use crate::context::OutputContext;
     use connection::NotificationFromNeovim;
-    use std::io::{BufRead, Write, self};
+    use std::io::{Read, Write, self};
 
     /// This struct implements actions that should be done after output buffer is attached
     pub struct BufferActions<'a> {
@@ -383,21 +396,23 @@ mod output_buffer_usage {
                 } else {
                     // First write all prefetched lines if any available
                     for ln in &self.outp_ctx.prefetched_lines.0[..] {
-                        self.display_line(ln.as_bytes()).await.expect("Cannot write next prefetched line");
+                        self.display_line(ln).await.expect("Cannot write next prefetched line");
                     }
                     // Then copy the rest of lines from stdin into buffer pty
-                    let stdin = std::io::stdin();
-                    let (mut buf, mut stdin_lines) = (String::with_capacity(2048), stdin.lock());
-                    loop {
-                        match stdin_lines.read_line(&mut buf) {
-                            Ok(0) => break,
-                            Ok(_) => {
-                                self.display_line(buf.as_bytes()).await.expect("Cannot write next line");
-                                buf.clear();
-                            }
+                    let mut ln = Vec::with_capacity(2048);
+                    for b in std::io::stdin().bytes() {
+                        match b {
                             Err(e) => {
                                 log::warn!(target: "output", "Error reading line from stdin: {}", e);
-                                break
+                                break;
+                            }
+                            Ok(b'\n') => {
+                                ln.push(b'\n');
+                                self.display_line(&ln).await.expect("Cannot write next line");
+                                ln.clear();
+                            }
+                            Ok(b) => {
+                                ln.push(b)
                             }
                         }
                     }
@@ -415,9 +430,9 @@ mod output_buffer_usage {
             // First write all prefetched lines if any available
             let mut prefetched_lines_iter = self.outp_ctx.prefetched_lines.0.iter();
             loop {
-                self.update_query_state(&mut s).await;
+                self.exchange_query_messages(&mut s).await;
                 match prefetched_lines_iter.next() {
-                    Some(ln) => self.display_line(ln.as_bytes()).await.expect("Cannot write next prefetched queried line"),
+                    Some(ln) => self.display_line(ln).await.expect("Cannot write next prefetched queried line"),
                     None => {
                         log::info!(target: "output", "Proceed with stdin");
                         break
@@ -426,26 +441,27 @@ mod output_buffer_usage {
                 s.line_sent();
             }
             // Then copy the rest of lines from stdin into buffer pty
-            let stdin = std::io::stdin();
-            let (mut buf, mut stdin_lines) = (String::with_capacity(2048), stdin.lock());
-            loop {
-                self.update_query_state(&mut s).await;
-                match stdin_lines.read_line(&mut buf) {
-                    Ok(0) => {
-                        self.nvim_conn.nvim_actions.notify_query_finished(s.how_many_lines_was_sent()).await;
-                        break
-                    }
-                    Ok(_) => {
-                        self.display_line(buf.as_bytes()).await.expect("Cannot write next queried line");
-                        buf.clear()
-                    }
+            let mut ln = Vec::with_capacity(2048);
+            self.exchange_query_messages(&mut s).await;
+            for b in std::io::stdin().bytes() {
+                match b {
                     Err(e) => {
                         log::warn!(target: "output", "Error reading queried line from stdin: {}", e);
-                        break
+                        break;
+                    }
+                    Ok(b'\n') => {
+                        ln.push(b'\n');
+                        self.display_line(&ln).await.expect("Cannot write next line");
+                        s.line_sent();
+                        self.exchange_query_messages(&mut s).await;
+                        ln.clear();
+                    }
+                    Ok(b) => {
+                        ln.push(b)
                     }
                 }
-                s.line_sent();
             }
+            self.nvim_conn.nvim_actions.notify_query_finished(s.how_many_lines_was_sent()).await;
             self.nvim_conn.nvim_actions.notify_end_of_input().await;
         }
 
@@ -473,7 +489,7 @@ mod output_buffer_usage {
 
         /// If the whole queried part was sent waits for notifications from neovim, processes some
         /// or schedules further query in write loop
-        async fn update_query_state(&mut self, s: &mut QueryState) {
+        async fn exchange_query_messages(&mut self, s: &mut QueryState) {
             if s.is_whole_part_sent() {
                 self.nvim_conn.nvim_actions.notify_query_finished(s.how_many_lines_was_sent()).await;
                 match self.nvim_conn.rx.recv().await {

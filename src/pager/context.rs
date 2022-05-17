@@ -92,7 +92,7 @@ impl UsageContext {
 pub mod check_usage {
     use super::{EnvContext, UsageContext};
 
-    pub fn enter(prefetched_lines_vec: Vec<String>, env_ctx: EnvContext) -> UsageContext {
+    pub fn enter(prefetched_lines_vec: Vec<Vec<u8>>, env_ctx: EnvContext) -> UsageContext {
         let EnvContext { input_from_pipe, opt, query_lines_count, .. } = env_ctx;
         let prefetched_lines = PrefetchedLines(prefetched_lines_vec);
         let tmp_dir = {
@@ -121,7 +121,7 @@ pub mod check_usage {
             query_lines_count,
         }
     }
-    pub struct PrefetchedLines(pub Vec<String>);
+    pub struct PrefetchedLines(pub Vec<Vec<u8>>);
 
     impl std::fmt::Debug for PrefetchedLines {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
