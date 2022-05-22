@@ -231,13 +231,19 @@ impl NeovimActions {
             vim.bo.scrollback, vim.wo.scrolloff, vim.wo.signcolumn, vim.wo.number = 100000, 999, 'no', false
             {ft}
             {cmd_edit}
-            vim.cmd 'autocmd BufEnter <buffer> lua vim.wo.scrolloff = 999'
-            vim.cmd 'autocmd BufLeave <buffer> lua vim.wo.scrolloff = vim.g.page_scrolloff_backup'
+            vim.api.nvim_create_autocmd('BufEnter', {{
+                buffer = 0,
+                callback = function() vim.wo.scrolloff = 999 end
+            }})
+            vim.api.nvim_create_autocmd('BufLeave', {{
+                buffer = 0,
+                callback = function() vim.wo.scrolloff = vim.g.page_scrolloff_backup end
+            }})
             {cmd_notify_closed}
             {cmd_pre}
             vim.cmd 'silent doautocmd User PageOpen | redraw'
             {cmd_provided_by_user}
-            {cmd_post}
+            {cmd_after}
         "#,
             ft = cmds.ft,
             initial_buf_nr = initial_buf_nr,
@@ -245,7 +251,7 @@ impl NeovimActions {
             cmd_notify_closed = cmds.notify_closed,
             cmd_pre = cmds.pre,
             cmd_provided_by_user = cmds.provided_by_user,
-            cmd_post = cmds.post,
+            cmd_after = cmds.after,
         };
         log::trace!(target: "prepare output", "{}", options);
         if let Err(e) = self.nvim.exec_lua(&options, vec![]).await {
@@ -377,7 +383,7 @@ pub struct OutputCommands {
     notify_closed: String,
     pre: String,
     provided_by_user: String,
-    post: String,
+    after: String,
 }
 
 impl OutputCommands {
@@ -462,7 +468,7 @@ impl OutputCommands {
         OutputCommands {
             ft: String::new(),
             pre: String::new(),
-            post: String::new(),
+            after: String::new(),
             notify_closed: String::new(),
             edit,
             provided_by_user,
@@ -471,7 +477,7 @@ impl OutputCommands {
 
     pub fn for_file_buffer(cmd_provided_by_user: &str, writeable: bool) -> OutputCommands {
         let mut cmds = Self::create_with(cmd_provided_by_user, writeable);
-        cmds.post.push_str("vim.cmd 'silent doautocmd User PageOpenFile'");
+        cmds.after.push_str("vim.cmd 'silent doautocmd User PageOpenFile'");
         cmds
     }
 
@@ -479,7 +485,10 @@ impl OutputCommands {
         let mut cmds = Self::create_with(opt.command.as_deref().unwrap_or_default(), opt.writable);
         cmds.ft = format!("vim.bo.filetype = '{}'", opt.filetype);
         cmds.notify_closed = formatdoc! {r#"
-            vim.cmd 'autocmd BufDelete <buffer> silent! call rpcnotify({channel}, "page_buffer_closed", "{page_id}")'
+            vim.api.nvim_create_autocmd('BufDelete' {{
+                buffer = 0,
+                command = 'silent! call rpcnotify({channel}, "page_buffer_closed", "{page_id}")'
+            }})
         "#,
             channel = channel,
             page_id = page_id,
@@ -490,7 +499,10 @@ impl OutputCommands {
                 vim.b.page_query_size = {query_lines_count}
                 local query = 'command! -nargs=? Page call rpcnotify({channel}, "page_fetch_lines", "{page_id}", <args>)'
                 vim.cmd(query)
-                vim.cmd('autocmd BufEnter <buffer> ' .. query)
+                vim.api.create_autocmd('BufEnter' {{
+                    buffer = 0,
+                    command = query,
+                }})
             "#,
                 query_lines_count = query_lines_count,
                 prefix = cmds.pre,
@@ -512,8 +524,14 @@ impl OutputCommands {
                 {prefix}
                 vim.b.page_lcd_backup = getcwd()
                 vim.cmd 'lcd {pwd}'
-                vim.cmd('autocmd BufEnter <buffer> lcd {pwd}')
-                vim.cmd('autocmd BufLeave <buffer> exe "lcd" . b:page_lcd_backup')
+                vim.api.nvim_create_autocmd('BufEnter', {{
+                    buffer = 0,
+                    command = 'lcd {pwd}'
+                }})
+                vim.api.nvim_create_autocmd('BufLeave', {{
+                    buffer = 0,
+                    command = 'exe "lcd" . b:page_lcd_backup'
+                }})
             "#,
                 prefix = cmds.pre,
                 pwd = std::env::var("PWD").unwrap()
