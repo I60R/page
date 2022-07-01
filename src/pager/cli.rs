@@ -1,4 +1,8 @@
-use clap::{Parser, ArgGroup, AppSettings::{DisableHelpSubcommand, AllowNegativeNumbers}};
+use clap::{
+    Parser,
+    ArgGroup,
+    AppSettings::{DisableHelpSubcommand, AllowNegativeNumbers}
+};
 
 // Contains arguments provided by command line
 #[derive(Parser, Debug)]
@@ -17,51 +21,62 @@ pub struct Options {
     #[clap(display_order=10, short='n', env="PAGE_BUFFER_NAME")]
     pub name: Option<String>,
 
-    /// TCP/IP socked address or path to named pipe listened by running host neovim process
+    /// TCP/IP socked address or path to named pipe listened
+    /// by running host neovim process
     #[clap(display_order=100, short='a', env="NVIM_LISTEN_ADDRESS")]
     pub address: Option<String>,
 
-    /// Arguments that will be passed to child neovim process spawned when <ADDRESS> is missing
+    /// Arguments that will be passed to child neovim process
+    /// spawned when <ADDRESS> is missing
     #[clap(display_order=101, short='A', env="NVIM_PAGE_ARGS")]
     pub arguments: Option<String>,
 
-    /// Config that will be used by child neovim process spawned when <ADDRESS> is missing [file:$XDG_CONFIG_HOME/page/init.vim]
+    /// Config that will be used by child neovim process spawned
+    /// when <ADDRESS> is missing [file:$XDG_CONFIG_HOME/page/init.vim]
     #[clap(display_order=102, short='c')]
     pub config: Option<String>,
 
-    /// Run command on output buffer after it was created or connected as instance {n}
+    /// Run command on output buffer after it was created
+    /// or connected as instance {n}
     /// ~ ~ ~
     #[clap(display_order=105, short='E')]
     pub command_post: Option<String>,
 
-    /// Create output buffer with <INSTANCE> tag or use existed with replacing its content by text from page's stdin
+    /// Create output buffer with <INSTANCE> tag or use existed
+    /// with replacing its content by text from page's stdin
     #[clap(display_order=200, short='i')]
     pub instance: Option<String>,
 
-    /// Create output buffer with <INSTANCE_APPEND> tag or use existed with appending to its content text from page's stdin
+    /// Create output buffer with <INSTANCE_APPEND> tag or use existed
+    /// with appending to its content text from page's stdin
     #[clap(display_order=201, short='I')]
     pub instance_append: Option<String>,
 
-    /// Close  output buffer with <INSTANCE_CLOSE> tag if it exists [without other flags revokes implied by defalt -o or -p option] {n}
+    /// Close  output buffer with <INSTANCE_CLOSE> tag if it exists
+    /// [without other flags revokes implied by defalt -o or -p option] {n}
     /// ~ ~ ~
     #[clap(display_order=202, short='x')]
     pub instance_close: Option<String>,
 
-    /// Create and use output buffer (to redirect text from page's stdin) [implied by default unless -x and/or <FILE> provided without
+    /// Create and use output buffer (to redirect text from page's stdin)
+    /// [implied by default unless -x and/or <FILE> provided without
     /// other flags]
     #[clap(display_order=0, short='o')]
     pub output_open: bool,
 
-    /// Print path of pty device associated with output buffer (to redirect text from commands respecting output buffer size and preserving
-    /// colors) [implied if page isn't piped unless -x and/or <FILE> provided without other flags]
+    /// Print path of pty device associated with output buffer (to redirect
+    /// text from commands respecting output buffer size and preserving colors)
+    /// [implied if page isn't piped unless -x and/or <FILE> provided without other flags]
     #[clap(display_order=2, short='p')]
     pub pty_path_print: bool,
 
-    /// Cursor follows content of output buffer as it appears instead of keeping top position (like `tail -f`)
+    /// Cursor follows content of output buffer as it appears
+    /// instead of keeping top position (like `tail -f`)
     #[clap(display_order=5, short='f')]
     pub follow: bool,
 
-    /// Cursor follows content of output and <FILE> buffers as it appears instead of keeping top position
+    /// Cursor follows content of output and <FILE> buffers
+    /// as it appears instead of keeping top position
     #[clap(display_order=6, short='F')]
     pub follow_all: bool,
 
@@ -77,22 +92,31 @@ pub struct Options {
     #[clap(display_order=103, short='C')]
     pub command_auto: bool,
 
-    /// Flush redirection protection that prevents from producing junk and possible overwriting of existed files by invoking commands like
-    /// `ls > $(NVIM_LISTEN_ADDRESS= page -E q)` where the RHS of > operator evaluates not into /path/to/pty as expected but into a bunch
-    /// of whitespace-separated strings/escape sequences from neovim UI; bad things happens when some shells interpret this as many valid
-    /// targets for text redirection. The protection is only printing of a path to the existed dummy directory always first before
-    /// printing of a neovim UI might occur; this makes the first target for text redirection from page's output invalid and disrupts the
-    /// whole redirection early before other harmful writes might occur. [env:PAGE_REDIRECTION_PROTECT; (0 to disable)] {n}
+    /// Flush redirection protection that prevents from producing junk
+    /// and possible overwriting of existed files by invoking commands like
+    /// `ls > $(NVIM_LISTEN_ADDRESS= page -E q)` where the RHS of > operator
+    /// evaluates not into /path/to/pty as expected but into a bunch
+    /// of whitespace-separated strings/escape sequences from neovim UI;
+    /// bad things happens when some shells interpret this as many valid
+    /// targets for text redirection. The protection is only printing of a path
+    /// to the existed dummy directory always first before printing
+    /// of a neovim UI might occur; this makes the first target for text
+    /// redirection from page's output invalid and disrupts the
+    /// whole redirection early before other harmful writes might occur.
+    /// [env:PAGE_REDIRECTION_PROTECT; (0 to disable)] {n}
     ///  ~ ~ ~
     #[clap(display_order=800, short='W')]
     pub page_no_protect: bool,
 
-    /// Open provided file in separate buffer [without other flags revokes implied by default -o or -p option]
+    /// Open provided file in separate buffer
+    /// [without other flags revokes implied by default -o or -p option]
     #[clap(name="FILE")]
     pub files: Vec<String>,
 
+
     #[clap(flatten)]
     pub output: OutputOptions,
+
 
     #[clap(skip)]
     output_implied: once_cell::unsync::OnceCell<bool>,
@@ -103,38 +127,38 @@ pub struct Options {
 
 impl Options {
     pub fn is_output_implied(&self) -> bool {
-        *self.output_implied.get_or_init(
-            || (self.instance_close.is_none() && self.files.is_empty())
-            || self.back
-            || self.back_restore
-            || self.follow
-            || self.follow_all
-            || self.output_open
-            || self.pty_path_print
-            || self.instance.is_some()
-            || self.instance_append.is_some()
-            || self.command_post.is_some()
-            || self.output.command.is_some()
-            || self.output.pwd
-            || self.output.filetype != "pager"
+        *self.output_implied.get_or_init(||
+            (self.instance_close.is_none() && self.files.is_empty()) ||
+            self.back ||
+            self.back_restore ||
+            self.follow ||
+            self.follow_all ||
+            self.output_open ||
+            self.pty_path_print ||
+            self.instance.is_some() ||
+            self.instance_append.is_some() ||
+            self.command_post.is_some() ||
+            self.output.command.is_some() ||
+            self.output.pwd ||
+            self.output.filetype != "pager"
         )
     }
+
 
     pub fn is_output_split_implied(&self) -> bool {
-        *self.output_split_implied.get_or_init(
-            || self.output.split.split_left_cols.is_some()
-            || self.output.split.split_right_cols.is_some()
-            || self.output.split.split_above_rows.is_some()
-            || self.output.split.split_below_rows.is_some()
-            || self.output.split.split_left > 0u8
-            || self.output.split.split_right > 0u8
-            || self.output.split.split_above > 0u8
-            || self.output.split.split_below > 0u8
+        *self.output_split_implied.get_or_init(||
+            self.output.split.split_left_cols.is_some() ||
+            self.output.split.split_right_cols.is_some() ||
+            self.output.split.split_above_rows.is_some() ||
+            self.output.split.split_below_rows.is_some() ||
+            self.output.split.split_left > 0u8 ||
+            self.output.split.split_right > 0u8 ||
+            self.output.split.split_above > 0u8 ||
+            self.output.split.split_below > 0u8
         )
     }
-
-
 }
+
 
 // Options that are required on output buffer creation
 #[derive(Parser, Debug)]
@@ -143,33 +167,48 @@ pub struct OutputOptions {
     #[clap(display_order=104, short='e')]
     pub command: Option<String>,
 
-    /// Prefetch <NOOPEN_LINES> from page's stdin: if all input fits then print it to stdout and exit without neovim usage (to emulate `less --quit-if-one-screen`)
-    /// [empty: term height - 3 (space for prompt); negative: term height - <NOOPEN_LINES>; 0: disabled and default; ignored with -o, -p, -x and when page isn't piped]
+    /// Prefetch <NOOPEN_LINES> from page's stdin: if all input fits
+    /// then print it to stdout and exit without neovim usage
+    /// (to emulate `less --quit-if-one-screen`)
+    /// [empty: term height - 3 (space for prompt);
+    /// negative: term height - <NOOPEN_LINES>;
+    /// 0: disabled and default;
+    /// ignored with -o, -p, -x and when page isn't piped]
     #[clap(display_order=1, short='O')]
     pub noopen_lines: Option<Option<isize>>,
 
-    /// Read no more than <QUERY_LINES> from page's stdin: next lines should be fetched by invoking :Page <QUERY> command or 'r'/'R' keypress on neovim side
-    /// [empty: term height - 2 (space for tab and buffer lines); negative: term height - <QUERY_LINES>; 0: disabled and default; <QUERY> is optional and defaults to <QUERY_LINES>;
+    /// Read no more than <QUERY_LINES> from page's stdin:
+    /// next lines should be fetched by invoking
+    /// :Page <QUERY> command or 'r'/'R' keypress on neovim side
+    /// [empty: term height - 2 (space for tab and buffer lines);
+    /// negative: term height - <QUERY_LINES>;
+    /// 0: disabled and default;
+    /// <QUERY> is optional and defaults to <QUERY_LINES>;
     /// doesn't take effect on <FILE> buffers]
     #[clap(display_order=4, short='q')]
     pub query_lines: Option<Option<isize>>,
 
-    /// Set filetype on output buffer (to enable syntax highlighting) [pager: default; not works with text echoed by -O]
+    /// Set filetype on output buffer (to enable syntax highlighting)
+    /// [pager: default; not works with text echoed by -O]
     #[clap(display_order=7, short='t', default_value="pager", hide_default_value=true)]
     pub filetype: String,
 
-    /// Do not remap i, I, a, A, u, d, x, q (and r, R with -q) keys [wouldn't unmap on connected instance output buffer] {n}
+    /// Do not remap i, I, a, A, u, d, x, q (and r, R with -q) keys
+    /// [wouldn't unmap on connected instance output buffer] {n}
     /// ~ ~ ~
     #[clap(display_order=11, short='w')]
     pub writable: bool,
 
-    /// Set $PWD as working directory at output buffer (to navigate paths with `gf`)
+    /// Set $PWD as working directory at output buffer
+    /// (to navigate paths with `gf`)
     #[clap(display_order=3, short='P')]
     pub pwd: bool,
+
 
     #[clap(flatten)]
     pub split: SplitOptions,
 }
+
 
 // Options for split
 #[derive(Parser, Debug)]
@@ -207,7 +246,8 @@ pub struct SplitOptions {
     #[clap(display_order=907, short='D')]
     pub split_below_rows: Option<u8>,
 
-    /// With any of -r -l -u -d -R -L -U -D open floating window instead of split [to not overwrite data in the current terminal] {n}
+    /// With any of -r -l -u -d -R -L -U -D open floating window instead of split
+    /// [to not overwrite data in the current terminal] {n}
     /// ~ ~ ~
     #[clap(display_order=908, short='+')]
     pub popup: bool,
@@ -234,8 +274,18 @@ fn follow_arg_group() -> ArgGroup<'static> {
 
 fn splits_arg_group() -> ArgGroup<'static> {
     ArgGroup::new("splits")
-        .args(&["split-left", "split-right", "split-above", "split-below"])
-        .args(&["split-left-cols", "split-right-cols", "split-above-rows", "split-below-rows"])
+        .args(&[
+            "split-left",
+            "split-right",
+            "split-above",
+            "split-below"
+        ])
+        .args(&[
+            "split-left-cols",
+            "split-right-cols",
+            "split-above-rows",
+            "split-below-rows"
+        ])
         .multiple(false)
 }
 
