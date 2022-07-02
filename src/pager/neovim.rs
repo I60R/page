@@ -146,12 +146,13 @@ impl NeovimActions {
             };
 
             formatdoc! {"
-                local prev_win, win = vim.api.nvim_get_current_win()
+                local prev_win = vim.api.nvim_get_current_win()
                 local w = vim.api.nvim_win_get_width(prev_win)
                 local h = vim.api.nvim_win_get_height(prev_win)
                 vim.cmd('{direction} {size}{split}')
                 local buf = vim.api.nvim_create_buf(true, false)
                 vim.api.nvim_set_current_buf(buf)
+                local win = vim.api.nvim_get_current_win()
                 vim.api.nvim_win_set_option(win, '{fix}', true)
             "}
         };
