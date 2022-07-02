@@ -94,16 +94,18 @@ impl UsageContext {
         // Otherwise, without -b and -B flags output buffer should be focused
         (!opt.back && !opt.back_restore)
     }
+
+
+    pub fn lines_has_been_prefetched(&mut self, lines: Vec<Vec<u8>>) {
+        self.prefetched_lines = check_usage::PrefetchedLines(lines);
+    }
 }
 
 
 pub mod check_usage {
     use super::{EnvContext, UsageContext};
 
-    pub fn enter(
-        prefetched_lines_vec: Vec<Vec<u8>>,
-        env_ctx: EnvContext
-    ) -> UsageContext {
+    pub fn enter(env_ctx: EnvContext) -> UsageContext {
 
         let EnvContext {
             input_from_pipe,
@@ -112,7 +114,7 @@ pub mod check_usage {
             ..
         } = env_ctx;
 
-        let prefetched_lines = PrefetchedLines(prefetched_lines_vec);
+        let prefetched_lines = PrefetchedLines(vec![]);
 
         let tmp_dir = {
             let d = std::env::temp_dir()

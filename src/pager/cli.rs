@@ -111,7 +111,7 @@ pub struct Options {
     /// Open provided file in separate buffer
     /// [without other flags revokes implied by default -o or -p option]
     #[clap(name="FILE")]
-    pub files: Vec<String>,
+    pub files: Vec<FileOption>,
 
 
     #[clap(flatten)]
@@ -292,4 +292,44 @@ fn splits_arg_group() -> ArgGroup<'static> {
 
 pub fn get_options() -> Options {
     Options::parse()
+}
+
+
+#[derive(Debug)]
+pub enum FileOption {
+    Uri(String),
+    Path(String),
+}
+
+impl std::str::FromStr for FileOption {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<FileOption, &'static str> {
+        let mut chars = s.chars();
+
+        loop {
+            match chars.next() {
+                Some('+' | '-' | '.') => continue,
+
+                Some(c) if c.is_alphanumeric() => continue,
+
+                Some(c) if c == ':' &&
+                    matches!(chars.next(), Some('/')) &&
+                    matches!(chars.next(), Some('/')) =>
+
+                    return Ok(FileOption::Uri(String::from(s))),
+
+                _ => {}
+            }
+
+            return Ok(FileOption::Path(String::from(s)))
+        }
+    }
+}
+
+impl FileOption {
+    pub fn as_str(&self) -> &str {
+        let (FileOption::Uri(s) | FileOption::Path(s)) = self;
+        &s
+    }
 }

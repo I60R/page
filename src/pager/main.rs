@@ -12,7 +12,10 @@ async fn main() {
     _init_logger_();
 
     let env_ctx = context::gather_env::enter();
-    prefetch_lines(env_ctx).await;
+
+    _warn_if_incompatible_options_(&env_ctx.opt);
+
+    validate_files(env_ctx).await;
 }
 
 
@@ -66,8 +69,80 @@ fn _init_logger_() {
 }
 
 
+// Some options takes effect only when page would be
+// spawned from neovim's terminal
+fn _warn_if_incompatible_options_(opt: &crate::cli::Options) {
+    if opt.address.is_some() {
+        return
+    }
+
+    if opt.instance_close.is_some() {
+        log::warn!(
+            target: "usage",
+            "Instance close (-x) is ignored \
+            if address (-a or $NVIM_LISTEN_ADDRESS) isn't set"
+        );
+    }
+    if opt.is_output_split_implied() {
+        log::warn!(
+            target: "usage",
+            "Split (-r -l -u -d -R -L -U -D) is ignored \
+            if address (-a or $NVIM_LISTEN_ADDRESS) isn't set"
+        );
+    }
+    if opt.back || opt.back_restore {
+        log::warn!(
+            target: "usage",
+            "Switch back (-b -B) is ignored \
+            if address (-a or $NVIM_LISTEN_ADDRESS) isn't set"
+        );
+    }
+}
+
+
+async fn validate_files(mut env_ctx: context::EnvContext) {
+    log::info!(target: "context", "{env_ctx:#?}");
+
+    for i in 0..env_ctx.opt.files.len() {
+
+        use crate::cli::FileOption::*;
+
+        match &mut env_ctx.opt.files[i] {
+            Uri(_) => continue,
+
+            Path(path) => match std::fs::canonicalize(&path) {
+                Ok(canonical) => {
+
+                    *path = canonical
+                        .to_string_lossy()
+                        .to_string()
+                }
+                Err(e) => {
+                    log::error!(
+                        target: "open file",
+                        r#"Cannot open "{path}": {e}"#);
+
+                    env_ctx.opt.files
+                        .remove(i);
+                }
+            }
+        }
+    }
+
+    prefetch_lines(env_ctx).await
+}
+
+
 async fn prefetch_lines(env_ctx: context::EnvContext) {
-    log::info!(target: "context", "{:#?}", &env_ctx);
+    log::info!(target: "context", "{env_ctx:#?}");
+
+    if !env_ctx.opt.files.is_empty() {
+
+        let cli_ctx = context::check_usage::enter(env_ctx);
+        connect_neovim(cli_ctx).await;
+
+        return
+    }
 
     let mut wanted = 0;
     if env_ctx.prefetch_lines_count > 0 {
@@ -104,9 +179,10 @@ async fn prefetch_lines(env_ctx: context::EnvContext) {
         )
     }
 
-    _warn_incompatible_options_(&env_ctx);
+    let mut cli_ctx = context::check_usage::enter(env_ctx);
+    cli_ctx
+        .lines_has_been_prefetched(prefetched_lines);
 
-    let cli_ctx = context::check_usage::enter(prefetched_lines, env_ctx);
     connect_neovim(cli_ctx).await;
 }
 
@@ -167,36 +243,6 @@ fn _dump_prefetched_lines_and_exit_(lines: Vec<Vec<u8>>, filetype: &str) -> ! {
     }
 
     std::process::exit(0)
-}
-
-
-// Some options work only when page is spawned from neovim's terminal
-fn _warn_incompatible_options_(opt_ctx: &context::EnvContext) {
-    if opt_ctx.opt.address.is_some() {
-        return
-    }
-
-    if opt_ctx.opt.instance_close.is_some() {
-        log::warn!(
-            target: "usage",
-            "Instance close (-x) is ignored \
-            if address (-a or $NVIM_LISTEN_ADDRESS) isn't set"
-        );
-    }
-    if opt_ctx.opt.is_output_split_implied() {
-        log::warn!(
-            target: "usage",
-            "Split (-r -l -u -d -R -L -U -D) is ignored \
-            if address (-a or $NVIM_LISTEN_ADDRESS) isn't set"
-        );
-    }
-    if opt_ctx.opt.back || opt_ctx.opt.back_restore {
-        log::warn!(
-            target: "usage",
-            "Switch back (-b -B) is ignored \
-            if address (-a or $NVIM_LISTEN_ADDRESS) isn't set"
-        );
-    }
 }
 
 
@@ -449,7 +495,7 @@ mod neovim_api_usage {
             for f in &nvim_ctx.opt.files {
 
                 if let Err(e) = nvim_actions.open_file_buffer(f).await {
-                    log::warn!(target: "page file", r#"Error opening "{f}": {e}"#);
+                    log::warn!(target: "page file", r#"Error opening "{f:?}": {e}"#);
 
                     continue;
                 }

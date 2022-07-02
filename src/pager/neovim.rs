@@ -510,15 +510,12 @@ impl NeovimActions {
 
     pub async fn open_file_buffer(
         &mut self,
-        file_path: &str
+        file_opt: &crate::cli::FileOption,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        log::trace!(target: "open file", "{file_path}");
-
-        let file_path = std::fs::canonicalize(file_path)?;
-        let file_path = file_path.to_string_lossy();
+        log::trace!(target: "open file", "{file_opt:?}");
 
         self.nvim
-            .command(&format!("e {file_path}"))
+            .command(&format!("e {}", file_opt.as_str()))
             .await?;
 
         Ok(())
