@@ -545,7 +545,7 @@ impl NeovimActions {
         let cmd = indoc! {"
             vim.cmd 'redraw'
             local msg = '-- [PAGE] end of input --'
-            vim.api.nvim_echo({{ msg, 'Comment' }}, }}, false, {{}})
+            vim.api.nvim_echo({{ {{ msg, 'Comment' }}, }}, false, {{}})
         "};
 
         self.nvim
