@@ -6,13 +6,13 @@
 Allows you to redirect text into [neovim](https://github.com/neovim/neovim).
 You can set it as `$PAGER` to view logs, diffs, various command outputs.
 
-ANSI escape sequences will be interpreted by :term buffer, which makes it noticeably faster than [vimpager](https://github.com/rkitover/vimpager) and [nvimpager](https://github.com/lucc/nvimpager).
+ANSI escape sequences will be interpreted by :term buffer, which makes `page` noticeably faster than [vimpager](https://github.com/rkitover/vimpager) and [nvimpager](https://github.com/lucc/nvimpager).
 Also, text will be displayed instantly as it arrives - no need to wait until EOF.
 
-Text from neovim :term buffer will be redirected directly into a new buffer in the same neovim instance - no nested neovim will be spawned.
-That's by utilizing `$NVIM_LISTEN_ADDRESS` as [neovim-remote](https://github.com/mhinz/neovim-remote) does.
+Also, text from neovim :term buffer will be redirected directly into a new buffer in the same neovim instance - no nested neovim will be spawned.
+That's by utilizing `$NVIM_LISTEN_ADDRESS` like [neovim-remote](https://github.com/mhinz/neovim-remote) does.
 
-Ultimately, `page` will reuse all of neovim text editing+navigating+searching facilities and will pick all of plugins+mappings+options set in your neovim config.
+Ultimately, `page` reuses all of neovim's text editing+navigating+searching facilities and will either facilitate all of plugins+mappings+options set in your neovim config.
 
 ## Usage
 
@@ -118,88 +118,107 @@ ARGS:
 
 </details>
 
-## Customization
+## `nvim/init.lua` customizations
 
-Statusline appearance settings:
+Statusline appearance:
 
 ```lua
-vim.g.page_icon_instance = '$'
-vim.g.page_icon_redirect = '>'
-vim.g.page_icon_pipe = '|'
+-- String that will append to buffer name
+vim.g.page_icon_pipe = '|' -- When piped
+vim.g.page_icon_redirect = '>' -- When exposes pty device
+vim.g.page_icon_instance = '$' -- When `-i, -I` flags provided
 ```
 
 Autocommand hooks:
 
 ```lua
--- Will be run once when output buffer is created
+-- Will run once when output buffer is created
 vim.api.create_autocmd('User', {
     pattern = 'PageOpen',
     callback = lua_function,
 })
 
--- Will be run once when file buffer is created
+-- Will run once when file buffer is created
 vim.api.create_autocmd('User', {
     pattern = 'PageOpenFile',
     callback = lua_function,
 })
 
--- Only if -C option provided.
--- Will be run always when output buffer is created
+-- Only with -C option provided: --
+
+-- will run always when output buffer is created
 -- and also when `page` connects to instance `-i, -I` buffers:
 vim.api.create_autocmd('User', {
     pattern = 'PageConnect',
     callback = lua_function,
 })
+
+-- Will run when page process exits
 vim.api.create_autocmd('User', {
     pattern = 'PageDisconnect',
     callback = lua_function,
 })
 ```
 
-Hotkey for closing `page` buffers on `<C-c>`:
+---
+
+Example: close `page` buffer on `<C-c>` hotkey:
 
 ```lua
-_G.page_close = function(page_alternate_bufnr)
-  local current_buffer_num = vim.api.nvim_get_current_buf()
-  vim.api.nvim_buf_delete(current_buffer_num, { force = true })
-  if current_buffer_num == page_alternate_bufnr and vim.api.nvim_get_mode() == 'n' then
-    vim.cmd 'norm a'
-  end
+_G.page_close = function(page_alternate_buf)
+    local current_buf = vim.api.nvim_get_current_buf()
+    vim.api.nvim_buf_delete(current_buf, { force = true })
+    -- reenter into terminal mode
+    if current_buf == page_alternate_buf and
+        vim.api.nvim_get_mode() == 'n'
+    then
+        vim.cmd 'norm a'
+    end
 end
 
 vim.api.nvim_create_autocmd('User', {
-  pattern = 'PageOpen',
-  command = [[
-    map <buffer> <C-c> :lua page_close(vim.b.page_alternate_bufnr)<CR>
-    tmap <buffer> <C-c> :lua page_close(vim.b.page_alternate_bufnr)<CR>
-  ]]
+    pattern = 'PageOpen',
+    callback = function()
+        vim.api.nvim_set_keymap('n', '<C-c>', function()
+            page_close(vim.b.page_alternate_bufnr)
+        end, { buffer = 0 })
+        vim.api.nvim_set_keymap('t', '<C-c>', function()
+            page_close(vim.b.page_alternate_bufnr)
+        end, { buffer = 0 })
+    end
 })
 ```
 
 ## Shell hacks
 
-To use as `$PAGER` without scrollback overflow:
+To use as `$PAGER` without [scrollback overflow](https://github.com/I60R/page/issues/7):
 
 ```zsh
 export PAGER="page -q 90000"
 ```
 
-To use as `$MANPAGER` without errors:
+To use as `$MANPAGER`:
 
 ```zsh
-export MANPAGER="page -C -e 'au User PageDisconnect sleep 100m|%y p|enew! |bd! #|pu p|set ft=man'"
+export MANPAGER="page -t man"
 ```
 
-To override neovim config (create this file or use -c option):
+To pick a bit better neovim's native `man` highlighting:
 
 ```zsh
-$XDG_CONFIG_HOME/page/init.vim
+man() { SECT=${@[-2]}; PROG=${@[-1]}; page man://"$PROG($SECT)" }
 ```
 
 To circumvent neovim config picking:
 
 ```zsh
 page -c NONE
+```
+
+To override neovim config (create this file or use -c option):
+
+```zsh
+nvim $XDG_CONFIG_HOME/page/init.vim
 ```
 
 To set output buffer name as first two words from invoked command (zsh only):
@@ -216,15 +235,16 @@ preexec() {
 These commands are run on each `page` buffer creation:
 
 ```lua
-vim.b.page_alternate_bufnr = {initial_buf_nr}
+vim.b.page_alternate_bufnr = {$initial_buf_nr}
 if vim.wo.scrolloff > 999 or vim.wo.scrolloff < 0 then
     vim.g.page_scrolloff_backup = 0
 else
     vim.g.page_scrolloff_backup = vim.wo.scrolloff
 end
-vim.bo.scrollback, vim.wo.scrolloff, vim.wo.signcolumn, vim.wo.number = 100000, 999, 'no', false
-{filetype}
-{cmd_edit}
+vim.bo.scrollback, vim.wo.scrolloff, vim.wo.signcolumn, vim.wo.number =
+    100000, 999, 'no', false
+{$filetype}
+{$edit}
 vim.api.nvim_create_autocmd('BufEnter', {
     buffer = 0,
     callback = function() vim.wo.scrolloff = 999 end
@@ -233,24 +253,24 @@ vim.api.nvim_create_autocmd('BufLeave', {
     buffer = 0,
     callback = function() vim.wo.scrolloff = vim.g.page_scrolloff_backup end
 })
-{cmd_notify_closed}
-{cmd_pre}
+{$notify_closed}
+{$pre}
 vim.cmd 'silent doautocmd User PageOpen | redraw'
-{cmd_provided_by_user}
-{cmd_after}
+{$provided_by_user}
+{$after}
 ```
 
 Where:
 
 ```lua
----{initial_buf_nr}
+--{$initial_buf_nr}
 -- Is always set on all buffers created by page
 
-'number of parent :term buffer or -1 when page isn't spawned from neovim terminal'
+'number of parent :term buffer or -1 when page isn't spawned from :term'
 ```
 
 ```lua
----{filetype}
+--{$filetype}
 -- Is set only on output buffers.
 -- On files buffers filetypes are detected automatically.
 
@@ -258,13 +278,14 @@ vim.bo.filetype='value of -t argument or "pager"'
 ```
 
 ```lua
----{cmd_edit}
+--{$edit}
 -- Is appended when no -w option provided
 
 vim.bo.modifiable = false
 _G.page_echo_notification = function(message)
     vim.defer_fn(function()
-        vim.api.nvim_echo({{ "-- [PAGE] " .. message .. " --", 'Comment' }, }, false, {})
+        local msg = "-- [PAGE] " .. message .. " --"
+        vim.api.nvim_echo({{ msg, 'Comment' }, }, false, {})
         vim.cmd 'au CursorMoved <buffer> ++once echo'
     end, 64)
 end
@@ -294,7 +315,9 @@ _G.page_scroll = function(top, message)
 end
 _G.page_close = function()
     local buf = vim.api.nvim_get_current_buf()
-    if buf ~= vim.b.page_alternate_bufnr and vim.api.nvim_buf_is_loaded(vim.b.page_alternate_bufnr) then
+    if buf ~= vim.b.page_alternate_bufnr and
+        vim.api.nvim_buf_is_loaded(vim.b.page_alternate_bufnr)
+    then
         vim.api.nvim_set_current_buf(vim.b.page_alternate_bufnr)
     end
     vim.api.nvim_buf_delete(buf, { force = true })
@@ -332,30 +355,33 @@ page_map('x', 'G')
 ```
 
 ```lua
----{cmd_notify_closed}
+--{$notify_closed}
 -- Is set only on output buffers
-vim.api.nvim_create_autocmd('BufDelete' {
+
+local closed = 'rpcnotify({channel}, "page_buffer_closed", "{page_id}")'
+vim.api.nvim_create_autocmd('BufDelete', {
     buffer = 0,
-    command = 'silent! call rpcnotify({channel}, "page_buffer_closed", "{page_id}")'
+    command = 'silent! call ' .. closed
 })
 ```
 
 ```lua
----{cmd_pre}
+--{$pre}
 -- Is appended when -q is provided
 
-vim.b.page_query_size = {query_lines_count}
-local query = 'command! -nargs=? Page call rpcnotify({channel}, "page_fetch_lines", "{page_id}", <args>)'
-vim.cmd(query)
-vim.api.create_autocmd('BufEnter' {
+vim.b.page_query_size = {$query_lines_count}
+local def_args = '{channel}, "page_fetch_lines", "{page_id}", '
+local def = 'command! -nargs=? Page call rpcnotify(' .. def_args .. '<args>)'
+vim.cmd(def)
+vim.api.create_autocmd('BufEnter', {
     buffer = 0,
-    command = query,
+    command = def,
 })
 
 -- Also if -q is provided and no -w provided
 
-page_map('r', '<CMD>call rpcnotify({channel}, "page_fetch_lines", "{page_id}", b:page_query_size * v:count1)<CR>')
-page_map('R', '<CMD>call rpcnotify({channel}, "page_fetch_lines", "{page_id}", 99999)<CR>')
+page_map('r', '<CMD>call rpcnotify(' .. def_args .. 'b:page_query_size * v:count1)<CR>')
+page_map('R', '<CMD>call rpcnotify(' .. def_args .. '99999)<CR>')
 
 -- If -P is provided ({pwd} is $PWD value)
 
@@ -372,14 +398,14 @@ vim.api.nvim_create_autocmd('BufLeave', {
 ```
 
 ```lua
----{cmd_provided_by_user}
+--{$provided_by_user}
 -- Is appended when -e is provided
 
-vim.cmd [====[{value of -e argument}]====]
+vim.cmd [====[{$command}]====]
 ```
 
 ```lua
----{cmd_after}
+--{$after}
 -- Is appended only on file buffers
 
 vim.cmd 'silent doautocmd User PageOpenFile'
@@ -387,9 +413,8 @@ vim.cmd 'silent doautocmd User PageOpenFile'
 
 ## Limitations
 
-* Only ~100000 lines can be displayed (it's neovim terminal limit)
-* Text that doesn't fit in window width on resize will be lost ([due to data structures inherited from vim](https://github.com/neovim/neovim/issues/2514#issuecomment-580035346))
-* `MANPAGER=page -t man` not works because `set ft=man` fails on :term buffer (other filetypes may be affected as well)
+* Only ~100000 lines can be displayed (that's neovim terminal limit)
+* No reflow: text that doesnt't fit into window will be lost on resize  ([due to data structures inherited from vim](https://github.com/neovim/neovim/issues/2514#issuecomment-580035346))
 
 ## Installation
 
