@@ -131,7 +131,7 @@ async fn validate_files(mut env_ctx: context::EnvContext) {
     }
 
     let all_files_not_exists = files_count > 0
-        && env_ctx.opt.files.len() == 0;
+        && env_ctx.opt.files.is_empty();
     if all_files_not_exists &&
         !env_ctx.input_from_pipe &&
         !env_ctx.opt.is_output_implied() &&

@@ -329,6 +329,6 @@ impl std::str::FromStr for FileOption {
 impl FileOption {
     pub fn as_str(&self) -> &str {
         let (FileOption::Uri(s) | FileOption::Path(s)) = self;
-        &s
+        s
     }
 }
