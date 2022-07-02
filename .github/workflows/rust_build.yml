@@ -50,6 +50,6 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: page-${{ matrix.os }}
-        path: ${{ matrix.os == 'windows' && 'target\release\page' || 'target/release/page' }}
+        path: ${{ matrix.os == 'windows' && 'target\release\page.exe' || 'target/release/page' }}
         if-no-files-found: error
         retention-days: 7
