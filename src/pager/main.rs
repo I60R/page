@@ -103,7 +103,8 @@ fn _warn_if_incompatible_options_(opt: &crate::cli::Options) {
 async fn validate_files(mut env_ctx: context::EnvContext) {
     log::info!(target: "context", "{env_ctx:#?}");
 
-    for i in 0..env_ctx.opt.files.len() {
+    let files_count = env_ctx.opt.files.len();
+    for i in 0..files_count {
 
         use crate::cli::FileOption::*;
 
@@ -127,6 +128,16 @@ async fn validate_files(mut env_ctx: context::EnvContext) {
                 }
             }
         }
+    }
+
+    let all_files_not_exists = files_count > 0
+        && env_ctx.opt.files.len() == 0;
+    if all_files_not_exists &&
+        !env_ctx.input_from_pipe &&
+        !env_ctx.opt.is_output_implied() &&
+        !env_ctx.opt.is_output_split_implied()
+    {
+        std::process::exit(1)
     }
 
     prefetch_lines(env_ctx).await

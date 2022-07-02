@@ -225,7 +225,10 @@ pub mod connect_neovim {
         let mut outp_buf_usage = OutputBufferUsage::Disabled;
         if opt.is_output_split_implied() {
             outp_buf_usage = OutputBufferUsage::CreateSplit
-        } else if input_from_pipe || opt.is_output_implied() {
+        } else if input_from_pipe ||
+            opt.is_output_implied() ||
+            (opt.instance_close.is_none() && opt.files.is_empty())
+        {
             outp_buf_usage = OutputBufferUsage::CreateSubstituting
         }
 

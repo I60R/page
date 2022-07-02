@@ -128,7 +128,6 @@ pub struct Options {
 impl Options {
     pub fn is_output_implied(&self) -> bool {
         *self.output_implied.get_or_init(||
-            (self.instance_close.is_none() && self.files.is_empty()) ||
             self.back ||
             self.back_restore ||
             self.follow ||
