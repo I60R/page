@@ -311,11 +311,11 @@ impl NeovimActions {
             .await;
         log::trace!(target: "update title", "{bn:?} => {buf_title}");
 
-        let retries = (1..99)
-            .map(|attempt_nr| (attempt_nr, format!("{buf_title}({attempt_nr})")));
+        let numbered_names = (1..99)
+            .map(|attempt_nr| format!("{buf_title}({attempt_nr})"));
 
-        for (attempt_nr, name) in std::iter::once((0, buf_title.to_string()))
-            .chain(retries)
+        for name in std::iter::once(buf_title.to_string())
+            .chain(numbered_names)
         {
             if let Err(e) = buf
                 .set_name(&name)
@@ -328,11 +328,7 @@ impl NeovimActions {
 
                 use CallError::NeovimError;
                 match *e {
-                    NeovimError(_, m)
-                        if m == "Failed to rename buffer" && attempt_nr < 99 => {
-
-                        continue
-                    }
+                    NeovimError(_, m) if m == "Failed to rename buffer" => {}
                     _ => {
                         log::error!(target: "update title", "Cannot update title: {e}");
 
@@ -348,6 +344,8 @@ impl NeovimActions {
                 return
             }
         }
+
+        log::error!(target: "update title", "Max attempts to rename buffer reached")
     }
 
 
@@ -379,7 +377,11 @@ impl NeovimActions {
             }})
             {notify_closed}
             {pre}
-            vim.cmd 'silent doautocmd User PageOpen | redraw'
+            vim.api.nvim_exec_autocmds('User', {{
+                buffer = 0,
+                group = 'PageOpen'
+            }})
+            vim.cmd 'redraw'
             {provided_by_user}
             {after}
         "#};
@@ -400,8 +402,14 @@ impl NeovimActions {
     pub async fn execute_connect_autocmd_on_current_buffer(&mut self) {
         log::trace!(target: "au PageConnect", "");
 
+        let cmd = indoc! {"
+            vim.api.nvim_exec_autocmds('User', {
+                buffer = 0,
+                group = 'PageConnect,
+            })
+        "};
         if let Err(e) = self.nvim
-            .command("silent doautocmd User PageConnect")
+            .exec_lua(cmd, vec![])
             .await
         {
             log::error!(target: "au PageConnect", "Cannot execute PageConnect: {e}");
@@ -411,8 +419,15 @@ impl NeovimActions {
 
     pub async fn execute_disconnect_autocmd_on_current_buffer(&mut self) {
         log::trace!(target: "au PageDisconnect", "");
+
+        let cmd = indoc! {"
+            vim.api.nvim_exec_autocmds('User', {
+                buffer = 0,
+                group = 'PageDisconnect,
+            })
+        "};
         if let Err(e) = self.nvim
-            .command("silent doautocmd User PageDisconnect")
+            .exec_lua(cmd, vec![])
             .await
         {
             log::error!(target: "au PageDisconnect", "Cannot execute PageDisconnect: {e}");
@@ -427,7 +442,7 @@ impl NeovimActions {
             .command(cmd)
             .await
         {
-            log::error!(target: "command post", "Error executing post command '{cmd}': {e}");
+            log::error!(target: "command post", "Cannot execute post command '{cmd}': {e}");
         }
     }
 
@@ -475,9 +490,14 @@ impl NeovimActions {
     pub async fn set_current_buffer_insert_mode(&mut self) {
         log::trace!(target: "set INSERT", "");
 
-        // Fixes "can't enter normal mode from..."
+        // feedkeys fixes "can't enter normal mode from..."
+        let cmd = indoc! {r#"
+            local keys = vim.api
+                .nvim_replace_termcodes('<C-\\><C-n>A', true, false, true)
+            vim.api.nvim_feedkeys(keys, 'n', false)
+        "#};
         if let Err(e) = self.nvim
-            .command(r###"call feedkeys("\<C-\>\<C-n>A", 'n')"###)
+            .exec_lua(cmd, vec![])
             .await
         {
             log::error!(target: "set INSERT", "Error when setting mode: {e}");
@@ -488,8 +508,13 @@ impl NeovimActions {
     pub async fn set_current_buffer_follow_output_mode(&mut self) {
         log::trace!(target: "set FOLLOW", "");
 
+        let cmd = indoc! {r#"
+            local keys = vim.api
+                .nvim_replace_termcodes('<C-\\><C-n>G', true, false, true)
+            vim.api.nvim_feedkeys(keys, 'n', false)
+        "#};
         if let Err(e) = self.nvim
-            .command(r###"call feedkeys("\<C-\>\<C-n>G, 'n'")"###)
+            .exec_lua(cmd, vec![])
             .await
         {
             log::error!(target: "set FOLLOW", "Error when setting mode: {e}");
@@ -500,8 +525,13 @@ impl NeovimActions {
     pub async fn set_current_buffer_scroll_mode(&mut self) {
         log::trace!(target: "set SCROLL", "");
 
+        let cmd = indoc! {r#"
+            local keys = vim.api
+                .nvim_replace_termcodes('<C-\\><C-n>ggM', true, false, true)
+            vim.api.nvim_feedkeys(keys, 'n', false)
+        "#};
         if let Err(e) = self.nvim
-            .command(r###"call feedkeys("\<C-\>\<C-n>ggM, 'n'")"###)
+            .exec_lua(cmd, vec![])
             .await
         {
             log::error!(target: "set SCROLL", "Error when setting mode: {e}");
@@ -563,21 +593,25 @@ impl NeovimActions {
         let val = self.nvim
             .get_var(key)
             .await
-            .map(|v| v.to_string())
-            .unwrap_or_else(|e| {
-                use CallError::NeovimError;
-                match *e {
-                    NeovimError(_, m) if m == format!("Key not found: {key}") => {},
-                    _ => {
-                        log::error!(target: "get var", "Error getting var: {key}, {e}")
-                    }
+            .map(|v| v.to_string());
+
+        log::trace!(target: "get var", "Key '{key}': '{val:?}'");
+
+        val.unwrap_or_else(|e| {
+            use CallError::NeovimError;
+            match *e {
+                NeovimError(_, m) if m == format!("Key not found: {key}") => {},
+
+                _ => {
+                    log::error!(
+                        target: "get var",
+                        "Error getting var: {key}, {e}"
+                    )
                 }
+            }
 
-                String::from(default)
-            });
-        log::trace!(target: "get var", "Key '{key}': '{val}'");
-
-        val
+            String::from(default)
+        })
     }
 }
 
@@ -652,7 +686,7 @@ impl OutputCommands {
                     end, 64)
                 end
 
-                local function page_bound(top, message, move)
+                local function page_scroll_text_bound(top, message, movement)
                     local row, col, search
                     if top then
                         row, col, search = 1, 1, { '\\S', 'c' }
@@ -661,21 +695,27 @@ impl OutputCommands {
                     end
                     vim.api.nvim_call_function('cursor', { row, col })
                     vim.api.nvim_call_function('search', search)
-                    if move ~= nil then move() end
+                    if movement ~= nil then
+                        movement()
+                    end
                     page_echo_notification(message)
                 end
 
                 local function page_scroll(top, message)
                     vim.wo.scrolloff = 0
-                    local move
+                    local movement
                     if top then
                         local key = vim.api
                             .nvim_replace_termcodes('z<CR>M', true, false, true)
-                        move = function() vim.api.nvim_feedkeys(key, 'nx', true) end
+                        movement = function()
+                            vim.api.nvim_feedkeys(key, 'nx', false)
+                        end
                     else
-                        move = function() vim.api.nvim_feedkeys('z-M', 'nx', false) end
+                        movement = function()
+                            vim.api.nvim_feedkeys('z-M', 'nx', false)
+                        end
                     end
-                    page_bound(top, message, move)
+                    page_scroll_text_bound(top, message, movement)
                     vim.wo.scrolloff = 999
                 end
 
@@ -690,7 +730,10 @@ impl OutputCommands {
                     local exit = true
                     for _, b in ipairs(vim.api.nvim_list_bufs()) do
                         local bt = vim.api.nvim_buf_get_option(b, 'buftype')
-                        if bt == '' or bt == 'acwrite' or bt == 'terminal' or bt == 'prompt'
+                        if bt == '' or
+                            bt == 'acwrite' or
+                            bt == 'terminal' or
+                            bt == 'prompt'
                         then
                             local bm = vim.api.nvim_buf_get_option(b, 'modified')
                             if bm then
@@ -712,10 +755,19 @@ impl OutputCommands {
                 local function page_map(key, rhs)
                     vim.keymap.set('n', key, rhs, { nowait = true, buffer = 0 })
                 end
-                page_map('I', function() page_scroll(true, 'in the beginning of scroll') end)
-                page_map('A', function() page_scroll(false, 'at the end of scroll') end)
-                page_map('i', function() page_bound(true, 'in the beginning') end)
-                page_map('a', function() page_bound(false, 'at the end') end)
+
+                page_map('I', function()
+                    page_scroll(true, 'in the beginning of scroll')
+                end)
+                page_map('A', function()
+                    page_scroll(false, 'at the end of scroll')
+                end)
+                page_map('i', function()
+                    page_scroll_text_bound(true, 'in the beginning')
+                end)
+                page_map('a', function()
+                    page_scroll_text_bound(false, 'at the end')
+                end)
                 page_map('q', page_close)
                 page_map('u', '<C-u>')
                 page_map('d', '<C-d>')
