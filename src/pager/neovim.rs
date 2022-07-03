@@ -545,7 +545,7 @@ impl NeovimActions {
         let cmd = indoc! {"
             vim.cmd 'redraw'
             local msg = '-- [PAGE] end of input --'
-            vim.api.nvim_echo({{ {{ msg, 'Comment' }}, }}, false, {{}})
+            vim.api.nvim_echo({{ msg, 'Comment' }, }, false, {})
         "};
 
         self.nvim
@@ -640,15 +640,19 @@ impl OutputCommands {
             let cmd = indoc! {r#"
                 vim.bo.modifiable = false
 
-                _G.page_echo_notification = function(message)
+                local function page_echo_notification(message)
                     vim.defer_fn(function()
                         local msg = '-- [PAGE] ' .. message .. ' --'
                         vim.api.nvim_echo({{ msg, 'Comment' }, }, false, {})
-                        vim.cmd 'au CursorMoved <buffer> ++once echo'
+                        vim.api.nvim_create_autocmd('CursorMoved', {
+                            buffer = 0,
+                            once = true,
+                            command = 'echo'
+                        })
                     end, 64)
                 end
 
-                _G.page_bound = function(top, message, move)
+                local function page_bound(top, message, move)
                     local row, col, search
                     if top then
                         row, col, search = 1, 1, { '\\S', 'c' }
@@ -658,23 +662,24 @@ impl OutputCommands {
                     vim.api.nvim_call_function('cursor', { row, col })
                     vim.api.nvim_call_function('search', search)
                     if move ~= nil then move() end
-                    _G.page_echo_notification(message)
+                    page_echo_notification(message)
                 end
 
-                _G.page_scroll = function(top, message)
+                local function page_scroll(top, message)
                     vim.wo.scrolloff = 0
                     local move
                     if top then
-                        local key = vim.api.nvim_replace_termcodes('z<CR>M', true, false, true)
+                        local key = vim.api
+                            .nvim_replace_termcodes('z<CR>M', true, false, true)
                         move = function() vim.api.nvim_feedkeys(key, 'nx', true) end
                     else
                         move = function() vim.api.nvim_feedkeys('z-M', 'nx', false) end
                     end
-                    _G.page_bound(top, message, move)
+                    page_bound(top, message, move)
                     vim.wo.scrolloff = 999
                 end
 
-                _G.page_close = function()
+                local function page_close()
                     local buf = vim.api.nvim_get_current_buf()
                     if buf ~= vim.b.page_alternate_bufnr and
                         vim.api.nvim_buf_is_loaded(vim.b.page_alternate_bufnr)
@@ -685,7 +690,7 @@ impl OutputCommands {
                     local exit = true
                     for _, b in ipairs(vim.api.nvim_list_bufs()) do
                         local bt = vim.api.nvim_buf_get_option(b, 'buftype')
-                        if bt == "" or bt == "acwrite" or bt == "terminal" or bt == "prompt"
+                        if bt == '' or bt == 'acwrite' or bt == 'terminal' or bt == 'prompt'
                         then
                             local bm = vim.api.nvim_buf_get_option(b, 'modified')
                             if bm then
@@ -693,25 +698,25 @@ impl OutputCommands {
                                 break
                             end
                             local bl = vim.api.nvim_buf_get_lines(b, 0, -1, false)
-                            if #bl ~= 0 and bl[1] ~= "" and #bl > 1 then
+                            if #bl ~= 0 and bl[1] ~= '' and #bl > 1 then
                                 exit = false
                                 break
                             end
                         end
                     end
                     if exit then
-                        vim.cmd "qa!"
+                        vim.cmd 'qa!'
                     end
                 end
 
-                local function page_map(key, expr)
-                    vim.api.nvim_buf_set_keymap(0, '', key, expr, { nowait = true })
+                local function page_map(key, rhs)
+                    vim.keymap.set('n', key, rhs, { nowait = true, buffer = 0 })
                 end
-                page_map('I', '<CMD>lua _G.page_scroll(true, "in the beginning of scroll")<CR>')
-                page_map('A', '<CMD>lua _G.page_scroll(false, "at the end of scroll")<CR>')
-                page_map('i', '<CMD>lua _G.page_bound(true, "in the beginning")<CR>')
-                page_map('a', '<CMD>lua _G.page_bound(false, "at the end")<CR>')
-                page_map('q', '<CMD>lua _G.page_close()<CR>')
+                page_map('I', function() page_scroll(true, 'in the beginning of scroll') end)
+                page_map('A', function() page_scroll(false, 'at the end of scroll') end)
+                page_map('i', function() page_bound(true, 'in the beginning') end)
+                page_map('a', function() page_bound(false, 'at the end') end)
+                page_map('q', page_close)
                 page_map('u', '<C-u>')
                 page_map('d', '<C-d>')
                 page_map('x', 'G')
@@ -739,8 +744,14 @@ impl OutputCommands {
             cmd_provided_by_user,
             writeable
         );
-        cmds.after
-            .push_str("vim.cmd 'silent doautocmd User PageOpenFile'");
+
+        let cmd = indoc! {"
+            vim.api.nvim_exec_autocmds('User', {
+                group = 'PageOpenFile',
+                buffer = 0,
+            })
+        "};
+        cmds.after.push_str(cmd);
 
         cmds
     }
@@ -765,10 +776,13 @@ impl OutputCommands {
         cmds.ft = format!("vim.bo.filetype = '{ft}'");
 
         cmds.notify_closed = formatdoc! {r#"
-            local closed = 'rpcnotify({channel}, "page_buffer_closed", "{page_id}")'
             vim.api.nvim_create_autocmd('BufDelete', {{
                 buffer = 0,
-                command = 'silent! call ' .. closed
+                callback = function()
+                    pcall(function()
+                        vim.rpcnotify({channel}, 'page_buffer_closed', '{page_id}')
+                    end)
+                end
             }})
         "#};
 
@@ -778,12 +792,22 @@ impl OutputCommands {
             cmds.pre = formatdoc! {r#"
                 {prefix}
                 vim.b.page_query_size = {query_lines_count}
-                local def_args = '{channel}, "page_fetch_lines", "{page_id}", '
-                local def = 'command! -nargs=? Page call rpcnotify(' .. def_args .. '<args>)'
-                vim.cmd(def)
-                vim.api.create_autocmd('BufEnter', {{
+                local function fetch_lines(opt)
+                    local ok = pcall(function()
+                        vim.rpcnotify({channel}, 'page_fetch_lines', '{page_id}', opt.args)
+                    end)
+                    if not ok then
+                        page_echo_notification 'closed'
+                    end
+                end
+                local function define_query_cmd()
+                    local cmd_opts = {{ force = true, nargs = '?' }}
+                    vim.api.nvim_create_user_command('Page', fetch_lines, cmd_opts)
+                end
+                define_query_cmd()
+                vim.api.nvim_create_autocmd('BufEnter', {{
                     buffer = 0,
-                    command = def,
+                    callback = define_query_cmd,
                 }})
             "#};
 
@@ -792,14 +816,12 @@ impl OutputCommands {
                 let prefix = cmds.pre;
                 cmds.pre = formatdoc! {r#"
                     {prefix}
-                    page_map(
-                        'r',
-                        '<CMD>call rpcnotify(' .. def_args .. 'b:page_query_size * v:count1)<CR>'
-                    )
-                    page_map(
-                        'R',
-                        '<CMD>call rpcnotify(' .. def_args .. '99999)<CR>'
-                    )
+                    page_map('r', function()
+                        fetch_lines {{ args = vim.b.page_query_size * vim.v.count1 }}
+                    end)
+                    page_map('R', function()
+                        fetch_lines {{ args = 9999 }}
+                    end)
                 "#};
             }
         }
