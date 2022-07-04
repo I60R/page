@@ -1,6 +1,7 @@
 use clap::{
     Parser,
     ArgGroup,
+    ValueHint,
     AppSettings::{DisableHelpSubcommand, AllowNegativeNumbers}
 };
 
@@ -33,7 +34,7 @@ pub struct Options {
 
     /// Config that will be used by child neovim process spawned
     /// when <ADDRESS> is missing [file:$XDG_CONFIG_HOME/page/init.vim]
-    #[clap(display_order=102, short='c')]
+    #[clap(display_order=102, short='c', value_hint=ValueHint::AnyPath)]
     pub config: Option<String>,
 
     /// Run command on output buffer after it was created
@@ -110,7 +111,7 @@ pub struct Options {
 
     /// Open provided file in separate buffer
     /// [without other flags revokes implied by default -o or -p option]
-    #[clap(name="FILE")]
+    #[clap(name="FILE", value_hint=ValueHint::AnyPath)]
     pub files: Vec<FileOption>,
 
 
