@@ -378,8 +378,7 @@ impl NeovimActions {
             {notify_closed}
             {pre}
             vim.api.nvim_exec_autocmds('User', {{
-                buffer = 0,
-                group = 'PageOpen'
+                pattern = 'PageOpen'
             }})
             vim.cmd 'redraw'
             {provided_by_user}
@@ -404,8 +403,7 @@ impl NeovimActions {
 
         let cmd = indoc! {"
             vim.api.nvim_exec_autocmds('User', {
-                buffer = 0,
-                group = 'PageConnect,
+                pattern = 'PageConnect',
             })
         "};
         if let Err(e) = self.nvim
@@ -422,8 +420,7 @@ impl NeovimActions {
 
         let cmd = indoc! {"
             vim.api.nvim_exec_autocmds('User', {
-                buffer = 0,
-                group = 'PageDisconnect,
+                pattern = 'PageDisconnect',
             })
         "};
         if let Err(e) = self.nvim
@@ -799,8 +796,7 @@ impl OutputCommands {
 
         let cmd = indoc! {"
             vim.api.nvim_exec_autocmds('User', {
-                group = 'PageOpenFile',
-                buffer = 0,
+                pattern = 'PageOpenFile',
             })
         "};
         cmds.after.push_str(cmd);
