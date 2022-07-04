@@ -256,7 +256,8 @@ vim.api.nvim_create_autocmd('BufLeave', {
 {$notify_closed}
 {$pre}
 vim.cmd 'silent doautocmd User PageOpen | redraw'
-{$provided_by_user}
+{$lua_provided_by_user}
+{$cmd_provided_by_user}
 {$after}
 ```
 
@@ -367,7 +368,7 @@ vim.api.nvim_create_autocmd('BufDelete', {
 
 ```lua
 --{$pre}
--- Is appended when -q is provided
+-- Is appended when -q provided
 
 vim.b.page_query_size = {$query_lines_count}
 local def_args = '{channel}, "page_fetch_lines", "{page_id}", '
@@ -378,12 +379,12 @@ vim.api.create_autocmd('BufEnter', {
     command = def,
 })
 
--- Also if -q is provided and no -w provided
+-- Also if -q provided and no -w provided
 
 page_map('r', '<CMD>call rpcnotify(' .. def_args .. 'b:page_query_size * v:count1)<CR>')
 page_map('R', '<CMD>call rpcnotify(' .. def_args .. '99999)<CR>')
 
--- If -P is provided ({pwd} is $PWD value)
+-- If -P provided ({pwd} is $PWD value)
 
 vim.b.page_lcd_backup = getcwd()
 vim.cmd 'lcd {pwd}'
@@ -398,8 +399,15 @@ vim.api.nvim_create_autocmd('BufLeave', {
 ```
 
 ```lua
---{$provided_by_user}
--- Is appended when -e is provided
+--{$lua_provided_by_user}
+-- Is appended when --e provided
+
+'value of --e flag'
+```
+
+```lua
+--{$cmd_provided_by_user}
+-- Is appended when -e provided
 
 vim.cmd [====[{$command}]====]
 ```
@@ -408,7 +416,9 @@ vim.cmd [====[{$command}]====]
 --{$after}
 -- Is appended only on file buffers
 
-vim.cmd 'silent doautocmd User PageOpenFile'
+vim.api.nvim_exec_autocmds('User', {
+    pattern = 'PageOpenFile',
+})
 ```
 
 ## Limitations

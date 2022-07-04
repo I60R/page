@@ -37,11 +37,16 @@ pub struct Options {
     #[clap(display_order=102, short='c', value_hint=ValueHint::AnyPath)]
     pub config: Option<String>,
 
-    /// Run command on output buffer after it was created
+    /// Run command  on output buffer after it was created
+    /// or connected as instance
+    #[clap(display_order=106, short='E')]
+    pub command_post: Option<String>,
+
+    /// Run lua expr on output buffer after it was created
     /// or connected as instance {n}
     /// ~ ~ ~
-    #[clap(display_order=105, short='E')]
-    pub command_post: Option<String>,
+    #[clap(display_order=107, long="E")]
+    pub lua_post: Option<String>,
 
     /// Create output buffer with <INSTANCE> tag or use existed
     /// with replacing its content by text from page's stdin
@@ -138,7 +143,9 @@ impl Options {
             self.instance.is_some() ||
             self.instance_append.is_some() ||
             self.command_post.is_some() ||
+            self.lua_post.is_some() ||
             self.output.command.is_some() ||
+            self.output.lua.is_some() ||
             self.output.pwd ||
             self.output.filetype != "pager"
         )
@@ -163,9 +170,13 @@ impl Options {
 // Options that are required on output buffer creation
 #[derive(Parser, Debug)]
 pub struct OutputOptions {
-    /// Run command in output buffer after it was created
+    /// Run command  on output buffer after it was created
     #[clap(display_order=104, short='e')]
     pub command: Option<String>,
+
+    /// Run lua expr on output buffer after it was created
+    #[clap(display_order=105, long="e")]
+    pub lua: Option<String>,
 
     /// Prefetch <NOOPEN_LINES> from page's stdin: if all input fits
     /// then print it to stdout and exit without neovim usage

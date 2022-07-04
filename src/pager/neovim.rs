@@ -354,7 +354,15 @@ impl NeovimActions {
         initial_buf_nr: i64,
         cmds: OutputCommands
     ) {
-        let OutputCommands { ft, edit, notify_closed, pre, provided_by_user, after } = cmds;
+        let OutputCommands {
+            ft,
+            edit,
+            notify_closed,
+            pre,
+            cmd_provided_by_user,
+            lua_provided_by_user,
+            after
+        } = cmds;
 
         let options = formatdoc! {r#"
             vim.b.page_alternate_bufnr = {initial_buf_nr}
@@ -381,7 +389,8 @@ impl NeovimActions {
                 pattern = 'PageOpen'
             }})
             vim.cmd 'redraw'
-            {provided_by_user}
+            {lua_provided_by_user}
+            {cmd_provided_by_user}
             {after}
         "#};
         log::trace!(target: "prepare output", "{options}");
@@ -440,6 +449,21 @@ impl NeovimActions {
             .await
         {
             log::error!(target: "command post", "Cannot execute post command '{cmd}': {e}");
+        }
+    }
+
+
+    pub async fn execute_command_post_lua(&self, lua_expr: &str) {
+        log::trace!(target: "command post lua", "{lua_expr}");
+
+        if let Err(e) = self.nvim
+            .exec_lua(lua_expr, vec![])
+            .await
+        {
+            log::error!(
+                target: "command post lua",
+                "Cannot execute post lua command '{lua_expr}': {e}"
+            );
         }
     }
 
@@ -652,19 +676,23 @@ pub struct OutputCommands {
     ft: String,
     notify_closed: String,
     pre: String,
-    provided_by_user: String,
+    cmd_provided_by_user: String,
+    lua_provided_by_user: String,
     after: String,
 }
 
 impl OutputCommands {
     fn create_with(
         cmd_provided_by_user: &str,
-        writeable: bool
+        lua_provided_by_user: &str,
+        writeable: bool,
     ) -> OutputCommands {
-        let mut provided_by_user = String::from(cmd_provided_by_user);
-        if !provided_by_user.is_empty() {
-            provided_by_user = format!("vim.cmd [====[{provided_by_user}]====]");
+        let mut cmd_provided_by_user = String::from(cmd_provided_by_user);
+        if !cmd_provided_by_user.is_empty() {
+            cmd_provided_by_user = format!("vim.cmd [====[{cmd_provided_by_user}]====]");
         }
+
+        let lua_provided_by_user = String::from(lua_provided_by_user);
 
         let mut edit = String::new();
         if !writeable {
@@ -780,17 +808,20 @@ impl OutputCommands {
             after: String::new(),
             notify_closed: String::new(),
             edit,
-            provided_by_user,
+            cmd_provided_by_user,
+            lua_provided_by_user,
         }
     }
 
 
     pub fn for_file_buffer(
         cmd_provided_by_user: &str,
+        lua_provided_by_user: &str,
         writeable: bool
     ) -> OutputCommands {
         let mut cmds = Self::create_with(
             cmd_provided_by_user,
+            lua_provided_by_user,
             writeable
         );
 
@@ -814,9 +845,13 @@ impl OutputCommands {
         let cmd_provided_by_user = opt.command
             .as_deref()
             .unwrap_or_default();
+        let lua_provided_by_user = opt.lua
+            .as_deref()
+            .unwrap_or_default();
 
         let mut cmds = Self::create_with(
             cmd_provided_by_user,
+            lua_provided_by_user,
             opt.writable
         );
 
