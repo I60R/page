@@ -218,7 +218,7 @@ page -c NONE
 To override neovim config (create this file or use -c option):
 
 ```zsh
-nvim $XDG_CONFIG_HOME/page/init.vim
+$XDG_CONFIG_HOME/page/init.lua # init.vim is also supported
 ```
 
 To set output buffer name as first two words from invoked command (zsh only):
