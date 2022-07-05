@@ -513,10 +513,13 @@ mod neovim_api_usage {
 
                 let cmd_provided_by_user = &nvim_ctx.opt.output.command.as_deref()
                     .unwrap_or_default();
+                let lua_provided_by_user = &nvim_ctx.opt.output.lua.as_deref()
+                    .unwrap_or_default();
                 let writeable = nvim_ctx.opt.output.writable;
 
                 let file_buf_opts = OutputCommands::for_file_buffer(
                     cmd_provided_by_user,
+                    lua_provided_by_user,
                     writeable
                 );
 
@@ -756,6 +759,11 @@ mod output_buffer_usage {
                     .await;
             }
 
+            if let Some(ref lua_expr) = outp_ctx.opt.lua_post {
+                nvim_actions
+                    .execute_command_post_lua(lua_expr)
+                    .await;
+            }
             if let Some(ref command) = outp_ctx.opt.command_post {
                 nvim_actions
                     .execute_command_post(command)

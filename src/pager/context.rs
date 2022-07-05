@@ -91,6 +91,9 @@ impl UsageContext {
         // User command should run on focused buffer
         opt.command_post.is_some() ||
 
+        // Same with lua user command
+        opt.lua_post.is_some() ||
+
         // Otherwise, without -b and -B flags output buffer should be focused
         (!opt.back && !opt.back_restore)
     }

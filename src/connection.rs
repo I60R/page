@@ -327,36 +327,42 @@ fn current_term() -> std::fs::File {
 fn default_config_path() -> Option<String> {
     use std::path::PathBuf;
 
-    std::env::var("XDG_CONFIG_HOME")
-        .ok()
-        .and_then(|xdg_config_home| {
-            let p = PathBuf::from(xdg_config_home)
-                .join("page/init.vim");
-            if p.exists() {
-                log::trace!(target: "config", "Use $XDG_CONFIG_HOME: {}", p.display());
+    let page_home = std::env::var("XDG_CONFIG_HOME")
+        .map(|xdg_config_home| {
+            PathBuf::from(xdg_config_home)
+                .join("page")
+        });
 
-                Some(p)
-            } else {
-                None
-            }
-        })
-        .or_else(|| std::env::var("HOME")
-            .ok()
-            .and_then(|home_dir| {
-                let p = PathBuf::from(home_dir)
-                    .join(".config/page/init.vim");
-                if p.exists() {
-                    log::trace!(target: "config", "Use ~/.config: {}", p.display());
+    let page_home = page_home.or_else(|_| std::env::var("HOME")
+        .map(|home| {
+            PathBuf::from(home)
+                .join(".config/page")
+        }));
 
-                    Some(p)
-                } else {
-                    None
-                }
-            })
-        )
-        .map(|p| p.to_string_lossy()
-            .to_string()
-        )
+    log::trace!(target: "config", "directory is: {page_home:?}");
+
+    let page_home = match page_home {
+        Ok(p) => p,
+        _ => return None,
+    };
+
+    let init_lua = page_home
+        .join("init.lua");
+    if init_lua.exists() {
+        let p = init_lua.to_string_lossy().to_string();
+        log::trace!(target: "config", "use init.lua");
+        return Some(p)
+    }
+
+    let init_vim = page_home
+        .join("init.vim");
+    if init_vim.exists() {
+        let p = init_vim.to_string_lossy().to_string();
+        log::trace!(target: "config", "use init.vim");
+        return Some(p)
+    }
+
+    None
 }
 
 
