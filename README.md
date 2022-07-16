@@ -204,7 +204,11 @@ export MANPAGER="page -t man"
 To pick a bit better neovim's native `man` highlighting:
 
 ```zsh
-man() { SECT=${@[-2]}; PROG=${@[-1]}; page man://"$PROG($SECT)" }
+man () {
+    PROGRAM="${@[-1]}"
+    SECTION="${@[-2]}"
+    page "man://$PROGRAM${SECTION:+($SECTION)}"
+}
 ```
 
 To circumvent neovim config picking:
@@ -222,9 +226,11 @@ $XDG_CONFIG_HOME/page/init.lua # init.vim is also supported
 To set output buffer name as first two words from invoked command (zsh only):
 
 ```zsh
-preexec() {
-    echo "${1// *|*}" | read -A words
-    export PAGE_BUFFER_NAME="${words[@]:0:2}"
+
+preexec () {
+    [ -z "$NVIM_LISTEN_ADDRESS" ] && return
+    WORDS=(${1// *|*})
+    export PAGE_BUFFER_NAME="${WORDS[@]:0:2}"
 }
 ```
 
