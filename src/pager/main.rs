@@ -147,18 +147,17 @@ async fn validate_files(mut env_ctx: context::EnvContext) {
 async fn prefetch_lines(env_ctx: context::EnvContext) {
     log::info!(target: "context", "{env_ctx:#?}");
 
-    if !env_ctx.opt.files.is_empty() {
-
+    if env_ctx.prefetch_lines_count == 0 ||
+        !env_ctx.opt.files.is_empty() ||
+        !env_ctx.input_from_pipe
+    {
         let cli_ctx = context::check_usage::enter(env_ctx);
         connect_neovim(cli_ctx).await;
 
         return
     }
 
-    let mut wanted = 0;
-    if env_ctx.prefetch_lines_count > 0 {
-        wanted = env_ctx.prefetch_lines_count + 1
-    }
+    let mut wanted = env_ctx.prefetch_lines_count + 1;
 
     let mut prefetched_lines = Vec::with_capacity(wanted);
     'readln: while wanted > 0 {
