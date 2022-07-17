@@ -5,7 +5,7 @@
 #[derive(Debug)]
 pub struct EnvContext {
     pub opt: crate::cli::Options,
-    pub prefetch_lines_count: usize,
+    pub prefetch_usage: gather_env::PrefetchLinesUsage,
     pub query_lines_count: usize,
     pub input_from_pipe: bool,
 }
@@ -54,12 +54,27 @@ pub mod gather_env {
             None => term_height.saturating_sub(3),
         };
 
+        let mut prefetch_usage = PrefetchLinesUsage::Disabled;
+        if prefetch_lines_count != 0 &&
+            opt.files.is_empty() &&
+            input_from_pipe
+        {
+            prefetch_usage = PrefetchLinesUsage::Enabled(prefetch_lines_count);
+        }
+
         EnvContext {
             opt,
-            prefetch_lines_count,
+            prefetch_usage,
             query_lines_count,
             input_from_pipe,
         }
+    }
+
+
+    #[derive(Debug)]
+    pub enum PrefetchLinesUsage {
+        Enabled(usize),
+        Disabled,
     }
 }
 

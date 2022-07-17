@@ -147,23 +147,27 @@ async fn validate_files(mut env_ctx: context::EnvContext) {
 async fn prefetch_lines(env_ctx: context::EnvContext) {
     log::info!(target: "context", "{env_ctx:#?}");
 
-    if env_ctx.prefetch_lines_count == 0 ||
-        !env_ctx.opt.files.is_empty() ||
-        !env_ctx.input_from_pipe
-    {
-        let cli_ctx = context::check_usage::enter(env_ctx);
-        connect_neovim(cli_ctx).await;
+    let mut i;
 
-        return
+    use context::gather_env::PrefetchLinesUsage;
+    match env_ctx.prefetch_usage {
+        PrefetchLinesUsage::Enabled(line_count) => {
+            i = line_count + 1
+        },
+        PrefetchLinesUsage::Disabled => {
+
+            let cli_ctx = context::check_usage::enter(env_ctx);
+            connect_neovim(cli_ctx).await;
+
+            return
+        }
     }
 
-    let mut wanted = env_ctx.prefetch_lines_count + 1;
+    let mut prefetched_lines = Vec::with_capacity(i);
+    'read_next_ln: while i > 0 {
 
-    let mut prefetched_lines = Vec::with_capacity(wanted);
-    'readln: while wanted > 0 {
-
-        const EXPECTED_LINE_LEN: usize = 512;
-        let mut ln = Vec::with_capacity(EXPECTED_LINE_LEN);
+        const EXPECTED_LN_LEN: usize = 512;
+        let mut ln = Vec::with_capacity(EXPECTED_LN_LEN);
 
         for b in std::io::Read::bytes(std::io::stdin()) {
             match b {
@@ -174,8 +178,8 @@ async fn prefetch_lines(env_ctx: context::EnvContext) {
                     ln.push(eol);
                     ln.shrink_to_fit();
                     prefetched_lines.push(ln);
-                    wanted -= 1;
-                    continue 'readln;
+                    i -= 1;
+                    continue 'read_next_ln;
                 }
 
                 Ok(b) => ln.push(b)
