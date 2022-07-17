@@ -42,16 +42,18 @@ pub mod gather_env {
                 .expect("Cannot get terminal height")
         });
 
-        let prefetch_lines_count = match opt.output.noopen_lines.unwrap_or_default() {
-            Some(positive_number @ 0..) => positive_number as usize,
-            Some(negative_number) => term_height.saturating_sub(negative_number.abs() as usize),
-            None => term_height.saturating_sub(3),
+        let prefetch_lines_count = match opt.output.noopen_lines {
+            Some(Some(positive_number @ 0..)) => positive_number as usize,
+            Some(Some(negative_number)) => term_height.saturating_sub(negative_number.abs() as usize),
+            Some(None) => term_height.saturating_sub(3),
+            None => 0
         };
 
-        let query_lines_count = match opt.output.query_lines.unwrap_or_default() {
-            Some(positive_number @ 0..) => positive_number as usize,
-            Some(negative_number) => term_height.saturating_sub(negative_number.abs() as usize),
-            None => term_height.saturating_sub(3),
+        let query_lines_count = match opt.output.query_lines {
+            Some(Some(positive_number @ 0..)) => positive_number as usize,
+            Some(Some(negative_number)) => term_height.saturating_sub(negative_number.abs() as usize),
+            Some(None) => term_height.saturating_sub(3),
+            None => 0,
         };
 
         let mut prefetch_usage = PrefetchLinesUsage::Disabled;
