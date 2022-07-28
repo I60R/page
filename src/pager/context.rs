@@ -8,6 +8,7 @@ pub struct EnvContext {
     pub prefetch_usage: gather_env::PrefetchLinesUsage,
     pub query_lines_count: usize,
     pub input_from_pipe: bool,
+    pub term_width: usize,
 }
 
 pub mod gather_env {
@@ -36,23 +37,22 @@ pub mod gather_env {
             opt
         };
 
-        let term_height = once_cell::unsync::Lazy::new(|| {
+        let term_dimensions = once_cell::unsync::Lazy::new(|| {
             term_size::dimensions()
-                .map(|(_w, h)| h)
-                .expect("Cannot get terminal height")
+                .expect("Cannot get terminal dimensions")
         });
 
         let prefetch_lines_count = match opt.output.noopen_lines {
             Some(Some(positive_number @ 0..)) => positive_number as usize,
-            Some(Some(negative_number)) => term_height.saturating_sub(negative_number.abs() as usize),
-            Some(None) => term_height.saturating_sub(3),
+            Some(Some(negative_number)) => term_dimensions.1.saturating_sub(negative_number.abs() as usize),
+            Some(None) => term_dimensions.1.saturating_sub(3),
             None => 0
         };
 
         let query_lines_count = match opt.output.query_lines {
             Some(Some(positive_number @ 0..)) => positive_number as usize,
-            Some(Some(negative_number)) => term_height.saturating_sub(negative_number.abs() as usize),
-            Some(None) => term_height.saturating_sub(3),
+            Some(Some(negative_number)) => term_dimensions.1.saturating_sub(negative_number.abs() as usize),
+            Some(None) => term_dimensions.1.saturating_sub(3),
             None => 0,
         };
 
@@ -69,6 +69,7 @@ pub mod gather_env {
             prefetch_usage,
             query_lines_count,
             input_from_pipe,
+            term_width: term_dimensions.0,
         }
     }
 
