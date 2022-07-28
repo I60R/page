@@ -1,4 +1,5 @@
 /// A module that contains data collected throughout page invocation
+use once_cell::unsync::Lazy;
 
 
 /// Contains data available after cli options parsed
@@ -8,7 +9,7 @@ pub struct EnvContext {
     pub prefetch_usage: gather_env::PrefetchLinesUsage,
     pub query_lines_count: usize,
     pub input_from_pipe: bool,
-    pub term_width: usize,
+    pub term_width: Lazy<usize>,
 }
 
 pub mod gather_env {
@@ -37,7 +38,7 @@ pub mod gather_env {
             opt
         };
 
-        let term_dimensions = once_cell::unsync::Lazy::new(|| {
+        let term_dimensions = Lazy::new(|| {
             term_size::dimensions()
                 .expect("Cannot get terminal dimensions")
         });
@@ -69,7 +70,9 @@ pub mod gather_env {
             prefetch_usage,
             query_lines_count,
             input_from_pipe,
-            term_width: term_dimensions.0,
+            term_width: Lazy::new(|| {
+                term_dimensions.0
+            }),
         }
     }
 
