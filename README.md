@@ -28,7 +28,7 @@ Ultimately, `page` reuses all of neovim's text editing+navigating+searching faci
 
 ## CLI
 
-<details><summary> expand `page --help`</summary>
+<details><summary> expand <code>page --help</code></summary>
 
 ```xml
 USAGE:
