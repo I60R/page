@@ -171,10 +171,9 @@ async fn prefetch_lines(env_ctx: context::EnvContext) {
     }
 
     let mut prefetched_lines = Vec::with_capacity(i);
+
     'read_next_ln: while i > 0 {
-        const EXPECTED_LN_LEN: usize = 512;
-        let mut ln = Vec::with_capacity(EXPECTED_LN_LEN);
-        let mut j = 0;
+        let mut ln = Vec::with_capacity(term_width);
 
         for b in std::io::Read::bytes(std::io::stdin()) {
             match b {
@@ -185,27 +184,25 @@ async fn prefetch_lines(env_ctx: context::EnvContext) {
                     ln.push(eol);
                     ln.shrink_to_fit();
                     prefetched_lines.push(ln);
-                    i = i.saturating_sub(1);
+                    i -= 1;
                     continue 'read_next_ln;
                 }
-
-                Ok(b) => ln.push(b)
-            }
-
-            j += 1;
-            if j == term_width {
-                i = i.saturating_sub(1);
-                j = 0;
+                Ok(b) => {
+                    ln.push(b);
+                    if ln.len() == term_width {
+                        prefetched_lines.push(ln);
+                        i -= 1;
+                        continue 'read_next_ln;
+                    }
+                }
             }
         }
 
         prefetched_lines.push(ln);
-        if i > 0 {
-            _dump_prefetched_lines_and_exit_(
-                prefetched_lines,
-                &env_ctx.opt.output.filetype
-            )
-        }
+        _dump_prefetched_lines_and_exit_(
+            prefetched_lines,
+            &env_ctx.opt.output.filetype
+        )
     }
 
     let mut cli_ctx = context::check_usage::enter(env_ctx);
