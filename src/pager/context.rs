@@ -1,5 +1,4 @@
 /// A module that contains data collected throughout page invocation
-use once_cell::unsync::Lazy;
 
 
 /// Contains data available after cli options parsed
@@ -9,7 +8,6 @@ pub struct EnvContext {
     pub prefetch_usage: gather_env::PrefetchLinesUsage,
     pub query_lines_count: usize,
     pub input_from_pipe: bool,
-    pub term_width: Lazy<usize>,
 }
 
 pub mod gather_env {
@@ -38,22 +36,27 @@ pub mod gather_env {
             opt
         };
 
+        use once_cell::unsync::Lazy;
         let term_dimensions = Lazy::new(|| {
             term_size::dimensions()
                 .expect("Cannot get terminal dimensions")
         });
+        let (term_width, term_height) = (
+            Lazy::new(|| term_dimensions.0),
+            Lazy::new(|| term_dimensions.1),
+        );
 
         let prefetch_lines_count = match opt.output.noopen_lines {
             Some(Some(positive_number @ 0..)) => positive_number as usize,
-            Some(Some(negative_number)) => term_dimensions.1.saturating_sub(negative_number.abs() as usize),
-            Some(None) => term_dimensions.1.saturating_sub(3),
+            Some(Some(negative_number)) => term_height.saturating_sub(negative_number.abs() as usize),
+            Some(None) => term_height.saturating_sub(3),
             None => 0
         };
 
         let query_lines_count = match opt.output.query_lines {
             Some(Some(positive_number @ 0..)) => positive_number as usize,
-            Some(Some(negative_number)) => term_dimensions.1.saturating_sub(negative_number.abs() as usize),
-            Some(None) => term_dimensions.1.saturating_sub(3),
+            Some(Some(negative_number)) => term_height.saturating_sub(negative_number.abs() as usize),
+            Some(None) => term_height.saturating_sub(3),
             None => 0,
         };
 
@@ -62,7 +65,10 @@ pub mod gather_env {
             opt.files.is_empty() &&
             input_from_pipe
         {
-            prefetch_usage = PrefetchLinesUsage::Enabled(prefetch_lines_count);
+            prefetch_usage = PrefetchLinesUsage::Enabled {
+                line_count: prefetch_lines_count,
+                term_width: *term_width,
+            };
         }
 
         EnvContext {
@@ -70,16 +76,16 @@ pub mod gather_env {
             prefetch_usage,
             query_lines_count,
             input_from_pipe,
-            term_width: Lazy::new(|| {
-                term_dimensions.0
-            }),
         }
     }
 
 
     #[derive(Debug)]
     pub enum PrefetchLinesUsage {
-        Enabled(usize),
+        Enabled {
+            line_count: usize,
+            term_width: usize,
+        },
         Disabled,
     }
 }

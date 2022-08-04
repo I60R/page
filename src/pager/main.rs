@@ -148,12 +148,19 @@ async fn prefetch_lines(env_ctx: context::EnvContext) {
     log::info!(target: "context", "{env_ctx:#?}");
 
     let mut i;
+    let term_width;
 
     use context::gather_env::PrefetchLinesUsage;
     match env_ctx.prefetch_usage {
-        PrefetchLinesUsage::Enabled(line_count) => {
-            i = line_count + 1
+
+        PrefetchLinesUsage::Enabled {
+            line_count,
+            term_width: w,
+        } => {
+            i = line_count + 1;
+            term_width = w;
         },
+
         PrefetchLinesUsage::Disabled => {
 
             let cli_ctx = context::check_usage::enter(env_ctx);
@@ -186,7 +193,7 @@ async fn prefetch_lines(env_ctx: context::EnvContext) {
             }
 
             j += 1;
-            if j == env_ctx.term_width {
+            if j == term_width {
                 i = i.saturating_sub(1);
                 j = 0;
             }
