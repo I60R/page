@@ -164,6 +164,7 @@ async fn prefetch_lines(env_ctx: context::EnvContext) {
     }
 
     let mut prefetched_lines = Vec::with_capacity(i);
+    let term_width = env_ctx.term_size.width();
     'read_next_ln: while i > 0 {
         const EXPECTED_LN_LEN: usize = 512;
         let mut ln = Vec::with_capacity(EXPECTED_LN_LEN);
@@ -186,7 +187,7 @@ async fn prefetch_lines(env_ctx: context::EnvContext) {
             }
 
             j += 1;
-            if j == env_ctx.term_width {
+            if j == term_width {
                 i = i.saturating_sub(1);
                 j = 0;
             }

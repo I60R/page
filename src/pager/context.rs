@@ -1,5 +1,5 @@
 /// A module that contains data collected throughout page invocation
-use once_cell::unsync::Lazy;
+use once_cell::unsync::OnceCell;
 
 
 /// Contains data available after cli options parsed
@@ -9,11 +9,40 @@ pub struct EnvContext {
     pub prefetch_usage: gather_env::PrefetchLinesUsage,
     pub query_lines_count: usize,
     pub input_from_pipe: bool,
-    pub term_width: Lazy<usize>,
+    pub term_size: TermSize,
+}
+
+#[derive(Debug)]
+pub struct TermSize {
+    pub term_size: OnceCell<(usize, usize)>,
+}
+
+impl TermSize {
+    fn new() -> Self {
+        Self {
+            term_size: OnceCell::new(),
+        }
+    }
+
+    fn dimensions(&self) -> (usize, usize) {
+        *self.term_size.get_or_init(|| {
+            term_size::dimensions()
+                .expect("Cannot get terminal dimensions")
+        })
+    }
+
+    pub fn width(&self) -> usize {
+        self.dimensions().0
+    }
+
+    pub fn height(&self) -> usize {
+        self.dimensions().1
+    }
 }
 
 pub mod gather_env {
     use super::EnvContext;
+    use super::TermSize;
 
     pub fn enter() -> EnvContext {
         let input_from_pipe = !atty::is(atty::Stream::Stdin);
@@ -38,22 +67,19 @@ pub mod gather_env {
             opt
         };
 
-        let term_dimensions = Lazy::new(|| {
-            term_size::dimensions()
-                .expect("Cannot get terminal dimensions")
-        });
+        let term_size = TermSize::new();
 
         let prefetch_lines_count = match opt.output.noopen_lines {
             Some(Some(positive_number @ 0..)) => positive_number as usize,
-            Some(Some(negative_number)) => term_dimensions.1.saturating_sub(negative_number.abs() as usize),
-            Some(None) => term_dimensions.1.saturating_sub(3),
+            Some(Some(negative_number)) => term_size.height().saturating_sub(negative_number.abs() as usize),
+            Some(None) => term_size.height().saturating_sub(3),
             None => 0
         };
 
         let query_lines_count = match opt.output.query_lines {
             Some(Some(positive_number @ 0..)) => positive_number as usize,
-            Some(Some(negative_number)) => term_dimensions.1.saturating_sub(negative_number.abs() as usize),
-            Some(None) => term_dimensions.1.saturating_sub(3),
+            Some(Some(negative_number)) => term_size.height().saturating_sub(negative_number.abs() as usize),
+            Some(None) => term_size.height().saturating_sub(3),
             None => 0,
         };
 
@@ -70,9 +96,7 @@ pub mod gather_env {
             prefetch_usage,
             query_lines_count,
             input_from_pipe,
-            term_width: Lazy::new(|| {
-                term_dimensions.0
-            }),
+            term_size,
         }
     }
 
