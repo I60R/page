@@ -1,6 +1,6 @@
 # Page
 
-[![Build Status](https://travis-ci.org/I60R/page.svg?branch=master)](https://travis-ci.org/I60R/page)
+[![Rust Build](https://github.com/I60R/page/actions/workflows/rust_build.yml/badge.svg)](https://github.com/I60R/page/actions/workflows/rust_build.yml)
 [![Lines Of Code](https://tokei.rs/b1/github/I60R/page)](https://github.com/I60R/page)
 
 Allows you to redirect text into [neovim](https://github.com/neovim/neovim).
