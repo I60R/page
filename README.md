@@ -10,7 +10,7 @@ ANSI escape sequences will be interpreted by :term buffer, which makes `page` no
 Also, text will be displayed instantly as it arrives - no need to wait until EOF.
 
 Also, text from neovim :term buffer will be redirected directly into a new buffer in the same neovim instance - no nested neovim will be spawned.
-That's by utilizing `$NVIM_LISTEN_ADDRESS` like [neovim-remote](https://github.com/mhinz/neovim-remote) does.
+That's by utilizing `$NVIM` variable like [neovim-remote](https://github.com/mhinz/neovim-remote) does.
 
 Ultimately, `page` reuses all of neovim's text editing+navigating+searching facilities and will either facilitate all of plugins+mappings+options set in your neovim config.
 
@@ -69,7 +69,7 @@ OPTIONS:
                       on connected instance output buffer]
                        ~ ~ ~
 -a <ADDRESS>          TCP/IP socked address or path to named pipe listened by running host neovim
-                      process [env: NVIM_LISTEN_ADDRESS=/tmp/nvimECnHF6/0]
+                      process [env: NVIM=/tmp/nvimECnHF6/0]
 -A <ARGUMENTS>        Arguments that will be passed to child neovim process spawned when <ADDRESS>
                       is missing [env: NVIM_PAGE_ARGS=]
 -c <CONFIG>           Config that will be used by child neovim process spawned when <ADDRESS> is
@@ -89,7 +89,7 @@ OPTIONS:
                        ~ ~ ~
 -W                    Flush redirection protection that prevents from producing junk and possible
                       overwriting of existed files by invoking commands like `ls >
-                      $(NVIM_LISTEN_ADDRESS= page -E q)` where the RHS of > operator evaluates not
+                      $(NVIM= page -E q)` where the RHS of > operator evaluates not
                       into /path/to/pty as expected but into a bunch of whitespace-separated
                       strings/escape sequences from neovim UI; bad things happens when some shells
                       interpret this as many valid targets for text redirection. The protection is
@@ -228,7 +228,7 @@ To set output buffer name as first two words from invoked command (zsh only):
 ```zsh
 
 preexec () {
-    [ -z "$NVIM_LISTEN_ADDRESS" ] && return
+    [ -z "$NVIM" ] && return
     WORDS=(${1// *|*})
     export PAGE_BUFFER_NAME="${WORDS[@]:0:2}"
 }
