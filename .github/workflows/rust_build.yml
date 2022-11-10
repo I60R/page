@@ -24,7 +24,7 @@ jobs:
 
     steps:
     - name: Checkout source code
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
 
     #- name: Install clippy from rust toolchain
     #  uses: actions-rs/toolchain@v1
@@ -47,7 +47,7 @@ jobs:
     #  run: cargo test --verbose
 
     - name: Upload binary for ${{ matrix.os }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: page-${{ matrix.os }}
         path: ${{ matrix.os == 'windows' && 'target\release\page.exe' || 'target/release/page' }}
