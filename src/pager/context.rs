@@ -19,6 +19,13 @@ pub mod gather_env {
         let opt = {
             let mut opt = crate::cli::get_options();
 
+            // Fallback for neovim < 8.0 which don't uses $NVIM
+            if opt.address.is_none() {
+                if let Some(address) = std::env::var("NVIM_LISTEN_ADDRESS").ok() {
+                    opt.address.replace(address);
+                }
+            }
+
             // Treat empty -a value as if it wasn't provided
             if opt.address.as_deref().map_or(false, str::is_empty) {
                 opt.address = None;

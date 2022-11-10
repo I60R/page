@@ -24,7 +24,7 @@ pub struct Options {
 
     /// TCP/IP socked address or path to named pipe listened
     /// by running host neovim process
-    #[clap(display_order=100, short='a', env="NVIM_LISTEN_ADDRESS")]
+    #[clap(display_order=100, short='a', env="NVIM")]
     pub address: Option<String>,
 
     /// Arguments that will be passed to child neovim process
