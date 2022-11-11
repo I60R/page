@@ -1,8 +1,8 @@
 use clap::{
     Parser,
     ArgGroup,
+    ArgAction,
     ValueHint,
-    AppSettings::{DisableHelpSubcommand, AllowNegativeNumbers}
 };
 
 // Contains arguments provided by command line
@@ -10,8 +10,8 @@ use clap::{
 #[clap(
     author,
     about,
-    global_setting = DisableHelpSubcommand,
-    global_setting = AllowNegativeNumbers,
+    disable_help_subcommand = true,
+    allow_negative_numbers = true,
     group = splits_arg_group(),
     group = back_arg_group(),
     group = follow_arg_group(),
@@ -33,7 +33,7 @@ pub struct Options {
     pub arguments: Option<String>,
 
     /// Config that will be used by child neovim process spawned
-    /// when <ADDRESS> is missing [file:$XDG_CONFIG_HOME/page/init.vim]
+    /// when <ADDRESS> is missing [file: $XDG_CONFIG_HOME/page/init.vim]
     #[clap(display_order=102, short='c', value_hint=ValueHint::AnyPath)]
     pub config: Option<String>,
 
@@ -100,7 +100,7 @@ pub struct Options {
 
     /// Flush redirection protection that prevents from producing junk
     /// and possible overwriting of existed files by invoking commands like
-    /// `ls > $(NVIM_LISTEN_ADDRESS= page -E q)` where the RHS of > operator
+    /// `ls > $(NVIM= page -E q)` where the RHS of > operator
     /// evaluates not into /path/to/pty as expected but into a bunch
     /// of whitespace-separated strings/escape sequences from neovim UI;
     /// bad things happens when some shells interpret this as many valid
@@ -109,12 +109,12 @@ pub struct Options {
     /// of a neovim UI might occur; this makes the first target for text
     /// redirection from page's output invalid and disrupts the
     /// whole redirection early before other harmful writes might occur.
-    /// [env:PAGE_REDIRECTION_PROTECT; (0 to disable)] {n}
+    /// [env: PAGE_REDIRECTION_PROTECT; (0 to disable)] {n}
     ///  ~ ~ ~
     #[clap(display_order=800, short='W')]
     pub page_no_protect: bool,
 
-    /// Open provided file in separate buffer
+    /// Open provided file in a separate buffer
     /// [without other flags revokes implied by default -o or -p option]
     #[clap(name="FILE", value_hint=ValueHint::AnyPath)]
     pub files: Vec<FileOption>,
@@ -225,19 +225,19 @@ pub struct OutputOptions {
 #[derive(Parser, Debug)]
 pub struct SplitOptions {
     /// Split left  with ratio: window_width  * 3 / (<l-PROVIDED> + 1)
-    #[clap(display_order=900, short='l', parse(from_occurrences))]
+    #[clap(display_order=900, short='l', action=ArgAction::Count)]
     pub split_left: u8,
 
     /// Split right with ratio: window_width  * 3 / (<r-PROVIDED> + 1)
-    #[clap(display_order=901, short='r', parse(from_occurrences))]
+    #[clap(display_order=901, short='r', action=ArgAction::Count)]
     pub split_right: u8,
 
     /// Split above with ratio: window_height * 3 / (<u-PROVIDED> + 1)
-    #[clap(display_order=902, short='u', parse(from_occurrences))]
+    #[clap(display_order=902, short='u', action=ArgAction::Count)]
     pub split_above: u8,
 
     /// Split below with ratio: window_height * 3 / (<d-PROVIDED> + 1)
-    #[clap(display_order=903, short='d', parse(from_occurrences))]
+    #[clap(display_order=903, short='d', action=ArgAction::Count)]
     pub split_below: u8,
 
     /// Split left  and resize to <SPLIT_LEFT_COLS>  columns
@@ -265,37 +265,37 @@ pub struct SplitOptions {
 }
 
 
-fn instance_use_arg_group() -> ArgGroup<'static> {
+fn instance_use_arg_group() -> ArgGroup {
     ArgGroup::new("instances")
-        .args(&["instance", "instance-append"])
+        .args(&["instance", "instance_append"])
         .multiple(false)
 }
 
-fn back_arg_group() -> ArgGroup<'static> {
+fn back_arg_group() -> ArgGroup {
     ArgGroup::new("focusing")
-        .args(&["back", "back-restore"])
+        .args(&["back", "back_restore"])
         .multiple(false)
 }
 
-fn follow_arg_group() -> ArgGroup<'static> {
+fn follow_arg_group() -> ArgGroup {
     ArgGroup::new("following")
-        .args(&["follow", "follow-all"])
+        .args(&["follow", "follow_all"])
         .multiple(false)
 }
 
-fn splits_arg_group() -> ArgGroup<'static> {
+fn splits_arg_group() -> ArgGroup {
     ArgGroup::new("splits")
         .args(&[
-            "split-left",
-            "split-right",
-            "split-above",
-            "split-below"
+            "split_left",
+            "split_right",
+            "split_above",
+            "split_below"
         ])
         .args(&[
-            "split-left-cols",
-            "split-right-cols",
-            "split-above-rows",
-            "split-below-rows"
+            "split_left_cols",
+            "split_right_cols",
+            "split_above_rows",
+            "split_below_rows"
         ])
         .multiple(false)
 }
@@ -306,16 +306,15 @@ pub fn get_options() -> Options {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum FileOption {
     Uri(String),
     Path(String),
 }
 
-impl std::str::FromStr for FileOption {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> Result<FileOption, &'static str> {
+impl From<&std::ffi::OsStr> for FileOption {
+    fn from(value: &std::ffi::OsStr) -> Self {
+        let s = value.to_string_lossy().to_string();
         let mut chars = s.chars();
 
         loop {
@@ -328,12 +327,12 @@ impl std::str::FromStr for FileOption {
                     matches!(chars.next(), Some('/')) &&
                     matches!(chars.next(), Some('/')) =>
 
-                    return Ok(FileOption::Uri(String::from(s))),
+                    return FileOption::Uri(String::from(s)),
 
                 _ => {}
             }
 
-            return Ok(FileOption::Path(String::from(s)))
+            return FileOption::Path(String::from(s))
         }
     }
 }

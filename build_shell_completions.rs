@@ -1,5 +1,5 @@
-use clap::IntoApp;
 use clap_complete::shells::{Zsh, Bash, Fish};
+use clap::CommandFactory;
 
 use std::{env, fs, error::Error, path::PathBuf};
 
@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     fs::create_dir_all(&out_dir)?;
     eprintln!("Shell completions would be generated in: {}", out_dir.display());
 
-    let mut app = Options::into_app();
+    let mut app = Options::command();
     clap_complete::generate_to(Zsh , &mut app, "page", &out_dir)?;
     clap_complete::generate_to(Bash, &mut app, "page", &out_dir)?;
     clap_complete::generate_to(Fish, &mut app, "page", &out_dir)?;
