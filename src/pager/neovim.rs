@@ -167,12 +167,13 @@ impl NeovimActions {
         &mut self,
          window_open_cmd: &str
     ) -> Result<OutputBuffer, String> {
-        // Shell will be temporarily replaced with /bin/sleep to halt for i32::MAX days
+        // Shell will be temporarily replaced with /bin/sleep to halt
+        // for i32::MAX seconds or 68 years
         let cmd = formatdoc! {"
             local shell, shellcmdflag = vim.o.shell, vim.o.shellcmdflag
             vim.o.shell, vim.o.shellcmdflag = 'sleep', ''
             {window_open_cmd}
-            local chan = vim.api.nvim_call_function('termopen', {{ '2147483647d' }})
+            local chan = vim.api.nvim_call_function('termopen', {{ '2147483647' }})
             vim.o.shell, vim.o.shellcmdflag = shell, shellcmdflag
             local pty = vim.api.nvim_get_chan_info(chan).pty
             if pty == nil or pty == '' then
