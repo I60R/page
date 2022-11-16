@@ -69,7 +69,7 @@ pub struct Options {
 
     /// Arguments that will be passed to child neovim process
     /// spawned when <ADDRESS> is missing
-    #[clap(display_order=101, short='A', env="NVIM_PAGE_ARGS")]
+    #[clap(display_order=101, short='A', env="NVIM_PAGE_PICKER_ARGS")]
     pub arguments: Option<String>,
 
     /// Config that will be used by child neovim process spawned

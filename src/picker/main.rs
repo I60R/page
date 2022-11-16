@@ -1,10 +1,12 @@
+use std::{path::PathBuf, str::FromStr};
+
 use context::EnvContext;
 
 pub(crate) mod cli;
 pub(crate) mod neovim;
 pub(crate) mod context;
 
-pub type NeovimConnection = connection::NeovimConnection<neovim::NeovimActions>;
+pub type NeovimConnection = connection::NeovimConnection<connection::Neovim<connection::IoWrite>>;
 pub type NeovimBuffer = connection::Buffer<connection::IoWrite>;
 
 
@@ -17,7 +19,7 @@ async fn main() {
 
     main::warn_if_incompatible_options(&env_ctx.opt);
 
-    gather_files(env_ctx).await;
+    connect_neovim(env_ctx).await;
 }
 
 mod main {
@@ -95,20 +97,78 @@ mod main {
     }
 }
 
-async fn gather_files(env_ctx: EnvContext) {
-    use context::gather_env::WalkdirUsage;
-    if let WalkdirUsage::Enabled { recurse_depth } = env_ctx.walkdir_usage {
 
+async fn connect_neovim(env_ctx: context::EnvContext) {
+    log::info!(target: "context", "{env_ctx:#?}");
+
+    connect_neovim::init_panic_hook();
+
+    let mut nvim_conn = connection::open::<>(
+        &env_ctx.tmp_dir,
+        &env_ctx.page_id,
+        &env_ctx.opt.address,
+        &env_ctx.opt.config,
+        &env_ctx.opt.config,
+        false
+    ).await;
+
+    gather_files(env_ctx, nvim_conn).await
+}
+
+
+mod connect_neovim {
+    // If neovim dies unexpectedly it messes the terminal
+    // so terminal state must be cleaned
+    pub fn init_panic_hook() {
+        let default_panic_hook = std::panic::take_hook();
+
+        std::panic::set_hook(Box::new(move |panic_info| {
+            let try_spawn_reset = std::process::Command::new("reset")
+                .spawn()
+                .and_then(|mut child| child.wait());
+
+            match try_spawn_reset {
+                Ok(exit_code) if exit_code.success() => {}
+
+                Ok(err_exit_code) => {
+                    log::error!(
+                        target: "termreset",
+                        "`reset` exited with status: {err_exit_code}"
+                    )
+                }
+                Err(e) => {
+                    log::error!(target: "termreset", "`reset` failed: {e:?}");
+                }
+            }
+
+            default_panic_hook(panic_info);
+        }));
     }
 }
 
 
-async fn send_input_from_pipe(env_ctx: EnvContext) {
-    use context::neovim_connected::PipeBufferUsage;
+async fn gather_files(
+    env_ctx: EnvContext,
+    mut conn: NeovimConnection,
+) {
+    use context::gather_env::WalkdirUsage;
+    if let WalkdirUsage::Enabled { recurse_depth } = env_ctx.walkdir_usage {
+
+    } else {
+        for f in env_ctx.opt.files {
+            let file_path = PathBuf::from(std::env::var("PWD").unwrap())
+                .join(f.as_str());
+
+            let cmd = format!("e {}", file_path.to_string_lossy());
+
+            conn.nvim_actions.command(&cmd).await
+                .expect("Cannot open file buffer");
+        }
+    }
 }
 
 mod neovim_api_usage {
-    use super::NeovimConnection;
+use super::NeovimConnection;
 
     /// This struct implements actions that should be done
     /// before output buffer is available
