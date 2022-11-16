@@ -24,6 +24,7 @@ term_size = "0.3.2"
 log = "0.4.17"
 fern = "0.6.1"
 indoc = "1.0.6"
+walkdir = "2.0.0"
 clap = { version = "4.0.22", features = ["wrap_help", "derive", "env"] }
 
 [build-dependencies]
@@ -41,3 +42,7 @@ path = "src/connection.rs"
 [[bin]]
 name = "page"
 path = "src/pager/main.rs"
+
+[[bin]]
+name = "Page"
+path = "src/picker/main.rs"
