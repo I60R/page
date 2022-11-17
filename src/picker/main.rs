@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::{PathBuf, Path}, borrow::Cow};
 
 use context::EnvContext;
 
@@ -151,8 +151,6 @@ async fn gather_files(
     conn: NeovimConnection,
 ) {
     use context::gather_env::RecursiveOpenUsage;
-    let pwd = PathBuf::from(std::env::var("PWD").unwrap());
-
     if let RecursiveOpenUsage::Enabled { recurse_depth } = env_ctx.walkdir_usage {
         let read_dir = walkdir::WalkDir::new("./")
             .contents_first(true)
@@ -160,44 +158,33 @@ async fn gather_files(
             .max_depth(recurse_depth);
 
         for f in read_dir {
-            let f = f
-                .expect("Cannot recursively read dir entry");
-            let f = pwd.join(f.path());
+            let f = f.expect("Cannot recursively read dir entry");
+            let f = gather_files::FileToOpen::new(f.path());
 
-            let f_string = f.to_string_lossy();
-
-            if !gather_files::is_text_file(&f_string) &&
-                !env_ctx.opt.open_non_text {
+            if !f.is_text && !env_ctx.opt.open_non_text {
                 continue
             }
 
-            gather_files::open_file(&conn, &f_string).await;
+            gather_files::open_file(&conn, &f.path_string).await;
         }
     } else {
         if env_ctx.opt.files.is_empty() {
             let mut last_modified = None;
 
-            let read_dir = std::fs::read_dir("./")
-                .expect("Cannot read current directory");
+            let read_dir = std::fs::read_dir("./").expect("Cannot read current directory");
             for f in read_dir {
-                let f = f
-                    .expect("Cannot read dir entry");
-                let f = pwd.join(f.path());
+                let f = f.expect("Cannot read dir entry");
+                let f = gather_files::FileToOpen::new(f.path());
 
-                if !gather_files::is_text_file(&f.to_string_lossy()) &&
-                    !env_ctx.opt.open_non_text {
+                if !f.is_text && !env_ctx.opt.open_non_text {
                     continue;
                 }
 
-                let f_meta = f.metadata()
-                    .expect("Cannot read dir entry metadata");
-                let f_modified_time = f_meta.modified()
-                    .expect("Cannot read modified metadata");
+                let f_modified_time = f.get_modified_time();
 
                 if let Some((last_modified_time, last_modified)) = last_modified.as_mut() {
                     if *last_modified_time < f_modified_time {
-                        *last_modified_time = f_modified_time;
-                        *last_modified = f
+                        (*last_modified_time, *last_modified) = (f_modified_time, f);
                     }
                 } else {
                     last_modified.replace((f_modified_time, f));
@@ -205,31 +192,63 @@ async fn gather_files(
             }
 
             if let Some((_, f)) = last_modified {
-                gather_files::open_file(&conn, &f.to_string_lossy()).await;
+                gather_files::open_file(&conn, &f.path_string).await;
             }
 
             return
         }
 
         for f in env_ctx.opt.files {
-            let file_path = pwd.join(f.as_str());
-            let file_path_string = file_path
-                .to_string_lossy();
+            let f = gather_files::FileToOpen::new(f.as_str());
 
-            if file_path.exists() {
-                if !gather_files::is_text_file(&file_path_string) &&
-                    !env_ctx.opt.open_non_text {
-                    continue
-                }
+            if !f.is_text && !env_ctx.opt.open_non_text {
+                continue
             }
 
-            gather_files::open_file(&conn, &file_path_string).await;
+            gather_files::open_file(&conn, &f.path_string).await;
         }
     }
 }
 
 
 mod gather_files {
+    use std::{path::{PathBuf, Path}, time::SystemTime};
+    use once_cell::unsync::Lazy;
+
+    const PWD: Lazy<PathBuf> = Lazy::new(|| {
+        PathBuf::from(std::env::var("PWD").unwrap())
+    });
+
+    pub struct FileToOpen {
+        pub path: PathBuf,
+        pub path_string: String,
+        pub is_text: bool,
+    }
+
+    impl FileToOpen {
+        pub fn new<P: AsRef<Path>>(path: P) -> FileToOpen {
+            let path = PWD.join(path);
+            let path_string = path
+                .to_string_lossy()
+                .to_string();
+            let is_text = is_text_file(&path_string);
+            FileToOpen {
+                path,
+                path_string,
+                is_text
+            }
+        }
+
+        pub fn get_modified_time(&self) -> SystemTime {
+            let f_meta = self.path
+                .metadata()
+                .expect("Cannot read dir entry metadata");
+            f_meta
+                .modified()
+                .expect("Cannot read modified metadata")
+        }
+    }
+
     pub fn is_text_file(f: &str) -> bool {
         let file_cmd = std::process::Command::new("file")
             .arg(f)
