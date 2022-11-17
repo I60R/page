@@ -12,7 +12,7 @@ pub type NeovimBuffer = connection::Buffer<connection::IoWrite>;
 #[tokio::main(worker_threads=2)]
 async fn main() {
 
-    main::init_logger();
+    connection::init_logger();
 
     let env_ctx = context::gather_env::enter();
 
@@ -22,56 +22,6 @@ async fn main() {
 }
 
 mod main {
-    pub fn init_logger() {
-        let exec_time = std::time::Instant::now();
-
-        let dispatch = fern::Dispatch::new().format(move |cb, msg, log_record| {
-            let time = exec_time
-                .elapsed()
-                .as_micros();
-
-            let lvl = log_record.level();
-            let target = log_record.target();
-
-            let mut module = log_record
-                .module_path()
-                .unwrap_or_default();
-            let mut prep = " in ";
-            if target == module {
-                module = "";
-                prep = "";
-            };
-
-            const BOLD: &str = "\x1B[1m";
-            const UNDERL: &str = "\x1B[4m";
-            const GRAY: &str = "\x1B[0;90m";
-            const CLEAR: &str = "\x1B[0m";
-
-            let mut msg_color = GRAY;
-            if module.starts_with("page") {
-                msg_color = ""
-            };
-
-            cb.finish(format_args!(
-                "{BOLD}{UNDERL}[ {time:010} | {lvl:5} | \
-                {target}{prep}{module} ]{CLEAR}\n{msg_color}{msg}{CLEAR}\n",
-            ))
-        });
-
-        let log_lvl_filter = std::str::FromStr::from_str(
-            std::env::var("RUST_LOG")
-                .as_deref()
-                .unwrap_or("warn")
-        ).expect("Cannot parse $RUST_LOG value");
-
-        dispatch
-            .level(log_lvl_filter)
-            .chain(std::io::stderr())
-            .apply()
-            .expect("Cannot initialize logger");
-    }
-
-
     // Some options takes effect only when page would be
     // spawned from neovim's terminal
     pub fn warn_if_incompatible_options(opt: &crate::cli::Options) {
@@ -100,7 +50,7 @@ mod main {
 async fn connect_neovim(env_ctx: context::EnvContext) {
     log::info!(target: "context", "{env_ctx:#?}");
 
-    connect_neovim::init_panic_hook();
+    connection::init_panic_hook();
 
     let nvim_conn = connection::open(
         &env_ctx.tmp_dir,
@@ -115,60 +65,29 @@ async fn connect_neovim(env_ctx: context::EnvContext) {
 }
 
 
-mod connect_neovim {
-    // If neovim dies unexpectedly it messes the terminal
-    // so terminal state must be cleaned
-    pub fn init_panic_hook() {
-        let default_panic_hook = std::panic::take_hook();
+async fn gather_files(env_ctx: EnvContext, conn: NeovimConnection) {
 
-        std::panic::set_hook(Box::new(move |panic_info| {
-            let try_spawn_reset = std::process::Command::new("reset")
-                .spawn()
-                .and_then(|mut child| child.wait());
+    use context::gather_env::FilesUsage;
 
-            match try_spawn_reset {
-                Ok(exit_code) if exit_code.success() => {}
+    match env_ctx.files_usage {
+        FilesUsage::RecursiveCurrentDir { recurse_depth } => {
+            let read_dir = walkdir::WalkDir::new("./")
+                .contents_first(true)
+                .follow_links(false)
+                .max_depth(recurse_depth);
 
-                Ok(err_exit_code) => {
-                    log::error!(
-                        target: "termreset",
-                        "`reset` exited with status: {err_exit_code}"
-                    )
+            for f in read_dir {
+                let f = f.expect("Cannot recursively read dir entry");
+                let f = gather_files::FileToOpen::new(f.path());
+
+                if !f.is_text && !env_ctx.opt.open_non_text {
+                    continue
                 }
-                Err(e) => {
-                    log::error!(target: "termreset", "`reset` failed: {e:?}");
-                }
+
+                gather_files::open_file(&conn, &f.path_string).await;
             }
-
-            default_panic_hook(panic_info);
-        }));
-    }
-}
-
-
-async fn gather_files(
-    env_ctx: EnvContext,
-    conn: NeovimConnection,
-) {
-    use context::gather_env::RecursiveOpenUsage;
-    if let RecursiveOpenUsage::Enabled { recurse_depth } = env_ctx.walkdir_usage {
-        let read_dir = walkdir::WalkDir::new("./")
-            .contents_first(true)
-            .follow_links(false)
-            .max_depth(recurse_depth);
-
-        for f in read_dir {
-            let f = f.expect("Cannot recursively read dir entry");
-            let f = gather_files::FileToOpen::new(f.path());
-
-            if !f.is_text && !env_ctx.opt.open_non_text {
-                continue
-            }
-
-            gather_files::open_file(&conn, &f.path_string).await;
-        }
-    } else {
-        if env_ctx.opt.files.is_empty() {
+        },
+        FilesUsage::LastModifiedFile => {
             let mut last_modified = None;
 
             let read_dir = std::fs::read_dir("./").expect("Cannot read current directory");
@@ -194,18 +113,18 @@ async fn gather_files(
             if let Some((_, f)) = last_modified {
                 gather_files::open_file(&conn, &f.path_string).await;
             }
+        },
+        FilesUsage::FilesProvided => {
 
-            return
-        }
+            for f in env_ctx.opt.files {
+                let f = gather_files::FileToOpen::new(f.as_str());
 
-        for f in env_ctx.opt.files {
-            let f = gather_files::FileToOpen::new(f.as_str());
+                if !f.is_text && !env_ctx.opt.open_non_text {
+                    continue
+                }
 
-            if !f.is_text && !env_ctx.opt.open_non_text {
-                continue
+                gather_files::open_file(&conn, &f.path_string).await;
             }
-
-            gather_files::open_file(&conn, &f.path_string).await;
         }
     }
 }
