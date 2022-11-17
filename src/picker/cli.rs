@@ -16,31 +16,27 @@ use clap::{
     group = back_arg_group(),
 )]
 pub struct Options {
-    /// Open at most <QUERY_FILES> at once;
-    /// open next manually with :Page <QUERY> or <Leader-r|R|q> shortcut
-    /// [empty: implies 1; 0: disabled and default;
-    /// <QUERY> is optional and defaults to <QUERY_FILES>]
+    /// Open only text files excluding directories, binaries, images etc.
     #[clap(display_order=1, short='o')]
-    pub query_files: Option<i32>,
-
+    pub text_only: bool,
 
     /// If <FILE> is a directory then open all text files in it
     /// by treating them as provided by [FILE] arguments
     /// [0: disabled and default;
     /// empty: defaults to 1 and implied if no <RECURSE_DEPTH> provided;
-    /// <RECURSE_DEPTH>: also opens in subdirectories at this level of depth]
+    /// <RECURSE_DEPTH>: also opens in subdirectories at this level of depth] {n}
+    /// ~ ~ ~
     #[clap(display_order=2, short='O')]
     pub recurse_depth: Option<Option<isize>>,
 
 
-    /// Only include [FILE].. by mime-type [empty: matches all,
-    /// even non-text files; could take a comma separated list in string]
-    #[clap(display_order=10, short='q')]
-    pub mime_type: Option<String>,
-
-    /// Exclude [FILE] by mime-type
-    #[clap(display_order=11, short='Q')]
-    pub mime_type_exclude: Option<String>,
+    /// Open at most <QUERY_FILES> at once;
+    /// open next manually with :Page <QUERY> or <Leader-r|R|q> shortcut
+    /// [empty: implies 1; 0: disabled and default;
+    /// <QUERY> is optional and defaults to <QUERY_FILES>] {n}
+    /// ~ ~ ~
+    #[clap(display_order=3, short='q')]
+    pub query_files: Option<i32>,
 
 
     /// Only include [FILE].. modified after specified <DATE>
