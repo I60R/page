@@ -81,18 +81,17 @@ pub struct Options {
 
     /// Run command  on file buffer after it was created
     #[clap(display_order=106, short='E')]
-    pub command_post: Option<String>,
+    pub command: Option<String>,
 
     /// Run lua expr on file buffer after it was created
     #[clap(display_order=107, long="E")]
-    pub lua_post: Option<String>,
+    pub lua: Option<String>,
 
 
 
     /// Open first file at last line
     #[clap(display_order=50, short='f')]
     pub follow: bool,
-
 
     /// Open and search for a specified <PATTERN>;
     /// empty will open at first non-empty line

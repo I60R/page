@@ -1,7 +1,3 @@
-use std::{path::{PathBuf, Path}, borrow::Cow};
-
-use context::EnvContext;
-
 pub(crate) mod cli;
 pub(crate) mod context;
 
@@ -65,7 +61,7 @@ async fn connect_neovim(env_ctx: context::EnvContext) {
 }
 
 
-async fn gather_files(env_ctx: EnvContext, conn: NeovimConnection) {
+async fn gather_files(env_ctx: context::EnvContext, conn: NeovimConnection) {
 
     use context::gather_env::FilesUsage;
 
@@ -84,7 +80,7 @@ async fn gather_files(env_ctx: EnvContext, conn: NeovimConnection) {
                     continue
                 }
 
-                gather_files::open_file(&conn, &f.path_string).await;
+                gather_files::open_file(&conn, &env_ctx, &f.path_string).await;
             }
         },
         FilesUsage::LastModifiedFile => {
@@ -111,19 +107,18 @@ async fn gather_files(env_ctx: EnvContext, conn: NeovimConnection) {
             }
 
             if let Some((_, f)) = last_modified {
-                gather_files::open_file(&conn, &f.path_string).await;
+                gather_files::open_file(&conn, &env_ctx, &f.path_string).await;
             }
         },
         FilesUsage::FilesProvided => {
-
-            for f in env_ctx.opt.files {
+            for f in &env_ctx.opt.files {
                 let f = gather_files::FileToOpen::new(f.as_str());
 
                 if !f.is_text && !env_ctx.opt.open_non_text {
                     continue
                 }
 
-                gather_files::open_file(&conn, &f.path_string).await;
+                gather_files::open_file(&conn, &env_ctx, &f.path_string).await;
             }
         }
     }
@@ -133,6 +128,8 @@ async fn gather_files(env_ctx: EnvContext, conn: NeovimConnection) {
 mod gather_files {
     use std::{path::{PathBuf, Path}, time::SystemTime};
     use once_cell::unsync::Lazy;
+
+    use crate::context::EnvContext;
 
     const PWD: Lazy<PathBuf> = Lazy::new(|| {
         PathBuf::from(std::env::var("PWD").unwrap())
@@ -185,9 +182,38 @@ mod gather_files {
     }
 
 
-    pub async fn open_file(conn: &super::NeovimConnection, f: &str) {
+    pub async fn open_file(
+        conn: &super::NeovimConnection,
+        env_ctx: &EnvContext,
+        f: &str
+    ) {
         let cmd = format!("e {}", f);
         conn.nvim_actions.command(&cmd).await
             .expect("Cannot open file buffer");
+
+        if env_ctx.opt.follow {
+            conn.nvim_actions.command("norm! G").await
+                .expect("Cannot execute follow command")
+
+        } else if let Some(pattern) = &env_ctx.opt.pattern {
+            let cmd = format!("norm! /{pattern}");
+            conn.nvim_actions.command(&cmd).await
+                .expect("Cannot execute follow command")
+
+        } else if let Some(pattern_backwards) = &env_ctx.opt.pattern_backwards {
+            let cmd = format!("norm! /{pattern_backwards}");
+            conn.nvim_actions.command(&cmd).await
+                .expect("Cannot execute follow command")
+        }
+
+        if let Some(lua) = &env_ctx.opt.lua {
+            conn.nvim_actions.exec_lua(lua, vec![]).await
+                .expect("Cannot execute command");
+        }
+
+        if let Some(command) = &env_ctx.opt.command {
+            conn.nvim_actions.command(command).await
+                .expect("Cannot execute command")
+        }
     }
 }
