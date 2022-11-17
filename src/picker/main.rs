@@ -150,40 +150,62 @@ async fn gather_files(
     env_ctx: EnvContext,
     conn: NeovimConnection,
 ) {
-    use context::gather_env::WalkdirUsage;
+    use context::gather_env::RecursiveOpenUsage;
     let pwd = PathBuf::from(std::env::var("PWD").unwrap());
 
-    if let WalkdirUsage::Enabled { recurse_depth } = env_ctx.walkdir_usage {
+    if let RecursiveOpenUsage::Enabled { recurse_depth } = env_ctx.walkdir_usage {
+        let read_dir = walkdir::WalkDir::new("./")
+            .contents_first(true)
+            .follow_links(false)
+            .max_depth(recurse_depth);
 
+        for f in read_dir {
+            let f = f
+                .expect("Cannot recursively read dir entry");
+            let f = pwd.join(f.path());
+
+            let f_string = f.to_string_lossy();
+
+            if !gather_files::is_text_file(&f_string) &&
+                !env_ctx.opt.open_non_text {
+                continue
+            }
+
+            gather_files::open_file(&conn, &f_string).await;
+        }
     } else {
         if env_ctx.opt.files.is_empty() {
             let mut last_modified = None;
 
-            for f in std::fs::read_dir("./").expect("Cannot read current directory") {
-                let f = f.expect("Cannot read dir entry");
+            let read_dir = std::fs::read_dir("./")
+                .expect("Cannot read current directory");
+            for f in read_dir {
+                let f = f
+                    .expect("Cannot read dir entry");
                 let f = pwd.join(f.path());
 
-                if !gather_files::is_text_file(&f.to_string_lossy()) {
+                if !gather_files::is_text_file(&f.to_string_lossy()) &&
+                    !env_ctx.opt.open_non_text {
                     continue;
                 }
 
-                let f_meta = f.metadata().expect("Cannot read dir entry metadata");
-                let f_modified = f_meta.modified().expect("Cannot read modified metadata");
+                let f_meta = f.metadata()
+                    .expect("Cannot read dir entry metadata");
+                let f_modified_time = f_meta.modified()
+                    .expect("Cannot read modified metadata");
 
                 if let Some((last_modified_time, last_modified)) = last_modified.as_mut() {
-                    if *last_modified_time < f_modified {
-                        *last_modified_time = f_modified;
+                    if *last_modified_time < f_modified_time {
+                        *last_modified_time = f_modified_time;
                         *last_modified = f
                     }
                 } else {
-                    last_modified.replace((f_modified, f));
+                    last_modified.replace((f_modified_time, f));
                 }
             }
 
             if let Some((_, f)) = last_modified {
-                let cmd = format!("e {}", f.to_string_lossy());
-                conn.nvim_actions.command(&cmd).await
-                    .expect("Cannot open file buffer");
+                gather_files::open_file(&conn, &f.to_string_lossy()).await;
             }
 
             return
@@ -194,18 +216,18 @@ async fn gather_files(
             let file_path_string = file_path
                 .to_string_lossy();
 
-            if env_ctx.opt.text_only && file_path.exists() {
-                if !gather_files::is_text_file(&file_path_string) {
+            if file_path.exists() {
+                if !gather_files::is_text_file(&file_path_string) &&
+                    !env_ctx.opt.open_non_text {
                     continue
                 }
             }
 
-            let cmd = format!("e {}", file_path_string);
-            conn.nvim_actions.command(&cmd).await
-                .expect("Cannot open file buffer");
+            gather_files::open_file(&conn, &file_path_string).await;
         }
     }
 }
+
 
 mod gather_files {
     pub fn is_text_file(f: &str) -> bool {
@@ -222,5 +244,12 @@ mod gather_files {
             .expect("Wrong `file` output format");
 
         filetype == "ASCII text\n"
+    }
+
+
+    pub async fn open_file(conn: &super::NeovimConnection, f: &str) {
+        let cmd = format!("e {}", f);
+        conn.nvim_actions.command(&cmd).await
+            .expect("Cannot open file buffer");
     }
 }

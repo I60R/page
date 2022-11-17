@@ -22,7 +22,7 @@ pub struct Options {
     #[clap(display_order=10, short='n', env="PAGE_BUFFER_NAME")]
     pub name: Option<String>,
 
-    /// TCP/IP socked address or path to named pipe listened
+    /// TCP/IP socket address or path to named pipe listened
     /// by running host neovim process
     #[clap(display_order=100, short='a', env="NVIM")]
     pub address: Option<String>,

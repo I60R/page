@@ -2,7 +2,7 @@
 #[derive(Debug)]
 pub struct EnvContext {
     pub opt: crate::cli::Options,
-    pub walkdir_usage: gather_env::WalkdirUsage,
+    pub walkdir_usage: gather_env::RecursiveOpenUsage,
     pub tmp_dir: std::path::PathBuf,
     pub page_id: String,
     pub pipe_buf_usage: gather_env::PipeBufferUsage,
@@ -19,9 +19,9 @@ pub mod gather_env {
             Some(None) => 1,
             None => 0,
         };
-        let mut walkdir_usage = WalkdirUsage::Disabled;
+        let mut walkdir_usage = RecursiveOpenUsage::Disabled;
         if recurse_depth > 0 {
-            walkdir_usage = WalkdirUsage::Enabled { recurse_depth }
+            walkdir_usage = RecursiveOpenUsage::Enabled { recurse_depth }
         }
 
         let tmp_dir = {
@@ -59,9 +59,9 @@ pub mod gather_env {
     }
 
     #[derive(Debug)]
-    pub enum WalkdirUsage {
+    pub enum RecursiveOpenUsage {
         Enabled {
-            recurse_depth: isize,
+            recurse_depth: usize,
         },
         Disabled
     }

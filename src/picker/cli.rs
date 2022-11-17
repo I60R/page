@@ -16,9 +16,9 @@ use clap::{
     group = back_arg_group(),
 )]
 pub struct Options {
-    /// Open only text files excluding directories, binaries, images etc.
+    /// Open non-text files including directories, binaries, images etc.
     #[clap(display_order=1, short='o')]
-    pub text_only: bool,
+    pub open_non_text: bool,
 
     /// If <FILE> is a directory then open all text files in it
     /// by treating them as provided by [FILE] arguments
@@ -27,7 +27,7 @@ pub struct Options {
     /// <RECURSE_DEPTH>: also opens in subdirectories at this level of depth] {n}
     /// ~ ~ ~
     #[clap(display_order=2, short='O')]
-    pub recurse_depth: Option<Option<isize>>,
+    pub recurse_depth: Option<Option<usize>>,
 
 
     /// Open at most <QUERY_FILES> at once;
@@ -58,7 +58,7 @@ pub struct Options {
     pub name_glob_exclude: Option<String>,
 
 
-    /// TCP/IP socked address or path to named pipe listened
+    /// TCP/IP socket address or path to named pipe listened
     /// by running host neovim process
     #[clap(display_order=100, short='a', env="NVIM")]
     pub address: Option<String>,
