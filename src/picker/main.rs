@@ -288,7 +288,12 @@ mod open_files {
 
         if env_ctx.opt.keep || env_ctx.opt.keep_until_write {
             match conn.rx.recv().await {
-                _ => return,
+                Some(connection::NotificationFromNeovim::BufferClosed) | None => {
+                    return
+                },
+                n @ _ => {
+                    log::error!("Unhandled notification: {n:?}")
+                },
             }
         }
 
