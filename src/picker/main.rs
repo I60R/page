@@ -66,13 +66,17 @@ async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
 
     if env_ctx.opt.is_split_implied() {
         let cmd = open_files::create_split_command(&env_ctx.opt.split);
-        conn.nvim_actions.exec_lua(&cmd, vec![]).await
+        conn.nvim_actions
+            .exec_lua(&cmd, vec![])
+            .await
             .expect("Cannot create split window");
     }
 
     use context::gather_env::FilesUsage;
     match env_ctx.files_usage {
-        FilesUsage::RecursiveCurrentDir { recurse_depth } => {
+        FilesUsage::RecursiveCurrentDir {
+            recurse_depth
+        } => {
             let read_dir = walkdir::WalkDir::new("./")
                 .contents_first(true)
                 .follow_links(false)
@@ -92,7 +96,9 @@ async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
         FilesUsage::LastModifiedFile => {
             let mut last_modified = None;
 
-            let read_dir = std::fs::read_dir("./").expect("Cannot read current directory");
+            let read_dir = std::fs::read_dir("./")
+                .expect("Cannot read current directory");
+
             for f in read_dir {
                 let f = f.expect("Cannot read dir entry");
                 let f = open_files::FileToOpen::new(f.path());
@@ -103,9 +109,9 @@ async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
 
                 let f_modified_time = f.get_modified_time();
 
-                if let Some((last_modified_time, last_modified)) = last_modified.as_mut() {
-                    if *last_modified_time < f_modified_time {
-                        (*last_modified_time, *last_modified) = (f_modified_time, f);
+                if let Some((l_modified_time, l_modified)) = last_modified.as_mut() {
+                    if *l_modified_time < f_modified_time {
+                        (*l_modified_time, *l_modified) = (f_modified_time, f);
                     }
                 } else {
                     last_modified.replace((f_modified_time, f));
@@ -129,17 +135,25 @@ async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
         }
     }
 
-    if env_ctx.opt.back || env_ctx.opt.back_restore {
-        let (win, buf) = &conn.initial_win_and_buf;
-        conn.nvim_actions.set_current_win(win).await
-            .expect("Cannot return to initial window");
-        conn.nvim_actions.set_current_buf(buf).await
-            .expect("Cannot return to initial buffer");
+    if !env_ctx.opt.back && !env_ctx.opt.back_restore {
+        return
+    }
 
-        if env_ctx.opt.back_restore {
-            conn.nvim_actions.command("norm! A").await
-                .expect("Cannot return to insert mode");
-        }
+    let (win, buf) = &conn.initial_win_and_buf;
+    conn.nvim_actions
+        .set_current_win(win)
+        .await
+        .expect("Cannot return to initial window");
+    conn.nvim_actions
+        .set_current_buf(buf)
+        .await
+        .expect("Cannot return to initial buffer");
+
+    if env_ctx.opt.back_restore {
+        conn.nvim_actions
+            .command("norm! A")
+            .await
+            .expect("Cannot return to insert mode");
     }
 }
 
@@ -161,7 +175,8 @@ mod open_files {
 
     impl FileToOpen {
         pub fn new<P: AsRef<Path>>(path: P) -> FileToOpen {
-            let path = PWD.join(path);
+            let path = PWD
+                .join(path);
             let path_string = path
                 .to_string_lossy()
                 .to_string();
@@ -191,12 +206,8 @@ mod open_files {
         let file_cmd_output = String::from_utf8(file_cmd.stdout)
             .expect("Non UTF8 `file` output");
 
-        let filetype = file_cmd_output
-            .split(": ")
-            .last()
-            .expect("Wrong `file` output format");
-
-        filetype == "ASCII text\n"
+        file_cmd_output
+            .contains("ASCII text")
     }
 
 
@@ -206,21 +217,29 @@ mod open_files {
         f: &str
     ) {
         let cmd = format!("e {}", f);
-        conn.nvim_actions.command(&cmd).await
+        conn.nvim_actions
+            .command(&cmd)
+            .await
             .expect("Cannot open file buffer");
 
         if env_ctx.opt.follow {
-            conn.nvim_actions.command("norm! G").await
+            conn.nvim_actions
+                .command("norm! G")
+                .await
                 .expect("Cannot execute follow command")
 
         } else if let Some(pattern) = &env_ctx.opt.pattern {
             let cmd = format!("norm! /{pattern}");
-            conn.nvim_actions.command(&cmd).await
+            conn.nvim_actions
+                .command(&cmd)
+                .await
                 .expect("Cannot execute follow command")
 
         } else if let Some(pattern_backwards) = &env_ctx.opt.pattern_backwards {
             let cmd = format!("norm! ?{pattern_backwards}");
-            conn.nvim_actions.command(&cmd).await
+            conn.nvim_actions
+                .command(&cmd)
+                .await
                 .expect("Cannot execute follow command")
         }
 
@@ -247,17 +266,23 @@ mod open_files {
                     end
                 }})
             "#};
-            conn.nvim_actions.exec_lua(&cmd, vec![]).await
+            conn.nvim_actions
+                .exec_lua(&cmd, vec![])
+                .await
                 .expect("Cannot execute keep command");
         }
 
         if let Some(lua) = &env_ctx.opt.lua {
-            conn.nvim_actions.exec_lua(lua, vec![]).await
+            conn.nvim_actions
+                .exec_lua(lua, vec![])
+                .await
                 .expect("Cannot execute lua command");
         }
 
         if let Some(command) = &env_ctx.opt.command {
-            conn.nvim_actions.command(command).await
+            conn.nvim_actions
+                .command(command)
+                .await
                 .expect("Cannot execute command")
         }
 
@@ -269,6 +294,7 @@ mod open_files {
 
     }
 
+    /// This is almost copy-paste from pager/neovim.rs
     pub fn create_split_command(
         opt: &crate::cli::SplitOptions
     ) -> String {

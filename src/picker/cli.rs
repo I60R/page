@@ -14,6 +14,7 @@ use clap::{
     allow_negative_numbers = true,
     group = splits_arg_group(),
     group = back_arg_group(),
+    group = follow_arg_group(),
 )]
 pub struct Options {
     /// Open provided files as editable
@@ -162,6 +163,12 @@ pub struct SplitOptions {
 fn back_arg_group() -> ArgGroup {
     ArgGroup::new("focusing")
         .args(&["back", "back_restore"])
+        .multiple(false)
+}
+
+fn follow_arg_group() -> ArgGroup {
+    ArgGroup::new("movement")
+        .args(&["follow", "pattern", "pattern_backwards"])
         .multiple(false)
 }
 
