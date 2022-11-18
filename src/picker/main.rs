@@ -136,7 +136,7 @@ async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
     }
 
     if !env_ctx.opt.back && !env_ctx.opt.back_restore {
-        return
+        connection::close_and_exit(&mut conn).await;
     }
 
     let (win, buf) = &conn.initial_win_and_buf;
@@ -155,6 +155,8 @@ async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
             .await
             .expect("Cannot return to insert mode");
     }
+
+    connection::close_and_exit(&mut conn).await;
 }
 
 
@@ -293,7 +295,7 @@ mod open_files {
                 },
                 n @ _ => {
                     log::error!("Unhandled notification: {n:?}")
-                },
+                }
             }
         }
 
