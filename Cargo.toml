@@ -1,6 +1,6 @@
 [package]
 name = "page"
-version = "3.2.0"
+version = "4.0.0"
 authors = ["1# 60R <160R@protonmail.com>"]
 description = "Advanced, fast pager powered by neovim and inspired by neovim-remote"
 repository = "https://github.com/I60R/page"
