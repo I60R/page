@@ -7,10 +7,12 @@ Allows you to redirect text into [neovim](https://github.com/neovim/neovim).
 You can set it as `$PAGER` to view logs, diffs, various command outputs.
 
 ANSI escape sequences will be interpreted by :term buffer, which makes `page` noticeably faster than [vimpager](https://github.com/rkitover/vimpager) and [nvimpager](https://github.com/lucc/nvimpager).
-Also, text will be displayed instantly as it arrives - no need to wait until EOF.
+And text will be displayed instantly as it arrives - no need to wait until EOF.
 
 Also, text from neovim :term buffer will be redirected directly into a new buffer in the same neovim instance - no nested neovim will be spawned.
 That's by utilizing `$NVIM` variable like [neovim-remote](https://github.com/mhinz/neovim-remote) does.
+
+Bonus: another binary named `Page` (from uppercase letter) is included which reimplements `neovim-remote` but with interface similar to `page`. There's no intention to have all `nvim --remote` features — it should be only a simple file picker that prevents spawning nested neovim instance.
 
 Ultimately, `page` reuses all of neovim's text editing+navigating+searching facilities and will either facilitate all of plugins+mappings+options set in your neovim config.
 
