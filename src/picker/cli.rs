@@ -88,7 +88,6 @@ pub struct Options {
     pub lua: Option<String>,
 
 
-
     /// Open first file at last line
     #[clap(display_order=50, short='f')]
     pub follow: bool,
@@ -122,55 +121,32 @@ pub struct Options {
     #[clap(display_order=73, long="K")]
     pub keep_until_write: bool,
 
+    /// Set filetype on first file buffer (to enable syntax highlighting)
+    /// [log: default; not works with text echoed by -O]
+    #[clap(display_order=7, short='t', default_value="log", hide_default_value=true)]
+    pub filetype: String,
+
 
     /// Open provided file in a separate buffer
     /// [without other flags revokes implied by default -o or -p option]
     #[clap(name="FILE", value_hint=ValueHint::AnyPath)]
     pub files: Vec<FileOption>,
 
-
     #[clap(flatten)]
-    pub buffer: BufferOptions,
-
-
-    #[clap(skip)]
-    file_split_implied: once_cell::unsync::OnceCell<bool>,
+    pub split: SplitOptions,
 }
 
 impl Options {
-    pub fn is_file_open_split_implied(&self) -> bool {
-        *self.file_split_implied.get_or_init(||
-            self.buffer.split.split_left_cols.is_some() ||
-            self.buffer.split.split_right_cols.is_some() ||
-            self.buffer.split.split_above_rows.is_some() ||
-            self.buffer.split.split_below_rows.is_some() ||
-            self.buffer.split.split_left > 0u8 ||
-            self.buffer.split.split_right > 0u8 ||
-            self.buffer.split.split_above > 0u8 ||
-            self.buffer.split.split_below > 0u8
-        )
+    pub fn is_split_implied(&self) -> bool {
+        self.split.split_left_cols.is_some() ||
+        self.split.split_right_cols.is_some() ||
+        self.split.split_above_rows.is_some() ||
+        self.split.split_below_rows.is_some() ||
+        self.split.split_left > 0u8 ||
+        self.split.split_right > 0u8 ||
+        self.split.split_above > 0u8 ||
+        self.split.split_below > 0u8
     }
-}
-
-
-// Options that are required on output buffer creation
-#[derive(Parser, Debug)]
-pub struct BufferOptions {
-    /// Run command  on file buffer after it was created
-    #[clap(display_order=104, short='e')]
-    pub command: Option<String>,
-
-    /// Run lua expr on file buffer after it was created
-    #[clap(display_order=105, long="e")]
-    pub lua: Option<String>,
-
-    /// Set filetype on first file buffer (to enable syntax highlighting)
-    /// [log: default; not works with text echoed by -O]
-    #[clap(display_order=7, short='t', default_value="log", hide_default_value=true)]
-    pub filetype: String,
-
-    #[clap(flatten)]
-    pub split: SplitOptions,
 }
 
 

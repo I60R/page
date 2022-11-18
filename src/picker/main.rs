@@ -25,7 +25,7 @@ mod main {
             return
         }
 
-        if opt.is_file_open_split_implied() {
+        if opt.is_split_implied() {
             log::warn!(
                 target: "usage",
                 "Split (-r -l -u -d -R -L -U -D) is ignored \
@@ -57,14 +57,19 @@ async fn connect_neovim(env_ctx: context::EnvContext) {
         false
     ).await;
 
-    gather_files(env_ctx, nvim_conn).await
+    open_files(env_ctx, nvim_conn).await
 }
 
 
-async fn gather_files(env_ctx: context::EnvContext, conn: NeovimConnection) {
+async fn open_files(env_ctx: context::EnvContext, conn: NeovimConnection) {
+
+    if env_ctx.opt.is_split_implied() {
+        let cmd = open_files::create_split_command(&env_ctx.opt.split);
+        conn.nvim_actions.exec_lua(&cmd, vec![]).await
+            .expect("Cannot create split window");
+    }
 
     use context::gather_env::FilesUsage;
-
     match env_ctx.files_usage {
         FilesUsage::RecursiveCurrentDir { recurse_depth } => {
             let read_dir = walkdir::WalkDir::new("./")
@@ -74,13 +79,13 @@ async fn gather_files(env_ctx: context::EnvContext, conn: NeovimConnection) {
 
             for f in read_dir {
                 let f = f.expect("Cannot recursively read dir entry");
-                let f = gather_files::FileToOpen::new(f.path());
+                let f = open_files::FileToOpen::new(f.path());
 
                 if !f.is_text && !env_ctx.opt.open_non_text {
                     continue
                 }
 
-                gather_files::open_file(&conn, &env_ctx, &f.path_string).await;
+                open_files::open_file(&conn, &env_ctx, &f.path_string).await;
             }
         },
         FilesUsage::LastModifiedFile => {
@@ -89,7 +94,7 @@ async fn gather_files(env_ctx: context::EnvContext, conn: NeovimConnection) {
             let read_dir = std::fs::read_dir("./").expect("Cannot read current directory");
             for f in read_dir {
                 let f = f.expect("Cannot read dir entry");
-                let f = gather_files::FileToOpen::new(f.path());
+                let f = open_files::FileToOpen::new(f.path());
 
                 if !f.is_text && !env_ctx.opt.open_non_text {
                     continue;
@@ -107,18 +112,18 @@ async fn gather_files(env_ctx: context::EnvContext, conn: NeovimConnection) {
             }
 
             if let Some((_, f)) = last_modified {
-                gather_files::open_file(&conn, &env_ctx, &f.path_string).await;
+                open_files::open_file(&conn, &env_ctx, &f.path_string).await;
             }
         },
         FilesUsage::FilesProvided => {
             for f in &env_ctx.opt.files {
-                let f = gather_files::FileToOpen::new(f.as_str());
+                let f = open_files::FileToOpen::new(f.as_str());
 
                 if !f.is_text && !env_ctx.opt.open_non_text {
                     continue
                 }
 
-                gather_files::open_file(&conn, &env_ctx, &f.path_string).await;
+                open_files::open_file(&conn, &env_ctx, &f.path_string).await;
             }
         }
     }
@@ -137,12 +142,11 @@ async fn gather_files(env_ctx: context::EnvContext, conn: NeovimConnection) {
 }
 
 
-mod gather_files {
+mod open_files {
     use std::{path::{PathBuf, Path}, time::SystemTime};
-    use once_cell::unsync::Lazy;
-
     use crate::context::EnvContext;
 
+    use once_cell::unsync::Lazy;
     const PWD: Lazy<PathBuf> = Lazy::new(|| {
         PathBuf::from(std::env::var("PWD").unwrap())
     });
@@ -213,7 +217,7 @@ mod gather_files {
                 .expect("Cannot execute follow command")
 
         } else if let Some(pattern_backwards) = &env_ctx.opt.pattern_backwards {
-            let cmd = format!("norm! /{pattern_backwards}");
+            let cmd = format!("norm! ?{pattern_backwards}");
             conn.nvim_actions.command(&cmd).await
                 .expect("Cannot execute follow command")
         }
@@ -226,6 +230,112 @@ mod gather_files {
         if let Some(command) = &env_ctx.opt.command {
             conn.nvim_actions.command(command).await
                 .expect("Cannot execute command")
+        }
+    }
+
+    pub fn create_split_command(
+        opt: &crate::cli::SplitOptions
+    ) -> String {
+        if opt.popup {
+
+            let w_ratio = |s| format!("math.floor(((w / 2) * 3) / {})", s + 1);
+            let h_ratio = |s| format!("math.floor(((h / 2) * 3) / {})", s + 1);
+
+            let (w, h, o) = ("w".to_string(), "h".to_string(), "0".to_string());
+
+            let (width, height, row, col);
+
+            if opt.split_right != 0 {
+                (width = w_ratio(opt.split_right), height = h, row = &o, col = &w)
+
+            } else if opt.split_left != 0 {
+                (width = w_ratio(opt.split_left),  height = h, row = &o, col = &o)
+
+            } else if opt.split_below != 0 {
+                (width = w, height = h_ratio(opt.split_below), row = &h, col = &o)
+
+            } else if opt.split_above != 0 {
+                (width = w, height = h_ratio(opt.split_above), row = &o, col = &o)
+
+            } else if let Some(split_right_cols) = opt.split_right_cols.map(|x| x.to_string()) {
+                (width = split_right_cols, height = h, row = &o, col = &w)
+
+            } else if let Some(split_left_cols) = opt.split_left_cols.map(|x| x.to_string()) {
+                (width = split_left_cols,  height = h, row = &o, col = &o)
+
+            } else if let Some(split_below_rows) = opt.split_below_rows.map(|x| x.to_string()) {
+                (width = w, height = split_below_rows, row = &h, col = &o)
+
+            } else if let Some(split_above_rows) = opt.split_above_rows.map(|x| x.to_string()) {
+                (width = w, height = split_above_rows, row = &o, col = &o)
+
+            } else {
+                unreachable!()
+            };
+
+            indoc::formatdoc! {"
+                local w = vim.api.nvim_win_get_width(0)
+                local h = vim.api.nvim_win_get_height(0)
+                local buf = vim.api.nvim_create_buf(true, false)
+                local win = vim.api.nvim_open_win(buf, true, {{
+                    relative = 'editor',
+                    width = {width},
+                    height = {height},
+                    row = {row},
+                    col = {col}
+                }})
+                vim.api.nvim_set_current_win(win)
+                vim.api.nvim_win_set_option(win, 'winblend', 25)
+            "}
+        } else {
+
+            let w_ratio = |s| format!("' .. tostring(math.floor(((w / 2) * 3) / {})) .. '", s + 1);
+            let h_ratio = |s| format!("' .. tostring(math.floor(((h / 2) * 3) / {})) .. '", s + 1);
+
+            let (a, b) = ("aboveleft", "belowright");
+            let (w, h) = ("winfixwidth", "winfixheight");
+            let (v, z) = ("vsplit", "split");
+
+            let (direction, size, split, fix);
+
+            if opt.split_right != 0 {
+                (direction = b, size = w_ratio(opt.split_right), split = v, fix = w)
+
+            } else if opt.split_left != 0 {
+                (direction = a,  size = w_ratio(opt.split_left), split = v, fix = w)
+
+            } else if opt.split_below != 0 {
+                (direction = b, size = h_ratio(opt.split_below), split = z, fix = h)
+
+            } else if opt.split_above != 0 {
+                (direction = a, size = h_ratio(opt.split_above), split = z, fix = h)
+
+            } else if let Some(split_right_cols) = opt.split_right_cols.map(|x| x.to_string()) {
+                (direction = b, size = split_right_cols, split = v, fix = w)
+
+            } else if let Some(split_left_cols) = opt.split_left_cols.map(|x| x.to_string()) {
+                (direction = a, size = split_left_cols,  split = v, fix = w)
+
+            } else if let Some(split_below_rows) = opt.split_below_rows.map(|x| x.to_string()) {
+                (direction = b, size = split_below_rows, split = z, fix = h)
+
+            } else if let Some(split_above_rows) = opt.split_above_rows.map(|x| x.to_string()) {
+                (direction = a, size = split_above_rows, split = z, fix = h)
+
+            } else {
+                unreachable!()
+            };
+
+            indoc::formatdoc! {"
+                local prev_win = vim.api.nvim_get_current_win()
+                local w = vim.api.nvim_win_get_width(prev_win)
+                local h = vim.api.nvim_win_get_height(prev_win)
+                vim.cmd('{direction} {size}{split}')
+                local buf = vim.api.nvim_create_buf(true, false)
+                vim.api.nvim_set_current_buf(buf)
+                local win = vim.api.nvim_get_current_win()
+                vim.api.nvim_win_set_option(win, '{fix}', true)
+            "}
         }
     }
 }
