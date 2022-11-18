@@ -122,6 +122,18 @@ async fn gather_files(env_ctx: context::EnvContext, conn: NeovimConnection) {
             }
         }
     }
+    if env_ctx.opt.back || env_ctx.opt.back_restore {
+        let (win, buf) = &conn.initial_win_and_buf;
+        conn.nvim_actions.set_current_win(win).await
+            .expect("Cannot return to initial window");
+        conn.nvim_actions.set_current_buf(buf).await
+            .expect("Cannot return to initial buffer");
+
+        if env_ctx.opt.back_restore {
+            conn.nvim_actions.command("norm! A").await
+                .expect("Cannot return to insert mode");
+        }
+    }
 }
 
 
