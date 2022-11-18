@@ -16,19 +16,22 @@ use clap::{
     group = back_arg_group(),
 )]
 pub struct Options {
-    /// Open non-text files including directories, binaries, images etc.
+    /// Open provided files as editable
+    #[clap(name="FILE", value_hint=ValueHint::AnyPath)]
+    pub files: Vec<FileOption>,
+
+    /// Open non-text files including directories, binaries, images etc
     #[clap(display_order=1, short='o')]
     pub open_non_text: bool,
 
-    /// If <FILE> is a directory then open all text files in it
-    /// by treating them as provided by [FILE] arguments
+    /// Ignoring [FILE]... open all text files in the current directory
+    /// and recursively open all text files in its subdirectories
     /// [0: disabled and default;
     /// empty: defaults to 1 and implied if no <RECURSE_DEPTH> provided;
     /// <RECURSE_DEPTH>: also opens in subdirectories at this level of depth] {n}
     /// ~ ~ ~
     #[clap(display_order=2, short='O')]
     pub recurse_depth: Option<Option<usize>>,
-
 
     /// Open at most <QUERY_FILES> at once;
     /// open next manually with :Page <QUERY> or <Leader-r|R|q> shortcut
@@ -38,25 +41,62 @@ pub struct Options {
     #[clap(display_order=3, short='q')]
     pub query_files: Option<i32>,
 
-
-    /// Only include [FILE].. modified after specified <DATE>
-    /// (written in chrono_english format e.g. `week ago`, `yesterday`, etc.)
-    #[clap(display_order=12, short='m')]
+    /// Include [FILE]... modified after specified <DATE>
+    /// [written in chrono_english format e.g. `week ago`, `yesterday`, etc.]
+    #[clap(display_order=10, short='m')]
     pub modified: Option<String>,
 
-    /// Exclude [FILE].. modified after specified <DATE>
-    #[clap(display_order=13, short='M')]
+    /// Exclude [FILE]... modified after specified <DATE>
+    #[clap(display_order=11, short='M')]
     pub modified_exclude: Option<String>,
 
-
-    /// Only include [FILE] by name glob
-    #[clap(display_order=14, short='n')]
+    /// Include [FILE]... by name glob
+    #[clap(display_order=12, short='n')]
     pub name_glob: Option<String>,
 
-    /// Exclude [FILE] by name glob
-    #[clap(display_order=15, short='N')]
+    /// Exclude [FILE]... by name glob {n}
+    /// ~ ~ ~
+    #[clap(display_order=13, short='N')]
     pub name_glob_exclude: Option<String>,
 
+    /// Open each [FILE]... at last line
+    #[clap(display_order=20, short='f')]
+    pub follow: bool,
+
+    /// Open and search for a specified <PATTERN>;
+    /// empty will open at first non-empty line
+    #[clap(display_order=21, short='p')]
+    pub pattern: Option<String>,
+
+    /// Open and search backwars for a specified <PATTERN_BACKWARDS>;
+    /// empty will open at last non-empty line {n}
+    #[clap(display_order=22, short='P')]
+    pub pattern_backwards: Option<String>,
+
+    /// Override filetype on each [FILE]... buffer
+    /// (to enable custom syntax highlighting) [text: default]
+    /// ~ ~ ~
+    #[clap(display_order=105, short='t')]
+    pub filetype: Option<String>,
+
+    /// Return back to current buffer
+    #[clap(display_order=70, short='b')]
+    pub back: bool,
+
+    /// Return back to current buffer and enter into INSERT/TERMINAL mode
+    #[clap(display_order=71, short='B')]
+    pub back_restore: bool,
+
+    /// Keep Page process until buffer is closed
+    /// (for editing git commit message)
+    #[clap(display_order=72, short='k')]
+    pub keep: bool,
+
+    /// Keep Page process until first write occur,
+    /// then close buffer {n}
+    /// ~ ~ ~
+    #[clap(display_order=73, long="K")]
+    pub keep_until_write: bool,
 
     /// TCP/IP socket address or path to named pipe listened
     /// by running host neovim process
@@ -73,64 +113,18 @@ pub struct Options {
     #[clap(display_order=102, short='c', value_hint=ValueHint::AnyPath)]
     pub config: Option<String>,
 
-
     /// Enable PageEdit PageEditDone autocommands
     #[clap(display_order=103, short='C')]
     pub command_auto: bool,
-
 
     /// Run command  on file buffer after it was created
     #[clap(display_order=106, short='E')]
     pub command: Option<String>,
 
-    /// Run lua expr on file buffer after it was created
+    /// Run lua expr on file buffer after it was created {n}
+    /// ~ ~ ~
     #[clap(display_order=107, long="E")]
     pub lua: Option<String>,
-
-
-    /// Open first file at last line
-    #[clap(display_order=50, short='f')]
-    pub follow: bool,
-
-    /// Open and search for a specified <PATTERN>;
-    /// empty will open at first non-empty line
-    #[clap(display_order=51, short='p', value_hint=ValueHint::AnyPath)]
-    pub pattern: Option<String>,
-
-    /// Open and search backwars for a specified <PATTERN_BACKWARDS>;
-    /// empty will open at last non-empty line
-    #[clap(display_order=52, short='P', value_hint=ValueHint::AnyPath)]
-    pub pattern_backwards: Option<String>,
-
-
-    /// Return back to current buffer
-    #[clap(display_order=70, short='b')]
-    pub back: bool,
-
-    /// Return back to current buffer and enter into INSERT/TERMINAL mode
-    #[clap(display_order=71, short='B')]
-    pub back_restore: bool,
-
-    /// Keep page process until buffer is closed
-    /// (for editing git commit message)
-    #[clap(display_order=72, short='k')]
-    pub keep: bool,
-
-    /// Keep page process until first write occur,
-    /// then close buffer
-    #[clap(display_order=73, long="K")]
-    pub keep_until_write: bool,
-
-    /// Set filetype on first file buffer (to enable syntax highlighting)
-    /// [log: default; not works with text echoed by -O]
-    #[clap(display_order=7, short='t', default_value="log", hide_default_value=true)]
-    pub filetype: String,
-
-
-    /// Open provided file in a separate buffer
-    /// [without other flags revokes implied by default -o or -p option]
-    #[clap(name="FILE", value_hint=ValueHint::AnyPath)]
-    pub files: Vec<FileOption>,
 
     #[clap(flatten)]
     pub split: SplitOptions,
