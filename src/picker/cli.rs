@@ -33,32 +33,6 @@ pub struct Options {
     #[clap(display_order=2, short='O')]
     pub recurse_depth: Option<Option<usize>>,
 
-    /// Open at most <QUERY_FILES> at once;
-    /// open next manually with :Page <QUERY> or <Leader-r|R|q> shortcut
-    /// [empty: implies 1; 0: disabled and default;
-    /// <QUERY> is optional and defaults to <QUERY_FILES>] {n}
-    /// ~ ~ ~
-    #[clap(display_order=3, short='q')]
-    pub query_files: Option<i32>,
-
-    /// Include [FILE]... modified after specified <DATE>
-    /// [written in chrono_english format e.g. `week ago`, `yesterday`, etc.]
-    #[clap(display_order=10, short='m')]
-    pub modified: Option<String>,
-
-    /// Exclude [FILE]... modified after specified <DATE>
-    #[clap(display_order=11, short='M')]
-    pub modified_exclude: Option<String>,
-
-    /// Include [FILE]... by name glob
-    #[clap(display_order=12, short='n')]
-    pub name_glob: Option<String>,
-
-    /// Exclude [FILE]... by name glob {n}
-    /// ~ ~ ~
-    #[clap(display_order=13, short='N')]
-    pub name_glob_exclude: Option<String>,
-
     /// Open each [FILE]... at last line
     #[clap(display_order=20, short='f')]
     pub follow: bool,
@@ -95,7 +69,7 @@ pub struct Options {
     /// Keep Page process until first write occur,
     /// then close buffer {n}
     /// ~ ~ ~
-    #[clap(display_order=73, long="K")]
+    #[clap(display_order=73, short='K')]
     pub keep_until_write: bool,
 
     /// TCP/IP socket address or path to named pipe listened

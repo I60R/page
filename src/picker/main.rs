@@ -61,7 +61,7 @@ async fn connect_neovim(env_ctx: context::EnvContext) {
 }
 
 
-async fn open_files(env_ctx: context::EnvContext, conn: NeovimConnection) {
+async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
 
     if env_ctx.opt.is_split_implied() {
         let cmd = open_files::create_split_command(&env_ctx.opt.split);
@@ -85,7 +85,7 @@ async fn open_files(env_ctx: context::EnvContext, conn: NeovimConnection) {
                     continue
                 }
 
-                open_files::open_file(&conn, &env_ctx, &f.path_string).await;
+                open_files::open_file(&mut conn, &env_ctx, &f.path_string).await;
             }
         },
         FilesUsage::LastModifiedFile => {
@@ -112,7 +112,7 @@ async fn open_files(env_ctx: context::EnvContext, conn: NeovimConnection) {
             }
 
             if let Some((_, f)) = last_modified {
-                open_files::open_file(&conn, &env_ctx, &f.path_string).await;
+                open_files::open_file(&mut conn, &env_ctx, &f.path_string).await;
             }
         },
         FilesUsage::FilesProvided => {
@@ -123,10 +123,11 @@ async fn open_files(env_ctx: context::EnvContext, conn: NeovimConnection) {
                     continue
                 }
 
-                open_files::open_file(&conn, &env_ctx, &f.path_string).await;
+                open_files::open_file(&mut conn, &env_ctx, &f.path_string).await;
             }
         }
     }
+
     if env_ctx.opt.back || env_ctx.opt.back_restore {
         let (win, buf) = &conn.initial_win_and_buf;
         conn.nvim_actions.set_current_win(win).await
@@ -199,7 +200,7 @@ mod open_files {
 
 
     pub async fn open_file(
-        conn: &super::NeovimConnection,
+        conn: &mut super::NeovimConnection,
         env_ctx: &EnvContext,
         f: &str
     ) {
@@ -222,15 +223,49 @@ mod open_files {
                 .expect("Cannot execute follow command")
         }
 
+        if env_ctx.opt.keep || env_ctx.opt.keep_until_write {
+            let (channel, page_id) = (conn.channel, &env_ctx.page_id);
+            let (mut bd, mut ev) = ("", "BufDelete");
+
+            if env_ctx.opt.keep_until_write {
+                (bd, ev) = (
+                    "vim.api.nvim_buf_delete(buf, { force = true })",
+                    "BufWritePost"
+                )
+            }
+
+            let cmd = indoc::formatdoc! {r#"
+                local buf = vim.api.nvim_get_current_buf()
+                vim.api.nvim_create_autocmd('{ev}', {{
+                    buffer = buf,
+                    callback = function()
+                        pcall(function()
+                            {bd}
+                            vim.rpcnotify({channel}, 'page_buffer_closed', '{page_id}')
+                        end)
+                    end
+                }})
+            "#};
+            conn.nvim_actions.exec_lua(&cmd, vec![]).await
+                .expect("Cannot execute keep command");
+        }
+
         if let Some(lua) = &env_ctx.opt.lua {
             conn.nvim_actions.exec_lua(lua, vec![]).await
-                .expect("Cannot execute command");
+                .expect("Cannot execute lua command");
         }
 
         if let Some(command) = &env_ctx.opt.command {
             conn.nvim_actions.command(command).await
                 .expect("Cannot execute command")
         }
+
+        if env_ctx.opt.keep || env_ctx.opt.keep_until_write {
+            match conn.rx.recv().await {
+                _ => return,
+            }
+        }
+
     }
 
     pub fn create_split_command(
