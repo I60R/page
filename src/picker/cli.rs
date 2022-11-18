@@ -89,12 +89,12 @@ pub struct Options {
     pub config: Option<String>,
 
     /// Run command  on file buffer after it was created
-    #[clap(display_order=106, short='E')]
+    #[clap(display_order=106, short='e')]
     pub command: Option<String>,
 
     /// Run lua expr on file buffer after it was created {n}
     /// ~ ~ ~
-    #[clap(display_order=107, long="E")]
+    #[clap(display_order=107, long="e")]
     pub lua: Option<String>,
 
     #[clap(flatten)]
