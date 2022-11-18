@@ -17,7 +17,7 @@ use clap::{
 )]
 pub struct Options {
     /// Open provided files as editable
-    #[clap(name="FILE", value_hint=ValueHint::AnyPath)]
+    #[clap(name="FILE", value_hint=ValueHint::FilePath)]
     pub files: Vec<FileOption>,
 
     /// Open non-text files including directories, binaries, images etc
@@ -86,10 +86,6 @@ pub struct Options {
     /// when <ADDRESS> is missing [file: $XDG_CONFIG_HOME/page/init.vim]
     #[clap(display_order=102, short='c', value_hint=ValueHint::AnyPath)]
     pub config: Option<String>,
-
-    /// Enable PageEdit PageEditDone autocommands
-    #[clap(display_order=103, short='C')]
-    pub command_auto: bool,
 
     /// Run command  on file buffer after it was created
     #[clap(display_order=106, short='E')]

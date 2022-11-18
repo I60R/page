@@ -1,3 +1,5 @@
+#![allow(non_snake_case)]
+
 pub(crate) mod cli;
 pub(crate) mod context;
 
@@ -7,7 +9,6 @@ pub type NeovimBuffer = connection::Buffer<connection::IoWrite>;
 
 #[tokio::main(worker_threads=2)]
 async fn main() {
-
     connection::init_logger();
 
     let env_ctx = context::gather_env::enter();

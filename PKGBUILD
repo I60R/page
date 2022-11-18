@@ -28,6 +28,8 @@ package() {
     # Install binaries
     install -D -m755 "target/release/page" "$pkgdir/usr/bin/page"
 
+    install -D -m755 "target/release/Page" "$pkgdir/usr/bin/Page"
+
     # Find last build directory where completions was generated
     completions_dir=$(find "target" -name "shell_completions" -type d -printf "%T+\t%p\n" | sort | awk 'NR==1{print $2}')
 
@@ -35,6 +37,10 @@ package() {
     install -D -m644 "$completions_dir/_page" "$pkgdir/usr/share/zsh/site-functions/_page"
     install -D -m644 "$completions_dir/page.bash" "$pkgdir/usr/share/bash-completion/completions/page"
     install -D -m644 "$completions_dir/page.fish" "$pkgdir/usr/share/fish/completions/page.fish"
+
+    install -D -m644 "$completions_dir/_Page" "$pkgdir/usr/share/zsh/site-functions/_Page"
+    install -D -m644 "$completions_dir/Page.bash" "$pkgdir/usr/share/bash-completion/completions/Page"
+    install -D -m644 "$completions_dir/Page.fish" "$pkgdir/usr/share/fish/completions/Page.fish"
 
     # Install MIT license
     install -D -m644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
