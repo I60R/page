@@ -200,16 +200,31 @@ mod open_files {
         }
     }
 
-    pub fn is_text_file(f: &str) -> bool {
+    pub fn is_text_file<F: AsRef<std::ffi::OsStr>>(f: F) -> bool {
         let file_cmd = std::process::Command::new("file")
-            .arg(f)
+            .arg(f.as_ref())
             .output()
             .expect("Cannot get `file` output");
         let file_cmd_output = String::from_utf8(file_cmd.stdout)
             .expect("Non UTF8 `file` output");
 
-        file_cmd_output
-            .contains("ASCII text")
+        if file_cmd_output.contains("ASCII text") ||
+            file_cmd_output.contains("UTF-8") ||
+            file_cmd_output.contains("UTF-16") ||
+            file_cmd_output.contains(": empty") ||
+            file_cmd_output.contains(": cannot open")
+        {
+            return true
+        }
+
+        if file_cmd_output.contains("symbolic link") {
+            let pointee = std::fs::read_link(f.as_ref())
+                .expect("Cannot read link");
+
+            return is_text_file(pointee)
+        }
+
+        false
     }
 
 
