@@ -46,10 +46,18 @@ jobs:
     #- name: Run tests
     #  run: cargo test --verbose
 
-    - name: Upload binary for ${{ matrix.os }}
+    - name: Upload `page` binary for ${{ matrix.os }}
       uses: actions/upload-artifact@v3
       with:
         name: page-${{ matrix.os }}
         path: ${{ matrix.os == 'windows' && 'target\release\page.exe' || 'target/release/page' }}
+        if-no-files-found: error
+        retention-days: 7
+
+    - name: Upload `Page` binary for ${{ matrix.os }}
+      uses: actions/upload-artifact@v3
+      with:
+        name: Page-${{ matrix.os }}
+        path: ${{ matrix.os == 'windows' && 'target\release\Page.exe' || 'target/release/Page' }}
         if-no-files-found: error
         retention-days: 7
