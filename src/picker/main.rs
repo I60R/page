@@ -262,25 +262,33 @@ mod open_files {
 
         if env_ctx.opt.keep || env_ctx.opt.keep_until_write {
             let (channel, page_id) = (conn.channel, &env_ctx.page_id);
-            let (mut bd, mut ev) = ("", "BufDelete");
 
+            let mut keep_until_write_cmd = "";
             if env_ctx.opt.keep_until_write {
-                (bd, ev) = (
-                    "vim.api.nvim_buf_delete(buf, { force = true })",
-                    "BufWritePost"
-                )
+                keep_until_write_cmd = indoc::indoc! {r#"
+                    vim.api.nvim_create_autocmd('BufWritePost', {
+                        buffer = buf,
+                        callback = function()
+                            pcall(function()
+                                on_delete()
+                                vim.api.nvim_buf_delete(buf, { force = true })
+                            end)
+                        end
+                    })
+                "#};
             }
 
             let cmd = indoc::formatdoc! {r#"
                 local buf = vim.api.nvim_get_current_buf()
-                vim.api.nvim_create_autocmd('{ev}', {{
+                local function on_delete()
+                    pcall(function()
+                        vim.rpcnotify({channel}, 'page_buffer_closed', '{page_id}')
+                    end)
+                end
+                {keep_until_write_cmd}
+                vim.api.nvim_create_autocmd('BufDelete', {{
                     buffer = buf,
-                    callback = function()
-                        pcall(function()
-                            {bd}
-                            vim.rpcnotify({channel}, 'page_buffer_closed', '{page_id}')
-                        end)
-                    end
+                    callback = on_delete
                 }})
             "#};
             conn.nvim_actions
