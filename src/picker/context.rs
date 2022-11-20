@@ -1,18 +1,26 @@
+pub use env_context::EnvContext;
 
-#[derive(Debug)]
-pub struct EnvContext {
-    pub opt: crate::cli::Options,
-    pub files_usage: gather_env::FilesUsage,
-    pub tmp_dir: std::path::PathBuf,
-    pub page_id: String,
-    pub pipe_buf_usage: gather_env::PipeBufferUsage,
-}
+pub mod env_context {
 
-pub mod gather_env {
-    use super::EnvContext;
+    #[derive(Debug)]
+    pub struct EnvContext {
+        pub opt: crate::cli::Options,
+        pub files_usage: FilesUsage,
+        pub tmp_dir: std::path::PathBuf,
+        pub page_id: String,
+        pub pipe_buf_usage: PipeBufferUsage,
+        pub split_usage: SplitUsage
+    }
 
     pub fn enter() -> EnvContext {
         let mut opt = crate::cli::get_options();
+
+        // Fallback for neovim < 8.0 which don't uses $NVIM
+        if opt.address.is_none() {
+            if let Some(address) = std::env::var("NVIM_LISTEN_ADDRESS").ok() {
+                opt.address.replace(address);
+            }
+        }
 
         // Treat empty -a value as if it wasn't provided
         if opt.address.as_deref().map_or(false, str::is_empty) {
@@ -49,6 +57,11 @@ pub mod gather_env {
             format!("{pid}{time}")
         };
 
+        let mut split_usage = SplitUsage::Disabled;
+        if opt.address.is_some() && opt.is_split_implied() {
+            split_usage = SplitUsage::Enabled;
+        }
+
         let input_from_pipe = !atty::is(atty::Stream::Stdin);
         let mut pipe_buf_usage = PipeBufferUsage::Disabled;
         if input_from_pipe {
@@ -63,6 +76,7 @@ pub mod gather_env {
             tmp_dir,
             page_id: pipe_path,
             pipe_buf_usage,
+            split_usage,
         }
     }
 
@@ -80,6 +94,12 @@ pub mod gather_env {
         Enabled {
             pipe_name: String
         },
+        Disabled
+    }
+
+    #[derive(Debug)]
+    pub enum SplitUsage {
+        Enabled,
         Disabled
     }
 }

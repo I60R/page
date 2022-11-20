@@ -11,7 +11,7 @@ pub type NeovimBuffer = connection::Buffer<connection::IoWrite>;
 async fn main() {
     connection::init_logger();
 
-    let env_ctx = context::gather_env::enter();
+    let env_ctx = context::env_context::enter();
 
     main::warn_if_incompatible_options(&env_ctx.opt);
 
@@ -64,7 +64,8 @@ async fn connect_neovim(env_ctx: context::EnvContext) {
 
 async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
 
-    if env_ctx.opt.is_split_implied() {
+    use context::env_context::SplitUsage;
+    if let SplitUsage::Enabled = env_ctx.split_usage {
         let cmd = open_files::create_split_command(&env_ctx.opt.split);
         conn.nvim_actions
             .exec_lua(&cmd, vec![])
@@ -72,7 +73,7 @@ async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
             .expect("Cannot create split window");
     }
 
-    use context::gather_env::FilesUsage;
+    use context::env_context::FilesUsage;
     match env_ctx.files_usage {
         FilesUsage::RecursiveCurrentDir {
             recurse_depth
