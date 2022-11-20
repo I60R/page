@@ -12,7 +12,12 @@ pub mod gather_env {
     use super::EnvContext;
 
     pub fn enter() -> EnvContext {
-        let opt = crate::cli::get_options();
+        let mut opt = crate::cli::get_options();
+
+        // Treat empty -a value as if it wasn't provided
+        if opt.address.as_deref().map_or(false, str::is_empty) {
+            opt.address = None;
+        }
 
         let mut files_usage = FilesUsage::FilesProvided;
         if opt.files.is_empty() {

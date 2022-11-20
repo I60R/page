@@ -211,6 +211,12 @@ man () {
 }
 ```
 
+To set as `git` commit message editor:
+
+```zsh
+ git config --global core.editor "Page -K -+R 80 -B"
+```
+
 To circumvent neovim config picking:
 
 ```zsh
