@@ -442,32 +442,7 @@ mod neovim_api_usage {
                 nvim_ctx
             } = self;
 
-            // Fix for a situation when CWD
-            // differs between neovim and shell
-            let pwd = std::path::PathBuf::from(
-                std::env::var("PWD")
-                    .expect("Cannot read $PWD value")
-            );
-
             for f in &nvim_ctx.opt.files {
-
-                use crate::cli::FileOption;
-                let f = match f {
-                    FileOption::Uri(u) => {
-                        FileOption::Uri(u
-                            .clone()
-                        )
-                    },
-                    FileOption::Path(p) => {
-                        FileOption::Path(
-                            pwd
-                            .join(p)
-                            .to_string_lossy()
-                            .to_string()
-                        )
-                    },
-                };
-
                 if let Err(e) = nvim_actions.open_file_buffer(f.as_str()).await {
                     log::warn!(target: "page file", r#"Error opening "{f:?}": {e}"#);
 

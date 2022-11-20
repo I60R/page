@@ -85,7 +85,7 @@ async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
 
             for f in read_dir {
                 let f = f.expect("Cannot recursively read dir entry");
-                let f = open_files::FileToOpen::new(f.path());
+                let f = open_files::FileToOpen::new_existed_file(f.path());
 
                 if !f.is_text && !env_ctx.opt.open_non_text {
                     continue
@@ -102,7 +102,7 @@ async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
 
             for f in read_dir {
                 let f = f.expect("Cannot read dir entry");
-                let f = open_files::FileToOpen::new(f.path());
+                let f = open_files::FileToOpen::new_existed_file(f.path());
 
                 if !f.is_text && !env_ctx.opt.open_non_text {
                     continue;
@@ -125,7 +125,7 @@ async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
         },
         FilesUsage::FilesProvided => {
             for f in &env_ctx.opt.files {
-                let f = open_files::FileToOpen::new(f.as_str());
+                let f = open_files::FileToOpen::new_maybe_uri(f);
 
                 if !f.is_text && !env_ctx.opt.open_non_text {
                     continue
@@ -163,12 +163,10 @@ async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
 
 mod open_files {
     use std::{path::{PathBuf, Path}, time::SystemTime};
-    use crate::context::EnvContext;
-
-    use once_cell::unsync::Lazy;
-    const PWD: Lazy<PathBuf> = Lazy::new(|| {
-        PathBuf::from(std::env::var("PWD").unwrap())
-    });
+    use crate::{
+        cli::FileOption,
+        context::EnvContext,
+    };
 
     pub struct FileToOpen {
         pub path: PathBuf,
@@ -177,9 +175,17 @@ mod open_files {
     }
 
     impl FileToOpen {
-        pub fn new<P: AsRef<Path>>(path: P) -> FileToOpen {
-            let path = PWD
-                .join(path);
+        pub fn new_existed_file<P: AsRef<Path> + std::fmt::Debug>(path: P) -> FileToOpen {
+            let path = match std::fs::canonicalize(&path) {
+                Ok(canonical) => canonical,
+                Err(e) => {
+                    log::error!(
+                        target: "open file",
+                        r#"Cannot open "{path:?}": {e}"#
+                    );
+                    PathBuf::from(path.as_ref())
+                }
+            };
             let path_string = path
                 .to_string_lossy()
                 .to_string();
@@ -188,6 +194,17 @@ mod open_files {
                 path,
                 path_string,
                 is_text
+            }
+        }
+
+        pub fn new_maybe_uri(path: &FileOption) -> FileToOpen {
+            match path {
+                FileOption::Uri(u) => Self {
+                    path: PathBuf::new(),
+                    path_string: u.clone(),
+                    is_text: true,
+                },
+                FileOption::Path(p) => Self::new_existed_file(p),
             }
         }
 
