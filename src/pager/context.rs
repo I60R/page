@@ -1,17 +1,20 @@
 /// A module that contains data collected throughout page invocation
 
+pub use gather_env::EnvContext;
+pub use check_usage::UsageContext;
+pub use connect_neovim::NeovimContext;
+pub use output_buffer_available::OutputContext;
 
-/// Contains data available after cli options parsed
-#[derive(Debug)]
-pub struct EnvContext {
-    pub opt: crate::cli::Options,
-    pub prefetch_usage: gather_env::PrefetchLinesUsage,
-    pub query_lines_count: usize,
-    pub input_from_pipe: bool,
-}
 
 pub mod gather_env {
-    use super::EnvContext;
+    /// Contains data available after cli options parsed
+    #[derive(Debug)]
+    pub struct EnvContext {
+        pub opt: crate::cli::Options,
+        pub prefetch_usage: PrefetchLinesUsage,
+        pub query_lines_count: usize,
+        pub input_from_pipe: bool,
+    }
 
     pub fn enter() -> EnvContext {
         let input_from_pipe = !atty::is(atty::Stream::Stdin);
@@ -98,51 +101,50 @@ pub mod gather_env {
 }
 
 
-/// Contains data available after page was spawned from shell
-#[derive(Debug)]
-pub struct UsageContext {
-    pub opt: crate::cli::Options,
-    pub page_id: String,
-    pub tmp_dir: std::path::PathBuf,
-    pub prefetched_lines: check_usage::PrefetchedLines,
-    pub query_lines_count: usize,
-    pub input_from_pipe: bool,
-    pub print_protection: bool,
-}
-
-impl UsageContext {
-    pub fn is_focus_on_existed_instance_buffer_implied(&self) -> bool {
-        let UsageContext { opt, .. } = self;
-
-        // Should focus in order to scroll buffer down
-        opt.follow ||
-
-        // Autocommands should run on focused buffer
-        opt.command_auto ||
-
-        // User command should run on focused buffer
-        opt.command_post.is_some() ||
-
-        // Same with lua user command
-        opt.lua_post.is_some() ||
-
-        // Otherwise, without -b and -B flags output buffer should be focused
-        (!opt.back && !opt.back_restore)
-    }
-
-
-    pub fn lines_has_been_prefetched(&mut self, lines: Vec<Vec<u8>>) {
-        self.prefetched_lines = check_usage::PrefetchedLines(lines);
-    }
-}
-
-
 pub mod check_usage {
-    use super::{EnvContext, UsageContext};
 
-    pub fn enter(env_ctx: EnvContext) -> UsageContext {
+    /// Contains data available after page was spawned from shell
+    #[derive(Debug)]
+    pub struct UsageContext {
+        pub opt: crate::cli::Options,
+        pub page_id: String,
+        pub tmp_dir: std::path::PathBuf,
+        pub prefetched_lines: PrefetchedLines,
+        pub query_lines_count: usize,
+        pub input_from_pipe: bool,
+        pub print_protection: bool,
+    }
 
-        let EnvContext {
+    impl UsageContext {
+        pub fn is_focus_on_existed_instance_buffer_implied(&self) -> bool {
+            let UsageContext { opt, .. } = self;
+
+            // Should focus in order to scroll buffer down
+            opt.follow ||
+
+            // Autocommands should run on focused buffer
+            opt.command_auto ||
+
+            // User command should run on focused buffer
+            opt.command_post.is_some() ||
+
+            // Same with lua user command
+            opt.lua_post.is_some() ||
+
+            // Otherwise, without -b and -B flags output buffer should be focused
+            (!opt.back && !opt.back_restore)
+        }
+
+
+        pub fn lines_has_been_prefetched(&mut self, lines: Vec<Vec<u8>>) {
+            self.prefetched_lines = PrefetchedLines(lines);
+        }
+    }
+
+
+    pub fn enter(env_ctx: super::EnvContext) -> UsageContext {
+
+        let super::EnvContext {
             input_from_pipe,
             opt,
             query_lines_count,
@@ -196,44 +198,42 @@ pub mod check_usage {
 }
 
 
-/// Contains data available after neovim is connected to page
-#[derive(Debug)]
-pub struct NeovimContext {
-    pub opt: crate::cli::Options,
-    pub page_id: String,
-    pub prefetched_lines: check_usage::PrefetchedLines,
-    pub query_lines_count: usize,
-    pub inst_usage: connect_neovim::InstanceUsage,
-    pub outp_buf_usage: connect_neovim::OutputBufferUsage,
-    pub nvim_child_proc_spawned: bool,
-    pub input_from_pipe: bool,
-}
-
-impl NeovimContext {
-    pub fn is_split_flag_given_with_files(&self) -> bool {
-         self.outp_buf_usage.is_create_split() &&
-            !self.opt.files.is_empty()
+pub mod connect_neovim {
+    /// Contains data available after neovim is connected to page
+    #[derive(Debug)]
+    pub struct NeovimContext {
+        pub opt: crate::cli::Options,
+        pub page_id: String,
+        pub prefetched_lines: super::check_usage::PrefetchedLines,
+        pub query_lines_count: usize,
+        pub inst_usage: InstanceUsage,
+        pub outp_buf_usage: OutputBufferUsage,
+        pub nvim_child_proc_spawned: bool,
+        pub input_from_pipe: bool,
     }
 
+    impl NeovimContext {
+        pub fn is_split_flag_given_with_files(&self) -> bool {
+            self.outp_buf_usage.is_create_split() &&
+                !self.opt.files.is_empty()
+        }
 
-    pub fn child_neovim_process_has_been_spawned(&mut self) {
-        self.nvim_child_proc_spawned = true;
 
-        if !self.outp_buf_usage.is_disabled() {
-            self.outp_buf_usage = connect_neovim::OutputBufferUsage::CreateSubstituting;
+        pub fn child_neovim_process_has_been_spawned(&mut self) {
+            self.nvim_child_proc_spawned = true;
+
+            if !self.outp_buf_usage.is_disabled() {
+                self.outp_buf_usage = OutputBufferUsage::CreateSubstituting;
+            }
         }
     }
-}
 
 
-pub mod connect_neovim {
-    use super::{UsageContext, NeovimContext};
-
-    pub fn enter(cli_ctx: UsageContext) -> NeovimContext {
+    pub fn enter(cli_ctx: super::UsageContext) -> NeovimContext {
         let should_focus_on_existed_instance_buffer = cli_ctx
             .is_focus_on_existed_instance_buffer_implied();
 
-        let UsageContext {
+        let super::UsageContext {
             opt,
             input_from_pipe,
             page_id,
@@ -327,42 +327,41 @@ pub mod connect_neovim {
 }
 
 
-/// Contains data available after buffer for output was found
-#[derive(Debug)]
-pub struct OutputContext {
-    pub opt: crate::cli::Options,
-    pub buf_pty_path: std::path::PathBuf,
-    pub prefetched_lines: check_usage::PrefetchedLines,
-    pub query_lines_count: usize,
-    pub inst_usage: connect_neovim::InstanceUsage,
-    pub restore_initial_buf_focus: output_buffer_available::RestoreInitialBufferFocus,
-    pub input_from_pipe: bool,
-    pub nvim_child_proc_spawned: bool,
-    pub print_output_buf_pty: bool,
-}
+pub mod output_buffer_available {
+    /// Contains data available after buffer for output was found
+    #[derive(Debug)]
+    pub struct OutputContext {
+        pub opt: crate::cli::Options,
+        pub buf_pty_path: std::path::PathBuf,
+        pub prefetched_lines: super::check_usage::PrefetchedLines,
+        pub query_lines_count: usize,
+        pub inst_usage: super::connect_neovim::InstanceUsage,
+        pub restore_initial_buf_focus: RestoreInitialBufferFocus,
+        pub input_from_pipe: bool,
+        pub nvim_child_proc_spawned: bool,
+        pub print_output_buf_pty: bool,
+    }
 
-impl OutputContext {
-    pub fn instance_output_buffer_has_been_created(&mut self) {
-        if let connect_neovim::InstanceUsage::Enabled {
-            focused,
-            ..
-        } = &mut self.inst_usage {
+    impl OutputContext {
+        pub fn instance_output_buffer_has_been_created(&mut self) {
+            if let super::connect_neovim::InstanceUsage::Enabled {
+                focused,
+                ..
+            } = &mut self.inst_usage {
 
-            // Obtains focus on buffer creation
-            *focused = true;
+                // Obtains focus on buffer creation
+                *focused = true;
+            }
         }
     }
-}
 
-pub mod output_buffer_available {
-    use crate::context::{NeovimContext, OutputContext};
 
     pub fn enter(
-        nvim_ctx: NeovimContext,
+        nvim_ctx: super::NeovimContext,
         buf_pty_path: std::path::PathBuf
     ) -> OutputContext {
 
-        let NeovimContext {
+        let super::NeovimContext {
             opt,
             nvim_child_proc_spawned,
             input_from_pipe,
