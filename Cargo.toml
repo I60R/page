@@ -2,7 +2,7 @@
 name = "page"
 version = "4.0.0"
 authors = ["1# 60R <160R@protonmail.com>"]
-description = "Advanced, fast pager powered by neovim and inspired by neovim-remote"
+description = "Pager powered by neovim and inspired by neovim-remote"
 repository = "https://github.com/I60R/page"
 license = "MIT"
 readme = "README.md"

@@ -5,11 +5,10 @@ use clap::{
     ValueHint,
 };
 
-// Contains arguments provided by command line
+/// File picker for neovim inspired by neovim-remote
 #[derive(Parser, Debug)]
 #[clap(
     author,
-    about,
     disable_help_subcommand = true,
     allow_negative_numbers = true,
     group = splits_arg_group(),

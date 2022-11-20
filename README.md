@@ -12,9 +12,9 @@ And text will be displayed instantly as it arrives - no need to wait until EOF.
 Also, text from neovim :term buffer will be redirected directly into a new buffer in the same neovim instance - no nested neovim will be spawned.
 That's by utilizing `$NVIM` variable like [neovim-remote](https://github.com/mhinz/neovim-remote) does.
 
-Bonus: another binary named `Page` (from uppercase letter) is included which reimplements `neovim-remote` but with interface similar to `page`. There's no intention to have all `nvim --remote` features — it should be only a simple file picker that prevents spawning nested neovim instance.
+**Bonus**: another binary named `Page` (from uppercase letter) is included which reimplements `neovim-remote` but with interface similar to `page`. There's no intention to have all `nvim --remote` features — it should be only a simple file picker that prevents spawning nested neovim instance.
 
-Ultimately, `page` reuses all of neovim's text editing+navigating+searching facilities and will either facilitate all of plugins+mappings+options set in your neovim config.
+Ultimately, `page` and `Page` reuses all of neovim's text editing+navigating+searching facilities and will either facilitate all of plugins+mappings+options set in your neovim config.
 
 ## Usage
 
@@ -116,7 +116,63 @@ Options:
 
 </details>
 
-## `nvim/init.lua` customizations
+<details><summary> expand <code>Page --help</code></summary>
+
+```xml
+Usage: Page [OPTIONS] [FILE]...
+
+Arguments:
+  [FILE]...  Open provided files as editable
+
+Options:
+  -o                          Open non-text files including directories, binaries, images etc
+  -O [<RECURSE_DEPTH>]        Ignoring [FILE]... open all text files in the current directory and
+                              recursively open all text files in its subdirectories [0: disabled and
+                              default; empty: defaults to 1 and implied if no <RECURSE_DEPTH> provided;
+                              <RECURSE_DEPTH>: also opens in subdirectories at this level of depth]
+                               ~ ~ ~
+  -f                          Open each [FILE]... at last line
+  -p <PATTERN>                Open and search for a specified <PATTERN>; empty will open at first
+                              non-empty line
+  -P <PATTERN_BACKWARDS>      Open and search backwars for a specified <PATTERN_BACKWARDS>;
+                              empty will open at last non-empty line
+  -b                          Return back to current buffer
+  -B                          Return back to current buffer and enter into INSERT/TERMINAL mode
+  -k                          Keep Page process until buffer is closed (for editing git commit message)
+  -K                          Keep Page process until first write occur, then close buffer
+                               ~ ~ ~
+  -a <ADDRESS>                TCP/IP socket address or path to named pipe listened by running host neovim process
+                              [env: NVIM=/run/user/1000/nvim.338728.0]
+  -A <ARGUMENTS>              Arguments that will be passed to child neovim process spawned when <ADDRESS>
+                              is missing [env: NVIM_PAGE_PICKER_ARGS=]
+  -c <CONFIG>                 Config that will be used by child neovim process spawned when <ADDRESS> is missing
+                              [file: $XDG_CONFIG_HOME/page/init.vim]
+  -t <FILETYPE>               Override filetype on each [FILE]... buffer (to enable custom syntax highlighting)
+                              [text: default]
+                               ~ ~ ~
+  -e <COMMAND>                Run command  on file buffer after it was created
+      --e <LUA>               Run lua expr on file buffer after it was created
+                               ~ ~ ~
+  -l...                       Split left  with ratio: window_width  * 3 / (<l-PROVIDED> + 1)
+  -r...                       Split right with ratio: window_width  * 3 / (<r-PROVIDED> + 1)
+  -u...                       Split above with ratio: window_height * 3 / (<u-PROVIDED> + 1)
+  -d...                       Split below with ratio: window_height * 3 / (<d-PROVIDED> + 1)
+  -L <SPLIT_LEFT_COLS>        Split left  and resize to <SPLIT_LEFT_COLS>  columns
+  -R <SPLIT_RIGHT_COLS>       Split right and resize to <SPLIT_RIGHT_COLS> columns
+  -U <SPLIT_ABOVE_ROWS>       Split above and resize to <SPLIT_ABOVE_ROWS> rows
+  -D <SPLIT_BELOW_ROWS>       Split below and resize to <SPLIT_BELOW_ROWS> rows
+                               ^
+  -+                          With any of -r -l -u -d -R -L -U -D open floating window instead of split
+                              [to not overwrite data in the current terminal]
+                               ~ ~ ~
+  -h, --help                  Print help information
+```
+
+</details>
+
+**Note**: `Page` as may be unergonomic to type so I suggest users to create alias like `P`; in contrast with `neovim-remote` there are some safeguards e.g. it won't open non-text files unless explicit flag is provided for that so `Page *` opens only text files in current directory. I recommend to read `--help` output and experiment with options a bit.
+
+## `nvim/init.lua` customizations (pager only)
 
 Statusline appearance:
 
@@ -214,7 +270,7 @@ man () {
 To set as `git` commit message editor:
 
 ```zsh
- git config --global core.editor "Page -K -+R 80 -B"
+ git config --global core.editor "Page -K -+-R 80 -B"
 ```
 
 To circumvent neovim config picking:
@@ -240,7 +296,7 @@ preexec () {
 }
 ```
 
-## Buffer defaults
+## Buffer defaults (pager)
 
 These commands are run on each `page` buffer creation:
 
@@ -431,7 +487,7 @@ vim.api.nvim_exec_autocmds('User', {
 })
 ```
 
-## Limitations
+## Limitations (pager)
 
 * Only ~100000 lines can be displayed (that's neovim terminal limit)
 * No reflow: text that doesnt't fit into window will be lost on resize  ([due to data structures inherited from vim](https://github.com/neovim/neovim/issues/2514#issuecomment-580035346))
