@@ -40,24 +40,29 @@ jobs:
     #    command: clippy
     #    args: --locked --all-targets --all-features
 
-    - name: Build on ${{ matrix.os }}
-      run: cargo build --verbose --release
+    - if: matrix.os == 'windows'
+      name: Build on windows
+      run: |
+        cargo build --verbose --release --bin=page --bin=Page
+        mkdir binaries
+        move target\release\page.exe binaries
+        move target\release\Page.exe binaries
+
+    - if: matrix.os != 'windows'
+      name: Build on ${{ matrix.os }}
+      run: |
+        cargo build --verbose --release --bin=page --bin=Page
+        mkdir binaries
+        mv target/release/page binaries
+        mv target/release/Page binaries
 
     #- name: Run tests
     #  run: cargo test --verbose
 
-    - name: Upload `page` binary for ${{ matrix.os }}
+    - name: Upload binaries
       uses: actions/upload-artifact@v3
       with:
-        name: page-${{ matrix.os }}
-        path: ${{ matrix.os == 'windows' && 'target\release\page.exe' || 'target/release/page' }}
-        if-no-files-found: error
-        retention-days: 7
-
-    - name: Upload `Page` binary for ${{ matrix.os }}
-      uses: actions/upload-artifact@v3
-      with:
-        name: Page-${{ matrix.os }}
-        path: ${{ matrix.os == 'windows' && 'target\release\Page.exe' || 'target/release/Page' }}
+        name: binaries-${{ matrix.os }}
+        path: binaries
         if-no-files-found: error
         retention-days: 7
