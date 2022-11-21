@@ -102,7 +102,7 @@ async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
                 let f = f.expect("Cannot read dir entry");
                 let f = open_files::FileToOpen::new_existed_file(f.path());
 
-                if !f.is_text && !env_ctx.opt.open_non_text {
+                if !f.path.exists() || !f.is_text && !env_ctx.opt.open_non_text {
                     continue;
                 }
 
