@@ -83,13 +83,14 @@ async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
 
             for f in read_dir {
                 let f = f.expect("Cannot recursively read dir entry");
-                let f = open_files::FileToOpen::new_existed_file(f.path());
 
-                if !f.is_text && !env_ctx.opt.open_non_text {
-                    continue
+                if let Some(f) = open_files::FileToOpen::new_existed_file(f.path()) {
+                    if !f.is_text && !env_ctx.opt.open_non_text {
+                        continue
+                    }
+
+                    open_files::open_file(&mut conn, &env_ctx, &f.path_string).await;
                 }
-
-                open_files::open_file(&mut conn, &env_ctx, &f.path_string).await;
             }
         },
         FilesUsage::LastModifiedFile => {
@@ -100,20 +101,21 @@ async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
 
             for f in read_dir {
                 let f = f.expect("Cannot read dir entry");
-                let f = open_files::FileToOpen::new_existed_file(f.path());
 
-                if !f.path.exists() || !f.is_text && !env_ctx.opt.open_non_text {
-                    continue;
-                }
-
-                let f_modified_time = f.get_modified_time();
-
-                if let Some((l_modified_time, l_modified)) = last_modified.as_mut() {
-                    if *l_modified_time < f_modified_time {
-                        (*l_modified_time, *l_modified) = (f_modified_time, f);
+                if let Some(f) = open_files::FileToOpen::new_existed_file(f.path()) {
+                    if !f.is_text && !env_ctx.opt.open_non_text {
+                        continue;
                     }
-                } else {
-                    last_modified.replace((f_modified_time, f));
+
+                    let f_modified_time = f.get_modified_time();
+
+                    if let Some((l_modified_time, l_modified)) = last_modified.as_mut() {
+                        if *l_modified_time < f_modified_time {
+                            (*l_modified_time, *l_modified) = (f_modified_time, f);
+                        }
+                    } else {
+                        last_modified.replace((f_modified_time, f));
+                    }
                 }
             }
 
@@ -123,13 +125,13 @@ async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
         },
         FilesUsage::FilesProvided => {
             for f in &env_ctx.opt.files {
-                let f = open_files::FileToOpen::new_maybe_uri(f);
+                if let Some(f) = open_files::FileToOpen::new_maybe_uri(f) {
+                    if !f.is_text && !env_ctx.opt.open_non_text {
+                        continue
+                    }
 
-                if !f.is_text && !env_ctx.opt.open_non_text {
-                    continue
+                    open_files::open_file(&mut conn, &env_ctx, &f.path_string).await;
                 }
-
-                open_files::open_file(&mut conn, &env_ctx, &f.path_string).await;
             }
         }
     }
@@ -173,37 +175,33 @@ mod open_files {
     }
 
     impl FileToOpen {
-        pub fn new_existed_file<P: AsRef<Path> + std::fmt::Debug>(path: P) -> FileToOpen {
+        pub fn new_existed_file<P: AsRef<Path> + std::fmt::Debug>(path: P) -> Option<FileToOpen> {
             let path = match std::fs::canonicalize(&path) {
                 Ok(canonical) => canonical,
-                Err(e) => {
-                    log::error!(
-                        target: "open file",
-                        r#"Cannot open "{path:?}": {e}"#
-                    );
-                    PathBuf::from(path.as_ref())
-                }
+                Err(_) => return None
             };
             let path_string = path
                 .to_string_lossy()
                 .to_string();
             let is_text = is_text_file(&path_string);
-            FileToOpen {
+            let f = FileToOpen {
                 path,
                 path_string,
                 is_text
-            }
+            };
+            Some(f)
         }
 
-        pub fn new_maybe_uri(path: &FileOption) -> FileToOpen {
-            match path {
+        pub fn new_maybe_uri(path: &FileOption) -> Option<FileToOpen> {
+            let f = match path {
                 FileOption::Uri(u) => Self {
                     path: PathBuf::new(),
                     path_string: u.clone(),
                     is_text: true,
                 },
-                FileOption::Path(p) => Self::new_existed_file(p),
-            }
+                FileOption::Path(p) => Self::new_existed_file(p)?,
+            };
+            Some(f)
         }
 
         pub fn get_modified_time(&self) -> SystemTime {

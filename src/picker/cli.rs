@@ -17,6 +17,7 @@ use clap::{
 )]
 pub struct Options {
     /// Open provided files as editable
+    /// [if none provided nv opens last modified file in currend directory]
     #[clap(name="FILE", value_hint=ValueHint::FilePath)]
     pub files: Vec<FileOption>,
 
@@ -24,7 +25,7 @@ pub struct Options {
     #[clap(display_order=1, short='o')]
     pub open_non_text: bool,
 
-    /// Ignoring [FILE]... open all text files in the current directory
+    /// Ignoring [FILE] open all text files in the current directory
     /// and recursively open all text files in its subdirectories
     /// [0: disabled and default;
     /// empty: defaults to 1 and implied if no <RECURSE_DEPTH> provided;
@@ -33,22 +34,20 @@ pub struct Options {
     #[clap(display_order=2, short='O')]
     pub recurse_depth: Option<Option<usize>>,
 
-    /// Open each [FILE]... at last line
+    /// Open each [FILE] at last line
     #[clap(display_order=20, short='f')]
     pub follow: bool,
 
-    /// Open and search for a specified <PATTERN>;
-    /// empty will open at first non-empty line
+    /// Open and search for a specified <PATTERN>
     #[clap(display_order=21, short='p')]
     pub pattern: Option<String>,
 
-    /// Open and search backwars for a specified <PATTERN_BACKWARDS>;
-    /// empty will open at last non-empty line {n}
+    /// Open and search backwars for a specified <PATTERN_BACKWARDS>
     #[clap(display_order=22, short='P')]
     pub pattern_backwards: Option<String>,
 
-    /// Override filetype on each [FILE]... buffer
-    /// (to enable custom syntax highlighting) [text: default]
+    /// Override filetype on each [FILE] buffer
+    /// (to enable custom syntax highlighting) [text: default] {n}
     /// ~ ~ ~
     #[clap(display_order=105, short='t')]
     pub filetype: Option<String>,
@@ -67,7 +66,7 @@ pub struct Options {
     pub keep: bool,
 
     /// Keep Page process until first write occur,
-    /// then close buffer {n}
+    /// then close buffer and neovim if it was spawned by nv {n}
     /// ~ ~ ~
     #[clap(display_order=73, short='K')]
     pub keep_until_write: bool,
@@ -87,11 +86,11 @@ pub struct Options {
     #[clap(display_order=102, short='c', value_hint=ValueHint::AnyPath)]
     pub config: Option<String>,
 
-    /// Run command  on file buffer after it was created
+    /// Run command  on each [FILE] buffer after it was created
     #[clap(display_order=106, short='e')]
     pub command: Option<String>,
 
-    /// Run lua expr on file buffer after it was created {n}
+    /// Run lua expr on each [FILE] buffer after it was created {n}
     /// ~ ~ ~
     #[clap(display_order=107, long="e")]
     pub lua: Option<String>,
