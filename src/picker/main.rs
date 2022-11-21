@@ -253,6 +253,14 @@ mod open_files {
             .await
             .expect("Cannot open file buffer");
 
+        if let Some(ft) = &env_ctx.opt.filetype {
+            let cmd = format!("set filetype={ft}");
+            conn.nvim_actions
+                .command(&cmd)
+                .await
+                .expect("Cannot set filetype")
+        }
+
         if env_ctx.opt.follow {
             conn.nvim_actions
                 .command("norm! G")
@@ -271,7 +279,7 @@ mod open_files {
             conn.nvim_actions
                 .command(&cmd)
                 .await
-                .expect("Cannot execute follow command")
+                .expect("Cannot execute follow backwards command")
         }
 
         if env_ctx.opt.keep || env_ctx.opt.keep_until_write {
