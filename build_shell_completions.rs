@@ -30,9 +30,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     clap_complete::generate_to(Fish, &mut app, "page", &out_dir)?;
 
     let mut app = picker::Options::command();
-    clap_complete::generate_to(Zsh , &mut app, "Page", &out_dir)?;
-    clap_complete::generate_to(Bash, &mut app, "Page", &out_dir)?;
-    clap_complete::generate_to(Fish, &mut app, "Page", &out_dir)?;
+    clap_complete::generate_to(Zsh , &mut app, "nv", &out_dir)?;
+    clap_complete::generate_to(Bash, &mut app, "nv", &out_dir)?;
+    clap_complete::generate_to(Fish, &mut app, "nv", &out_dir)?;
 
     Ok(())
 }

@@ -12,9 +12,9 @@ And text will be displayed instantly as it arrives - no need to wait until EOF.
 Also, text from neovim :term buffer will be redirected directly into a new buffer in the same neovim instance - no nested neovim will be spawned.
 That's by utilizing `$NVIM` variable like [neovim-remote](https://github.com/mhinz/neovim-remote) does.
 
-**Bonus**: another binary named `Page` (from uppercase letter) is included which reimplements `neovim-remote` but with interface similar to `page`. There's no intention to have all `nvim --remote` features — it should be only a simple file picker that prevents spawning nested neovim instance.
+**Bonus**: another binary named `nv` is included, which reimplements `neovim-remote` but with interface similar to `page`. There's no intention to have all `nvim --remote` features — it should be only a simple file picker that prevents spawning nested neovim instance. Also, in contrast with `neovim-remote` there are some safeguards e.g. it won't open non-text files unless explicit flag is provided for that so `nv *` opens only text files in current directory. I recommend to read `--help` output and experiment with options a bit.
 
-Ultimately, `page` and `Page` reuses all of neovim's text editing+navigating+searching facilities and will either facilitate all of plugins+mappings+options set in your neovim config.
+Ultimately, `page` and `nv` reuses all of neovim's text editing+navigating+searching facilities and will either facilitate all of plugins+mappings+options set in your neovim config.
 
 ## Usage
 
@@ -116,7 +116,7 @@ Options:
 
 </details>
 
-<details><summary> expand <code>Page --help</code></summary>
+<details><summary> expand <code>nv --help</code></summary>
 
 ```xml
 Usage: Page [OPTIONS] [FILE]...
@@ -170,7 +170,7 @@ Options:
 
 </details>
 
-**Note**: `Page` as may be unergonomic to type so I suggest users to create alias like `P`; in contrast with `neovim-remote` there are some safeguards e.g. it won't open non-text files unless explicit flag is provided for that so `Page *` opens only text files in current directory. I recommend to read `--help` output and experiment with options a bit.
+**Note**: `page` and `nv` may be unergonomic to type so I suggest users to create alias like `p` and `v`
 
 ## `nvim/init.lua` customizations (pager only)
 
@@ -270,7 +270,7 @@ man () {
 To set as `git` commit message editor:
 
 ```zsh
- git config --global core.editor "Page -K -+-R 80 -B"
+ git config --global core.editor "nv -K -+-R 80 -B"
 ```
 
 To circumvent neovim config picking:

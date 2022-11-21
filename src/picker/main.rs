@@ -1,5 +1,3 @@
-#![allow(non_snake_case)]
-
 pub(crate) mod cli;
 pub(crate) mod context;
 

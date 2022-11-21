@@ -1,7 +1,7 @@
 [package]
 name = "page"
 version = "4.0.0"
-authors = ["1# 60R <160R@protonmail.com>"]
+authors = ["160R <160R@protonmail.com>"]
 description = "Pager powered by neovim and inspired by neovim-remote"
 repository = "https://github.com/I60R/page"
 license = "MIT"
@@ -44,5 +44,5 @@ name = "page"
 path = "src/pager/main.rs"
 
 [[bin]]
-name = "Page"
+name = "nv"
 path = "src/picker/main.rs"

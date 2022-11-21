@@ -43,18 +43,18 @@ jobs:
     - if: matrix.os == 'windows'
       name: Build on windows
       run: |
-        cargo build --verbose --release --bin=page --bin=Page
+        cargo build --verbose --release
         mkdir binaries
         move target\release\page.exe binaries
-        move target\release\Page.exe binaries
+        move target\release\nv.exe binaries
 
     - if: matrix.os != 'windows'
       name: Build on ${{ matrix.os }}
       run: |
-        cargo build --verbose --release --bin=page --bin=Page
+        cargo build --verbose --release
         mkdir binaries
         mv target/release/page binaries
-        mv target/release/Page binaries
+        mv target/release/nv binaries
 
     #- name: Run tests
     #  run: cargo test --verbose
