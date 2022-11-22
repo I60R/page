@@ -178,7 +178,16 @@ mod open_files {
         pub fn new_existed_file<P: AsRef<Path> + std::fmt::Debug>(path: P) -> Option<FileToOpen> {
             let path = match std::fs::canonicalize(&path) {
                 Ok(canonical) => canonical,
-                Err(_) => return None
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    PathBuf::from(path.as_ref())
+                }
+                Err(e) => {
+                    log::error!(
+                        target: "open file",
+                        "cannot open {path:?}: {e}"
+                    );
+                    return None;
+                }
             };
             let path_string = path
                 .to_string_lossy()
