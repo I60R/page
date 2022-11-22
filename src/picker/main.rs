@@ -168,6 +168,14 @@ mod open_files {
         context::EnvContext,
     };
 
+    use once_cell::unsync::Lazy;
+    const PWD: Lazy<PathBuf> = Lazy::new(|| {
+        PathBuf::from(
+            std::env::var("PWD")
+                .expect("Cannot read $PWD value")
+        )
+    });
+
     pub struct FileToOpen {
         pub path: PathBuf,
         pub path_string: String,
@@ -179,7 +187,7 @@ mod open_files {
             let path = match std::fs::canonicalize(&path) {
                 Ok(canonical) => canonical,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    PathBuf::from(path.as_ref())
+                    PWD.join(path.as_ref())
                 }
                 Err(e) => {
                     log::error!(
