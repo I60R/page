@@ -31,68 +31,68 @@ pub struct Options {
     /// empty: defaults to 1 and implied if no <RECURSE_DEPTH> provided;
     /// <RECURSE_DEPTH>: also opens in subdirectories at this level of depth] {n}
     /// ~ ~ ~
-    #[clap(display_order=2, short='O')]
+    #[clap(short='O')]
     pub recurse_depth: Option<Option<usize>>,
 
     /// Open each [FILE] at last line
-    #[clap(display_order=20, short='f')]
+    #[clap(short='f')]
     pub follow: bool,
 
     /// Open and search for a specified <PATTERN>
-    #[clap(display_order=21, short='p')]
+    #[clap(short='p')]
     pub pattern: Option<String>,
 
     /// Open and search backwars for a specified <PATTERN_BACKWARDS>
-    #[clap(display_order=22, short='P')]
+    #[clap(short='P')]
     pub pattern_backwards: Option<String>,
 
-    /// Override filetype on each [FILE] buffer
-    /// (to enable custom syntax highlighting) [text: default] {n}
-    /// ~ ~ ~
-    #[clap(display_order=105, short='t')]
-    pub filetype: Option<String>,
-
     /// Return back to current buffer
-    #[clap(display_order=70, short='b')]
+    #[clap(short='b')]
     pub back: bool,
 
     /// Return back to current buffer and enter into INSERT/TERMINAL mode
-    #[clap(display_order=71, short='B')]
+    #[clap(short='B')]
     pub back_restore: bool,
 
     /// Keep Page process until buffer is closed
     /// (for editing git commit message)
-    #[clap(display_order=72, short='k')]
+    #[clap(short='k')]
     pub keep: bool,
 
     /// Keep Page process until first write occur,
     /// then close buffer and neovim if it was spawned by nv {n}
     /// ~ ~ ~
-    #[clap(display_order=73, short='K')]
+    #[clap(short='K')]
     pub keep_until_write: bool,
 
     /// TCP/IP socket address or path to named pipe listened
     /// by running host neovim process
-    #[clap(display_order=100, short='a', env="NVIM")]
+    #[clap(short='a', env="NVIM")]
     pub address: Option<String>,
 
     /// Arguments that will be passed to child neovim process
     /// spawned when <ADDRESS> is missing
-    #[clap(display_order=101, short='A', env="NVIM_PAGE_PICKER_ARGS")]
+    #[clap(short='A', env="NVIM_PAGE_PICKER_ARGS")]
     pub arguments: Option<String>,
 
     /// Config that will be used by child neovim process spawned
     /// when <ADDRESS> is missing [file: $XDG_CONFIG_HOME/page/init.vim]
-    #[clap(display_order=102, short='c', value_hint=ValueHint::AnyPath)]
+    #[clap(short='c', value_hint=ValueHint::AnyPath)]
     pub config: Option<String>,
 
+    /// Override filetype on each [FILE] buffer
+    /// (to enable custom syntax highlighting) [text: default] {n}
+    /// ~ ~ ~
+    #[clap(short='t')]
+    pub filetype: Option<String>,
+
     /// Run command  on each [FILE] buffer after it was created
-    #[clap(display_order=106, short='e')]
+    #[clap(short='e')]
     pub command: Option<String>,
 
     /// Run lua expr on each [FILE] buffer after it was created {n}
     /// ~ ~ ~
-    #[clap(display_order=107, long="e")]
+    #[clap(long="e")]
     pub lua: Option<String>,
 
     #[clap(flatten)]

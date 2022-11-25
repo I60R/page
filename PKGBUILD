@@ -2,7 +2,7 @@
 _pkgname=page
 pkgname=${_pkgname}-git
 pkgrel=1
-pkgver=v4.0.1
+pkgver=v3.2.0
 pkgdesc='Pager powered by neovim and inspired by neovim-remote'
 arch=('i686' 'x86_64')
 url="https://github.com/I60R/page"
