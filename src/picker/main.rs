@@ -71,6 +71,47 @@ async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
             .expect("Cannot create split window");
     }
 
+    use context::env_context::ReadStdinUsage;
+    if let ReadStdinUsage::Enabled = &env_ctx.pipe_buf_usage {
+        let buf = conn.nvim_actions
+            .create_buf(true, true)
+            .await
+            .expect("Cannot create STDIN buffer");
+
+        conn.nvim_actions
+            .set_current_buf(&buf)
+            .await
+            .expect("Cannot set STDIN buffer");
+
+        let mut i = 0;
+
+        let mut ln = Vec::with_capacity(512);
+
+        for b in std::io::Read::bytes(std::io::stdin()) {
+            match b {
+                Err(e) => {
+                    panic!("Failed to prefetch line from stdin: {e}")
+                }
+                Ok(_eol @ b'\n') => {
+                    ln.shrink_to_fit();
+
+                    let ln_str = String::from_utf8(ln)
+                        .expect("Cannot read UTF8 string");
+                    ln = Vec::with_capacity(512);
+
+                    buf.set_lines(i, i, false, vec![ln_str])
+                        .await
+                        .expect("Cannot set line");
+
+                    i += 1;
+                }
+                Ok(b) => {
+                    ln.push(b);
+                }
+            }
+        }
+    }
+
     use context::env_context::FilesUsage;
     match env_ctx.files_usage {
         FilesUsage::RecursiveCurrentDir {

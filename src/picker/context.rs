@@ -8,7 +8,7 @@ pub mod env_context {
         pub files_usage: FilesUsage,
         pub tmp_dir: std::path::PathBuf,
         pub page_id: String,
-        pub pipe_buf_usage: PipeBufferUsage,
+        pub pipe_buf_usage: ReadStdinUsage,
         pub split_usage: SplitUsage
     }
 
@@ -27,8 +27,10 @@ pub mod env_context {
             opt.address = None;
         }
 
+        let input_from_pipe = !atty::is(atty::Stream::Stdin);
+
         let mut files_usage = FilesUsage::FilesProvided;
-        if opt.files.is_empty() {
+        if opt.files.is_empty() && !input_from_pipe {
             files_usage = FilesUsage::LastModifiedFile;
         }
         let recurse_depth = match opt.recurse_depth {
@@ -62,12 +64,9 @@ pub mod env_context {
             split_usage = SplitUsage::Enabled;
         }
 
-        let input_from_pipe = !atty::is(atty::Stream::Stdin);
-        let mut pipe_buf_usage = PipeBufferUsage::Disabled;
+        let mut pipe_buf_usage = ReadStdinUsage::Disabled;
         if input_from_pipe {
-            pipe_buf_usage = PipeBufferUsage::Enabled {
-                pipe_name: format!("{pipe_path}-read")
-            }
+            pipe_buf_usage = ReadStdinUsage::Enabled
         }
 
         EnvContext {
@@ -90,10 +89,8 @@ pub mod env_context {
     }
 
     #[derive(Debug)]
-    pub enum PipeBufferUsage {
-        Enabled {
-            pipe_name: String
-        },
+    pub enum ReadStdinUsage {
+        Enabled,
         Disabled
     }
 
