@@ -29,10 +29,14 @@ pub struct Options {
     /// and recursively open all text files in its subdirectories
     /// [0: disabled and default;
     /// empty: defaults to 1 and implied if no <RECURSE_DEPTH> provided;
-    /// <RECURSE_DEPTH>: also opens in subdirectories at this level of depth] {n}
-    /// ~ ~ ~
+    /// <RECURSE_DEPTH>: also opens in subdirectories at this level of depth]
     #[clap(short='O')]
     pub recurse_depth: Option<Option<usize>>,
+
+    /// Open in `page` instead (just postfix shortcut) {n}
+    /// ~ ~ ~
+    #[clap(short='v')]
+    pub view_only: bool,
 
     /// Open each [FILE] at last line
     #[clap(short='f')]

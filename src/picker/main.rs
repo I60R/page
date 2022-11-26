@@ -1,3 +1,5 @@
+use std::os::unix::process::CommandExt;
+
 pub(crate) mod cli;
 pub(crate) mod context;
 
@@ -12,6 +14,17 @@ async fn main() {
     let env_ctx = context::env_context::enter();
 
     main::warn_if_incompatible_options(&env_ctx.opt);
+
+    if env_ctx.opt.view_only {
+        let mut page_args = std::env::args();
+        page_args.next(); // skip `nv`
+        let page_args = page_args
+            .filter(|arg| arg != "-v");
+
+        std::process::Command::new("page")
+            .args(page_args)
+            .exec();
+    }
 
     connect_neovim(env_ctx).await;
 }
@@ -196,9 +209,8 @@ async fn read_stdin(env_ctx: context::EnvContext, conn: NeovimConnection) {
             .await
             .expect("Cannot set STDIN buffer");
 
-        let mut i = 0;
-
         let mut ln = Vec::with_capacity(512);
+        let mut i = 0;
 
         for b in std::io::Read::bytes(std::io::stdin()) {
             match b {
