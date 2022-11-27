@@ -1,5 +1,3 @@
-use std::os::unix::process::CommandExt;
-
 pub(crate) mod cli;
 pub(crate) mod context;
 
@@ -21,9 +19,16 @@ async fn main() {
         let page_args = page_args
             .filter(|arg| arg != "-v");
 
-        std::process::Command::new("page")
+        let exit_code = std::process::Command::new("page")
             .args(page_args)
-            .exec();
+            .spawn()
+            .expect("Cannot spawn `page`")
+            .wait()
+            .expect("`page` died unexpectedly")
+            .code()
+            .unwrap_or(0);
+
+        std::process::exit(exit_code)
     }
 
     connect_neovim(env_ctx).await;
