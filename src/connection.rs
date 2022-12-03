@@ -67,6 +67,7 @@ pub fn init_logger() {
     dispatch
         .level(log_lvl_filter)
         .chain(std::io::stderr())
+        // .filter(|f| f.target() != "nvim_rs::neovim")
         .apply()
         .expect("Cannot initialize logger");
 }

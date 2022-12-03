@@ -99,35 +99,49 @@ async fn validate_files(mut env_ctx: context::EnvContext) {
 async fn prefetch_lines(env_ctx: context::EnvContext) {
     log::info!(target: "context", "{env_ctx:#?}");
 
-    let mut i;
-    let term_width;
-
     use context::gather_env::PrefetchLinesUsage;
-    match env_ctx.prefetch_usage {
+    use context::gather_env::PrefetchLinesSource;
 
-        PrefetchLinesUsage::Enabled {
-            line_count,
-            term_width: w,
-        } => {
-            i = line_count + 1;
-            term_width = w;
+    let PrefetchLinesUsage::Enabled {
+        line_count,
+        term_width,
+        source,
+    } = &env_ctx.prefetch_usage else {
+
+        let cli_ctx = context::check_usage::enter(env_ctx);
+        connect_neovim(cli_ctx).await;
+
+        return
+    };
+
+    let mut prefetch_source_stdin;
+    let mut prefetch_source_file;
+    let prefetch_source: &mut dyn std::io::Read;
+
+    match source {
+        PrefetchLinesSource::Stdin => {
+            prefetch_source_stdin = std::io::stdin();
+
+            prefetch_source = &mut prefetch_source_stdin;
         },
 
-        PrefetchLinesUsage::Disabled => {
+        PrefetchLinesSource::File(path) => {
+            let file = std::fs::File::open(path)
+                .expect("Cannot open file");
+            prefetch_source_file = std::io::BufReader::new(file);
 
-            let cli_ctx = context::check_usage::enter(env_ctx);
-            connect_neovim(cli_ctx).await;
-
-            return
-        }
+            prefetch_source = &mut prefetch_source_file;
+        },
     }
 
+    let mut i = line_count + 1;
     let mut prefetched_lines = Vec::with_capacity(i);
+    let mut bytes = std::io::Read::bytes(prefetch_source);
 
     'read_next_ln: while i > 0 {
-        let mut ln = Vec::with_capacity(term_width);
+        let mut ln = Vec::with_capacity(*term_width);
 
-        for b in std::io::Read::bytes(std::io::stdin()) {
+        while let Some(b) = bytes.next() {
             match b {
                 Err(e) => {
                     panic!("Failed to prefetch line from stdin: {e}")
@@ -141,7 +155,7 @@ async fn prefetch_lines(env_ctx: context::EnvContext) {
                 }
                 Ok(b) => {
                     ln.push(b);
-                    if ln.len() == term_width {
+                    if ln.len() == *term_width {
                         prefetched_lines.push(ln);
                         i -= 1;
                         continue 'read_next_ln;
@@ -152,10 +166,27 @@ async fn prefetch_lines(env_ctx: context::EnvContext) {
 
         prefetched_lines.push(ln);
 
-        dump_prefetched_lines_and_exit(
-            prefetched_lines,
-            &env_ctx.opt.output.filetype
-        )
+        if let PrefetchLinesUsage::Enabled {
+            source: PrefetchLinesSource::File(path),
+            ..
+        } = env_ctx.prefetch_usage {
+
+            let extenstion = std::path::Path::new(&path)
+                .extension()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| String::from(&env_ctx.opt.output.filetype));
+
+            dump_prefetched_lines_and_exit(
+                prefetched_lines,
+                &extenstion
+            )
+        } else {
+
+            dump_prefetched_lines_and_exit(
+                prefetched_lines,
+                &env_ctx.opt.output.filetype,
+            )
+        };
     }
 
     let mut cli_ctx = context::check_usage::enter(env_ctx);

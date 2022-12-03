@@ -38,7 +38,7 @@ pub mod gather_env {
             if opt.output_open ||
                 opt.pty_path_print ||
                 opt.instance_close.is_some() ||
-                !input_from_pipe
+                (!input_from_pipe && opt.files.len() != 1)
             {
                 opt.output.noopen_lines = None;
             }
@@ -78,8 +78,23 @@ pub mod gather_env {
             prefetch_usage = PrefetchLinesUsage::Enabled {
                 line_count: prefetch_lines_count,
                 term_width: *term_width,
+                source: PrefetchLinesSource::Stdin,
             };
+        } else if prefetch_lines_count != 0 &&
+            opt.files.len() == 1 &&
+            !input_from_pipe
+        {
+            if let crate::cli::FileOption::Path(f) = opt.files
+                .last()
+                .unwrap() {
+                prefetch_usage = PrefetchLinesUsage::Enabled {
+                    line_count: prefetch_lines_count,
+                    term_width: *term_width,
+                    source: PrefetchLinesSource::File(f.clone()),
+                }
+            }
         }
+
 
         EnvContext {
             opt,
@@ -95,8 +110,15 @@ pub mod gather_env {
         Enabled {
             line_count: usize,
             term_width: usize,
+            source: PrefetchLinesSource
         },
         Disabled,
+    }
+
+    #[derive(Debug)]
+    pub enum PrefetchLinesSource {
+        Stdin,
+        File(String),
     }
 }
 

@@ -5,6 +5,7 @@ use clap::{
     ValueHint,
 };
 
+
 /// Pager for neovim inspired by neovim-remote
 #[derive(Parser, Debug)]
 #[clap(
@@ -177,8 +178,8 @@ pub struct OutputOptions {
     #[clap(display_order=105, long="e")]
     pub lua: Option<String>,
 
-    /// Prefetch <NOOPEN_LINES> from page's stdin: if all input fits
-    /// then print it to stdout and exit without neovim usage
+    /// Prefetch <NOOPEN_LINES> from page's stdin or [FILE]: if all
+    /// input fits then print it to stdout and exit without neovim usage
     /// (to emulate `less --quit-if-one-screen`)
     /// [empty: term height - 3 (space for prompt);
     /// negative: term height - <NOOPEN_LINES>;
