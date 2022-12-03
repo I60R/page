@@ -1,13 +1,13 @@
 [package]
 name = "page"
-version = "4.1.0"
+version = "4.2.0"
 authors = ["160R <160R@protonmail.com>"]
 description = "Pager powered by neovim and inspired by neovim-remote"
 repository = "https://github.com/I60R/page"
 license = "MIT"
 readme = "README.md"
 edition = "2021"
-rust-version = "1.58.0"
+rust-version = "1.65.0"
 build = "build_shell_completions.rs"
 
 [dependencies]
