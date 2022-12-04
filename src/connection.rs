@@ -59,10 +59,10 @@ pub fn init_logger() {
     });
 
     let log_lvl_filter = std::str::FromStr::from_str(
-        std::env::var("RUST_LOG")
+        std::env::var("PAGE_LOG")
             .as_deref()
             .unwrap_or("warn")
-    ).expect("Cannot parse $RUST_LOG value");
+    ).expect("Cannot parse $PAGE_LOG value");
 
     dispatch
         .level(log_lvl_filter)
