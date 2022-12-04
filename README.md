@@ -172,6 +172,13 @@ Options:
 
 **Note**: `page` and `nv` may be unergonomic to type so I suggest users to create alias like `p` and `v`
 
+## `nvim/init.lua` customizations
+
+```lua
+-- Opacity of popup window spawned with -+ option
+vim.g.page_popup_winblend = 25
+```
+
 ## `nvim/init.lua` customizations (pager only)
 
 Statusline appearance:

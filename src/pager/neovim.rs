@@ -104,7 +104,8 @@ impl NeovimActions {
                     col = {col}
                 }})
                 vim.api.nvim_set_current_win(win)
-                vim.api.nvim_win_set_option(win, 'winblend', 25)
+                local winblend = vim.g.page_popup_winblend or 25
+                vim.api.nvim_win_set_option(win, 'winblend', winblend)
             "}
         } else {
 

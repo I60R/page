@@ -145,7 +145,8 @@ mod split_current_buffer {
                     col = {col}
                 }})
                 vim.api.nvim_set_current_win(win)
-                vim.api.nvim_win_set_option(win, 'winblend', 25)
+                local winblend = vim.g.page_popup_winblend or 25
+                vim.api.nvim_win_set_option(win, 'winblend', winblend)
             "}
         } else {
 
@@ -479,7 +480,7 @@ mod open_files {
                     end)
                 end
                 {keep_until_write_cmd}
-                vim.api.nvim_create_autocmd('BufDelete', {{
+                vim.api.nvim_create_autocmd({{ 'BufDelete', 'BufWipeout' }}, {{
                     buffer = buf,
                     callback = on_delete
                 }})
