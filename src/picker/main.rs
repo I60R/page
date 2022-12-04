@@ -480,7 +480,7 @@ mod open_files {
                     end)
                 end
                 {keep_until_write_cmd}
-                vim.api.nvim_create_autocmd({{ 'BufDelete', 'BufWipeout' }}, {{
+                vim.api.nvim_create_autocmd({{ 'BufDelete', 'BufWinLeave' }}, {{
                     buffer = buf,
                     callback = on_delete
                 }})
