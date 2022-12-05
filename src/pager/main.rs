@@ -22,7 +22,7 @@ mod main {
 
     // Some options takes effect only when page would be
     // spawned from neovim's terminal
-    pub fn warn_if_incompatible_options(opt: &crate::cli::Options) {
+    pub fn warn_if_incompatible_options(opt: &super::cli::Options) {
         if opt.address.is_some() {
             return
         }
@@ -425,8 +425,11 @@ async fn manage_output_buffer(
 
 
 mod neovim_api_usage {
-    use super::NeovimConnection;
-    use crate::{context::NeovimContext, neovim::{OutputBuffer, OutputCommands}};
+    use super::{
+        NeovimConnection,
+        context::NeovimContext,
+        neovim::{OutputBuffer, OutputCommands}
+    };
 
     /// This struct implements actions that should be done
     /// before output buffer is available
@@ -597,10 +600,9 @@ mod neovim_api_usage {
 }
 
 mod output_buffer_usage {
-    use super::{NeovimConnection, NeovimBuffer};
-    use crate::context::OutputContext;
+    use super::{NeovimConnection, NeovimBuffer, context::OutputContext};
     use connection::NotificationFromNeovim;
-    use std::io::{Read, Write, self};
+    use std::io::{Read, Write};
 
     /// This struct implements actions that should be done
     /// after output buffer is attached
@@ -903,7 +905,7 @@ mod output_buffer_usage {
         /// that buffer was closed intentionally, so page must just exit.
         /// If no such notification was arrived then page crashes
         /// with the received IO error
-        async fn display_line(&mut self, ln: &[u8]) -> io::Result<()> {
+        async fn display_line(&mut self, ln: &[u8]) -> std::io::Result<()> {
             let pty = self.get_buffer_pty();
 
             if let Err(e) = pty.write_all(ln) {
