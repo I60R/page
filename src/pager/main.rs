@@ -58,26 +58,26 @@ async fn validate_files(mut env_ctx: context::EnvContext) {
     let files_count = env_ctx.opt.files.len();
     for i in 0..files_count {
 
-        use crate::cli::FileOption::*;
+        use cli::FileOption::Path;
+        let Path(path) = &mut env_ctx.opt.files[i] else {
+            // Uri
+            continue
+        };
 
-        match &mut env_ctx.opt.files[i] {
-            Uri(_) => continue,
+        match std::fs::canonicalize(&path) {
+            Ok(canonical) => {
 
-            Path(path) => match std::fs::canonicalize(&path) {
-                Ok(canonical) => {
+                *path = canonical
+                    .to_string_lossy()
+                    .to_string()
+            }
+            Err(e) => {
+                log::error!(
+                    target: "open file",
+                    r#"Cannot open "{path}": {e}"#);
 
-                    *path = canonical
-                        .to_string_lossy()
-                        .to_string()
-                }
-                Err(e) => {
-                    log::error!(
-                        target: "open file",
-                        r#"Cannot open "{path}": {e}"#);
-
-                    env_ctx.opt.files
-                        .remove(i);
-                }
+                env_ctx.opt.files
+                    .remove(i);
             }
         }
     }
@@ -839,19 +839,15 @@ mod output_buffer_usage {
                 self.exchange_query_messages(&mut state)
                     .await;
 
-                match prefetched_lines_iter.next() {
-                    Some(ln) => {
+                let Some(ln) = prefetched_lines_iter.next() else {
+                    log::info!(target: "output", "Proceed with stdin");
 
-                        self.display_line(ln)
-                            .await
-                            .expect("Cannot write next prefetched queried line");
-                    }
-                    None => {
-                        log::info!(target: "output", "Proceed with stdin");
+                    break
+                };
 
-                        break
-                    }
-                }
+                self.display_line(ln)
+                    .await
+                    .expect("Cannot write next prefetched queried line");
 
                 state.line_has_been_sent();
             }
