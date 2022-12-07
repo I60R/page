@@ -1,5 +1,3 @@
-use std::env;
-
 pub(crate) mod cli;
 pub(crate) mod context;
 
