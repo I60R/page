@@ -284,7 +284,15 @@ async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
                         continue;
                     }
 
-                    let f_modified_time = f.get_modified_time();
+                    let Ok(f_modified_time) = f.get_modified_time() else {
+                        log::error!(
+                            target: "last_modified",
+                            "Cannot read metadata: {}",
+                             f.path_string
+                        );
+
+                        continue;
+                    };
 
                     if let Some((l_modified_time, l_modified)) = last_modified.as_mut() {
                         if *l_modified_time < f_modified_time {
@@ -376,13 +384,12 @@ mod open_files {
             Some(f)
         }
 
-        pub fn get_modified_time(&self) -> SystemTime {
+        pub fn get_modified_time(&self) -> std::io::Result<SystemTime> {
             let f_meta = self.path
-                .metadata()
-                .expect("Cannot read dir entry metadata");
-            f_meta
-                .modified()
-                .expect("Cannot read modified metadata")
+                .metadata()?;
+            let modified = f_meta
+                .modified()?;
+            Ok(modified)
         }
     }
 
