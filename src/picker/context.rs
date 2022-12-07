@@ -8,7 +8,7 @@ pub mod env_context {
         pub files_usage: FilesUsage,
         pub tmp_dir: std::path::PathBuf,
         pub page_id: String,
-        pub pipe_buf_usage: ReadStdinUsage,
+        pub read_stdin_usage: ReadStdinUsage,
         pub split_usage: SplitUsage
     }
 
@@ -74,7 +74,7 @@ pub mod env_context {
             files_usage,
             tmp_dir,
             page_id: pipe_path,
-            pipe_buf_usage,
+            read_stdin_usage: pipe_buf_usage,
             split_usage,
         }
     }

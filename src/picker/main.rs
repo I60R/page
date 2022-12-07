@@ -1,3 +1,5 @@
+use std::env;
+
 pub(crate) mod cli;
 pub(crate) mod context;
 
@@ -82,6 +84,9 @@ async fn split_current_buffer(env_ctx: context::EnvContext, conn: NeovimConnecti
     use context::env_context::SplitUsage;
     if let SplitUsage::Enabled = env_ctx.split_usage {
         let cmd = split_current_buffer::create_split_command(&env_ctx.opt.split);
+
+        log::info!(target: "split_current_buffer", "{cmd}");
+
         conn.nvim_actions
             .exec_lua(&cmd, vec![])
             .await
@@ -204,7 +209,9 @@ mod split_current_buffer {
 
 async fn read_stdin(env_ctx: context::EnvContext, conn: NeovimConnection) {
     use context::env_context::ReadStdinUsage;
-    if let ReadStdinUsage::Enabled = &env_ctx.pipe_buf_usage {
+    if let ReadStdinUsage::Enabled = &env_ctx.read_stdin_usage {
+        log::info!(target: "read_stdin", "");
+
         let buf = conn.nvim_actions
             .create_buf(true, true)
             .await
@@ -250,9 +257,12 @@ async fn read_stdin(env_ctx: context::EnvContext, conn: NeovimConnection) {
 async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
     use context::env_context::FilesUsage;
     match env_ctx.files_usage {
+
         FilesUsage::RecursiveCurrentDir {
             recurse_depth
         } => {
+            log::info!(target: "recursive", "");
+
             let read_dir = walkdir::WalkDir::new("./")
                 .contents_first(true)
                 .follow_links(false)
@@ -270,7 +280,10 @@ async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
                 }
             }
         },
+
         FilesUsage::LastModifiedFile => {
+            log::info!(target: "last_modified", "");
+
             let mut last_modified = None;
 
             let read_dir = std::fs::read_dir("./")
@@ -305,10 +318,15 @@ async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
             }
 
             if let Some((_, f)) = last_modified {
+                log::trace!(target: "last_modified", "{}", f.path_string);
+
                 open_files::open_file(&mut conn, &env_ctx, &f.path_string).await;
             }
         },
+
         FilesUsage::FilesProvided => {
+            log::info!(target: "files_provided", "{}", env_ctx.opt.files.len());
+
             for f in &env_ctx.opt.files {
                 if let Some(f) = open_files::FileToOpen::new_maybe_uri(f) {
                     if !f.is_text && !env_ctx.opt.open_non_text {
@@ -426,6 +444,8 @@ mod open_files {
         env_ctx: &EnvContext,
         f: &str
     ) {
+        log::info!(target: "open_file", "{f}");
+
         let cmd = format!("e {}", f);
         conn.nvim_actions
             .command(&cmd)
@@ -527,6 +547,8 @@ mod open_files {
 
 
 async fn exit_from_neovim(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
+    log::info!(target: "exit_from_neovim", "");
+
     if !env_ctx.opt.back && !env_ctx.opt.back_restore {
         connection::close_and_exit(&mut conn).await;
     }
