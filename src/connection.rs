@@ -421,9 +421,8 @@ fn default_config_path() -> Option<String> {
 
     log::trace!(target: "config", "directory is: {page_home:?}");
 
-    let page_home = match page_home {
-        Ok(p) => p,
-        _ => return None,
+    let Ok(page_home) = page_home else {
+        return None;
     };
 
     let init_lua = page_home
