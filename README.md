@@ -274,10 +274,22 @@ man () {
 }
 ```
 
-To set as `git` commit message editor:
+To set `nv` as popup `git` commit message editor:
 
 ```zsh
  git config --global core.editor "nv -K -+-R 80 -B"
+```
+
+To cd into directory passed to `nv`
+
+```zsh
+nv() {
+    if [ -t 1 ] && [ 1 -eq $# ] && [ -d $1 ]; then
+        cd $1
+    else
+        nv $*
+    fi
+}
 ```
 
 To circumvent neovim config picking:
