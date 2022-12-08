@@ -290,6 +290,8 @@ nv() {
         nv $*
     fi
 }
+
+compdef _nv nv # if you have completions installed
 ```
 
 To circumvent neovim config picking:
