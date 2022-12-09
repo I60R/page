@@ -13,25 +13,7 @@ async fn main() {
 
     main::warn_if_incompatible_options(&env_ctx.opt);
 
-    if env_ctx.opt.view_only {
-        let mut page_args = std::env::args();
-        page_args.next(); // skip `nv`
-        let page_args = page_args
-            .filter(|arg| arg != "-v");
-
-        let exit_code = std::process::Command::new("page")
-            .args(page_args)
-            .spawn()
-            .expect("Cannot spawn `page`")
-            .wait()
-            .expect("`page` died unexpectedly")
-            .code()
-            .unwrap_or(0);
-
-        std::process::exit(exit_code)
-    }
-
-    connect_neovim(env_ctx).await;
+    redirect_to_page(env_ctx).await
 }
 
 mod main {
@@ -60,12 +42,35 @@ mod main {
 }
 
 
+async fn redirect_to_page(env_ctx: context::EnvContext) {
+    if env_ctx.opt.view_only {
+        let mut page_args = std::env::args();
+        page_args.next(); // skip `nv`
+        let page_args = page_args
+            .filter(|arg| arg != "-v");
+
+        let exit_code = std::process::Command::new("page")
+            .args(page_args)
+            .spawn()
+            .expect("Cannot spawn `page`")
+            .wait()
+            .expect("`page` died unexpectedly")
+            .code()
+            .unwrap_or(0);
+
+        std::process::exit(exit_code)
+    }
+
+    connect_neovim(env_ctx).await;
+}
+
+
 async fn connect_neovim(env_ctx: context::EnvContext) {
     log::info!(target: "context", "{env_ctx:#?}");
 
     connection::init_panic_hook();
 
-    let nvim_conn = connection::open(
+    let mut nvim_conn: NeovimConnection = connection::open(
         &env_ctx.tmp_dir,
         &env_ctx.page_id,
         &env_ctx.opt.address,
@@ -73,6 +78,23 @@ async fn connect_neovim(env_ctx: context::EnvContext) {
         &env_ctx.opt.config,
         false
     ).await;
+
+    if let Some(cmd) = &env_ctx.opt.command_only {
+        nvim_conn.nvim_actions
+            .command(cmd)
+            .await
+            .expect("Cannot spawn cmd only");
+
+        connection::close_and_exit(&mut nvim_conn).await
+
+    } else if let Some(cmd) = &env_ctx.opt.lua_only {
+        nvim_conn.nvim_actions
+            .exec_lua(cmd, vec![])
+            .await
+            .expect("Cannot spawn cmd only");
+
+        connection::close_and_exit(&mut nvim_conn).await
+    };
 
     split_current_buffer(env_ctx, nvim_conn).await;
 }

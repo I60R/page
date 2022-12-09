@@ -14,6 +14,7 @@ use clap::{
     group = splits_arg_group(),
     group = back_arg_group(),
     group = follow_arg_group(),
+    group = command_only_arg_group(),
 )]
 pub struct Options {
     /// Open provided files as editable
@@ -58,13 +59,13 @@ pub struct Options {
     #[clap(short='B')]
     pub back_restore: bool,
 
-    /// Keep Page process until buffer is closed
+    /// Keep `nv` process until buffer is closed
     /// (for editing git commit message)
     #[clap(short='k')]
     pub keep: bool,
 
-    /// Keep Page process until first write occur,
-    /// then close buffer and neovim if it was spawned by nv {n}
+    /// Keep `nv` process until first write occur,
+    /// then close buffer and neovim if it was spawned by `nv` {n}
     /// ~ ~ ~
     #[clap(short='K')]
     pub keep_until_write: bool,
@@ -94,10 +95,18 @@ pub struct Options {
     #[clap(short='e')]
     pub command: Option<String>,
 
-    /// Run lua expr on each [FILE] buffer after it was created {n}
-    /// ~ ~ ~
+    /// Run lua expr on each [FILE] buffer after it was created
     #[clap(long="e")]
     pub lua: Option<String>,
+
+    /// Just run command  with ignoring all other options
+    #[clap(short='x')]
+    pub command_only: Option<String>,
+
+    /// Just run lua expr with ignoring all other options
+    /// ~ ~ ~
+    #[clap(long="x")]
+    pub lua_only: Option<String>,
 
     #[clap(flatten)]
     pub split: SplitOptions,
@@ -165,6 +174,12 @@ pub struct SplitOptions {
 fn back_arg_group() -> ArgGroup {
     ArgGroup::new("focusing")
         .args(&["back", "back_restore"])
+        .multiple(false)
+}
+
+fn command_only_arg_group() -> ArgGroup {
+    ArgGroup::new("commands")
+        .args(&["command_only", "lua_only"])
         .multiple(false)
 }
 
