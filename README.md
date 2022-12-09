@@ -154,7 +154,8 @@ Options:
   -e <COMMAND>                Run command  on each [FILE] buffer after it was created
       --e <LUA>               Run lua expr on each [FILE] buffer after it was created
   -x <COMMAND_ONLY>           Just run command  with ignoring all other options
-      --x <LUA_ONLY>          Just run lua expr with ignoring all other options ~ ~ ~
+      --x <LUA_ONLY>          Just run lua expr with ignoring all other options
+                               ~ ~ ~
   -l...                       Split left  with ratio: window_width  * 3 / (<l-PROVIDED> + 1)
   -r...                       Split right with ratio: window_width  * 3 / (<r-PROVIDED> + 1)
   -u...                       Split above with ratio: window_height * 3 / (<u-PROVIDED> + 1)

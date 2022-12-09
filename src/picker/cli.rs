@@ -103,7 +103,7 @@ pub struct Options {
     #[clap(short='x')]
     pub command_only: Option<String>,
 
-    /// Just run lua expr with ignoring all other options
+    /// Just run lua expr with ignoring all other options {n}
     /// ~ ~ ~
     #[clap(long="x")]
     pub lua_only: Option<String>,
