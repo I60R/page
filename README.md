@@ -119,40 +119,42 @@ Options:
 <details><summary> expand <code>nv --help</code></summary>
 
 ```xml
-Usage: Page [OPTIONS] [FILE]...
+Usage: nv [OPTIONS] [FILE]...
 
 Arguments:
-  [FILE]...  Open provided files as editable
+  [FILE]...  Open provided files as editable [if none provided nv opens last modified file in currend
+             directory]
 
 Options:
   -o                          Open non-text files including directories, binaries, images etc
-  -O [<RECURSE_DEPTH>]        Ignoring [FILE]... open all text files in the current directory and
-                              recursively open all text files in its subdirectories [0: disabled and
-                              default; empty: defaults to 1 and implied if no <RECURSE_DEPTH> provided;
-                              <RECURSE_DEPTH>: also opens in subdirectories at this level of depth]
+  -O [<RECURSE_DEPTH>]        Ignoring [FILE] open all text files in the current directory and recursively
+                              open all text files in its subdirectories [0: disabled and default; empty:
+                              defaults to 1 and implied if no <RECURSE_DEPTH> provided; <RECURSE_DEPTH>:
+                              also opens in subdirectories at this level of depth]
+  -v                          Open in `page` instead (just postfix shortcut)
                                ~ ~ ~
-  -f                          Open each [FILE]... at last line
-  -p <PATTERN>                Open and search for a specified <PATTERN>; empty will open at first
-                              non-empty line
-  -P <PATTERN_BACKWARDS>      Open and search backwars for a specified <PATTERN_BACKWARDS>;
-                              empty will open at last non-empty line
+  -f                          Open each [FILE] at last line
+  -p <PATTERN>                Open and search for a specified <PATTERN>
+  -P <PATTERN_BACKWARDS>      Open and search backwars for a specified <PATTERN_BACKWARDS>
   -b                          Return back to current buffer
   -B                          Return back to current buffer and enter into INSERT/TERMINAL mode
-  -k                          Keep Page process until buffer is closed (for editing git commit message)
-  -K                          Keep Page process until first write occur, then close buffer
+  -k                          Keep `nv` process until buffer is closed (for editing git commit message)
+  -K                          Keep `nv` process until first write occur, then close buffer and neovim if
+                              it was spawned by `nv`
                                ~ ~ ~
-  -a <ADDRESS>                TCP/IP socket address or path to named pipe listened by running host neovim process
-                              [env: NVIM=/run/user/1000/nvim.338728.0]
+  -a <ADDRESS>                TCP/IP socket address or path to named pipe listened by running host neovim
+                              process [env: NVIM=/run/user/1000/nvim.604327.0]
   -A <ARGUMENTS>              Arguments that will be passed to child neovim process spawned when <ADDRESS>
                               is missing [env: NVIM_PAGE_PICKER_ARGS=]
-  -c <CONFIG>                 Config that will be used by child neovim process spawned when <ADDRESS> is missing
-                              [file: $XDG_CONFIG_HOME/page/init.vim]
-  -t <FILETYPE>               Override filetype on each [FILE]... buffer (to enable custom syntax highlighting)
+  -c <CONFIG>                 Config that will be used by child neovim process spawned when <ADDRESS> is
+                              missing [file: $XDG_CONFIG_HOME/page/init.vim]
+  -t <FILETYPE>               Override filetype on each [FILE] buffer (to enable custom syntax highlighting
                               [text: default]
                                ~ ~ ~
-  -e <COMMAND>                Run command  on file buffer after it was created
-      --e <LUA>               Run lua expr on file buffer after it was created
-                               ~ ~ ~
+  -e <COMMAND>                Run command  on each [FILE] buffer after it was created
+      --e <LUA>               Run lua expr on each [FILE] buffer after it was created
+  -x <COMMAND_ONLY>           Just run command  with ignoring all other options
+      --x <LUA_ONLY>          Just run lua expr with ignoring all other options ~ ~ ~
   -l...                       Split left  with ratio: window_width  * 3 / (<l-PROVIDED> + 1)
   -r...                       Split right with ratio: window_width  * 3 / (<r-PROVIDED> + 1)
   -u...                       Split above with ratio: window_height * 3 / (<u-PROVIDED> + 1)
