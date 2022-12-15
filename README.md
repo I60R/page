@@ -287,6 +287,7 @@ To cd into directory passed to `nv`
 
 ```zsh
 nv() {
+    #stdin_is_term one_argument    it's_dir
     if [ -t 1 ] && [ 1 -eq $# ] && [ -d $1 ]; then
         cd $1
     else
