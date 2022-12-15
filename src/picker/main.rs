@@ -87,11 +87,11 @@ async fn connect_neovim(env_ctx: context::EnvContext) {
 
         connection::close_and_exit(&mut nvim_conn).await
 
-    } else if let Some(cmd) = &env_ctx.opt.lua_only {
+    } else if let Some(lua) = &env_ctx.opt.lua_only {
         nvim_conn.nvim_actions
-            .exec_lua(cmd, vec![])
+            .exec_lua(lua, vec![])
             .await
-            .expect("Cannot spawn cmd only");
+            .expect("Cannot spawn lua only");
 
         connection::close_and_exit(&mut nvim_conn).await
     };
@@ -240,7 +240,7 @@ async fn read_stdin(env_ctx: context::EnvContext, conn: NeovimConnection) {
         conn.nvim_actions
             .set_current_buf(&buf)
             .await
-            .expect("Cannot set STDIN buffer");
+            .expect("Cannot set current STDIN buffer");
 
         let mut ln = Vec::with_capacity(512);
         let mut i = 0;
@@ -248,7 +248,7 @@ async fn read_stdin(env_ctx: context::EnvContext, conn: NeovimConnection) {
         for b in std::io::Read::bytes(std::io::stdin()) {
             match b {
                 Err(e) => {
-                    panic!("Failed to prefetch line from stdin: {e}")
+                    panic!("Failed to prefetch line from stdin: {e:#?}")
                 }
                 Ok(_eol @ b'\n') => {
                     ln.shrink_to_fit();
@@ -289,7 +289,11 @@ async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
                 .max_depth(recurse_depth);
 
             for f in read_dir {
-                let f = f.expect("Cannot recursively read dir entry");
+                if let Err(e) = f {
+                    log::error!("Error reading file: {e:#?}");
+                    continue
+                }
+                let f = f.unwrap();
 
                 if let Some(f) = open_files::FileToOpen::new_existed_file(f.path()) {
                     if !f.is_text && !env_ctx.opt.open_non_text {
@@ -310,7 +314,11 @@ async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
                 .expect("Cannot read current directory");
 
             for f in read_dir {
-                let f = f.expect("Cannot read dir entry");
+                if let Err(e) = f {
+                    log::error!("Error reading last file: {e:#?}");
+                    continue
+                }
+                let f = f.unwrap();
 
                 if let Some(f) = open_files::FileToOpen::new_existed_file(f.path()) {
                     if !f.is_text && !env_ctx.opt.open_non_text {
