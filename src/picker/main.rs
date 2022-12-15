@@ -466,39 +466,49 @@ mod open_files {
     ) {
         log::info!(target: "open_file", "{f}");
 
-        let cmd = format!("e {}", f);
-        conn.nvim_actions
-            .command(&cmd)
+        if let Err(e) = conn.nvim_actions
+            .command(&format!("e {}", f))
             .await
-            .expect("Cannot open file buffer");
+        {
+            log::error!(target: "open", "Cannot open file buffer: {e:#?}");
+            return
+        }
 
         if let Some(ft) = &env_ctx.opt.filetype {
-            let cmd = format!("set filetype={ft}");
-            conn.nvim_actions
-                .command(&cmd)
+            if let Err(e) = conn.nvim_actions
+                .command(&format!("set filetype={ft}"))
                 .await
-                .expect("Cannot set filetype")
+            {
+                log::error!(target: "ft", "Cannot set filetype: {e:#?}");
+            }
         }
 
         if env_ctx.opt.follow {
-            conn.nvim_actions
+            if let Err(e) = conn.nvim_actions
                 .command("norm! G")
                 .await
-                .expect("Cannot execute follow command")
+            {
+                log::error!(target: "G", "Cannot execute follow command: {e:#?}")
+            }
 
         } else if let Some(pattern) = &env_ctx.opt.pattern {
-            let cmd = format!("norm! /{pattern}");
-            conn.nvim_actions
-                .command(&cmd)
+            if let Err(e) = conn.nvim_actions
+                .command(&(format!("norm! /{pattern}")))
                 .await
-                .expect("Cannot execute follow command")
+            {
+                log::error!(target: "pattern", "Cannot execute follow command: {e:#?}")
+            }
 
         } else if let Some(pattern_backwards) = &env_ctx.opt.pattern_backwards {
-            let cmd = format!("norm! ?{pattern_backwards}");
-            conn.nvim_actions
-                .command(&cmd)
+            if let Err(e) = conn.nvim_actions
+                .command(&(format!("norm! ?{pattern_backwards}")))
                 .await
-                .expect("Cannot execute follow backwards command")
+            {
+                log::error!(
+                    target: "pattern_backwards",
+                    "Cannot execute follow backwards command: {e:#?}"
+                )
+            }
         }
 
         if env_ctx.opt.keep || env_ctx.opt.keep_until_write {
@@ -539,17 +549,21 @@ mod open_files {
         }
 
         if let Some(lua) = &env_ctx.opt.lua {
-            conn.nvim_actions
+            if let Err(e) = conn.nvim_actions
                 .exec_lua(lua, vec![])
                 .await
-                .expect("Cannot execute lua command");
+            {
+                log::error!(target: "lua", "Cannot execute lua command: {e:#?}")
+            }
         }
 
         if let Some(command) = &env_ctx.opt.command {
-            conn.nvim_actions
+            if let Err(e) = conn.nvim_actions
                 .command(command)
                 .await
-                .expect("Cannot execute command")
+            {
+                log::error!(target: "cmd", "Cannot execute command: {e:#?}")
+            }
         }
 
         if env_ctx.opt.keep || env_ctx.opt.keep_until_write {
@@ -574,19 +588,30 @@ async fn exit_from_neovim(env_ctx: context::EnvContext, mut conn: NeovimConnecti
     }
 
     let (win, buf) = &conn.initial_win_and_buf;
-    conn.nvim_actions
+
+    if let Err(e) = conn.nvim_actions
         .set_current_win(win)
         .await
-        .expect("Cannot return to initial window");
-    conn.nvim_actions
+    {
+        log::error!("Cannot return to initial window: {e:#?}");
+        connection::close_and_exit(&mut conn).await;
+    }
+
+    if let Err(e) = conn.nvim_actions
         .set_current_buf(buf)
         .await
-        .expect("Cannot return to initial buffer");
+    {
+        log::error!("Cannot return to initial buffer: {e:#?}");
+        connection::close_and_exit(&mut conn).await;
+    }
+
     if env_ctx.opt.back_restore {
-        conn.nvim_actions
+        if let Err(e) = conn.nvim_actions
             .command("norm! A")
             .await
-            .expect("Cannot return to insert mode");
+        {
+            log::error!("Cannot return to insert mode: {e:#?}");
+        }
     }
 
     connection::close_and_exit(&mut conn).await;
