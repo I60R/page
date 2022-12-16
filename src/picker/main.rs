@@ -289,11 +289,13 @@ async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
                 .max_depth(recurse_depth);
 
             for f in read_dir {
-                if let Err(e) = f {
-                    log::error!("Error reading file: {e:#?}");
-                    continue
-                }
-                let f = f.unwrap();
+                let f = match f {
+                    Err(e) => {
+                        log::error!("Error reading file: {e:#?}");
+                        continue
+                    }
+                    Ok(f) => f
+                };
 
                 if let Some(f) = open_files::FileToOpen::new_existed_file(f.path()) {
                     if !f.is_text && !env_ctx.opt.open_non_text {
@@ -314,11 +316,13 @@ async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
                 .expect("Cannot read current directory");
 
             for f in read_dir {
-                if let Err(e) = f {
-                    log::error!("Error reading last file: {e:#?}");
-                    continue
-                }
-                let f = f.unwrap();
+                let f = match f {
+                    Err(e) => {
+                        log::error!("Error reading last file: {e:#?}");
+                        continue
+                    }
+                    Ok(f) => f
+                };
 
                 if let Some(f) = open_files::FileToOpen::new_existed_file(f.path()) {
                     if !f.is_text && !env_ctx.opt.open_non_text {
