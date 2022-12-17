@@ -19,7 +19,11 @@ use tokio_util::compat::{
     TokioAsyncReadCompatExt,
     TokioAsyncWriteCompatExt
 };
-use std::path::Path;
+
+use std::{
+    path::Path,
+    process::ExitStatus
+};
 
 
 pub fn init_logger() {
@@ -67,6 +71,7 @@ pub fn init_logger() {
     dispatch
         .level(log_lvl_filter)
         .chain(std::io::stderr())
+        // .chain(fern::log_file("page.log").unwrap())
         // .filter(|f| f.target() != "nvim_rs::neovim")
         .apply()
         .expect("Cannot initialize logger");
@@ -105,7 +110,7 @@ pub fn init_panic_hook() {
 /// This struct contains all neovim-related data which is
 /// required by page after connection with neovim is established
 pub struct NeovimConnection<Apis: From<Neovim<IoWrite>>> {
-    pub nvim_proc: Option<tokio::task::JoinHandle<tokio::process::Child>>,
+    pub nvim_proc: Option<tokio::task::JoinHandle<Result<ExitStatus, std::io::Error>>>,
     pub nvim_actions: Apis,
     pub initial_buf_number: i64,
     pub channel: u64,
@@ -224,16 +229,19 @@ pub async fn close_and_exit<Apis: From<Neovim<IoWrite>>>(
     nvim_connection: &mut NeovimConnection<Apis>
 ) -> ! {
     if let Some(ref mut process) = nvim_connection.nvim_proc {
-        process
-            .await
-            .expect("Neovim spawned with error")
-            .wait()
-            .await
-            .expect("Neovim process died unexpectedly");
+        if !process.is_finished() {
+            process
+               .await
+               .expect("Neovim process was spawned with error")
+               .expect("Neovim process died unexpectedly");
+        }
     }
 
     nvim_connection.handle
         .abort();
+
+    log::logger()
+        .flush();
 
     std::process::exit(0)
 }
@@ -252,7 +260,7 @@ async fn create_new_neovim_process_ipc(
 ) -> (
     Neovim<IoWrite>,
     tokio::task::JoinHandle<Result<(), Box<nvim_rs::error::LoopError>>>,
-    tokio::task::JoinHandle<tokio::process::Child>
+    tokio::task::JoinHandle<Result<ExitStatus, std::io::Error>>
 ) {
     if print_protection {
         print_redirect_protection(tmp_dir);
@@ -261,17 +269,19 @@ async fn create_new_neovim_process_ipc(
     let nvim_listen_addr = tmp_dir
         .join(&format!("socket-{page_id}"));
 
-    let mut nvim_proc = tokio::task::spawn_blocking({
+    let mut nvim_proc = tokio::task::spawn({
         let (config, custom_args, nvim_listen_addr) = (
             config.clone(),
             custom_args.clone(),
             nvim_listen_addr.clone()
         );
-        move || spawn_child_nvim_process(
-            config,
-            custom_args,
-            &nvim_listen_addr
-        )
+        async move {
+            spawn_child_nvim_process(
+                config,
+                custom_args,
+                &nvim_listen_addr
+            ).await
+        }
     });
 
     tokio::time::sleep(std::time::Duration::from_millis(128)).await;
@@ -347,11 +357,11 @@ fn print_redirect_protection(tmp_dir: &Path) {
 /// unto proper target (which is impossible with methods provided by neovim_lib).
 /// Also custom neovim config will be picked
 /// if it exists on corresponding locations.
-fn spawn_child_nvim_process(
+async fn spawn_child_nvim_process(
     config: Option<String>,
     custom_args: Option<String>,
     nvim_listen_addr: &Path
-) -> tokio::process::Child {
+) -> Result<ExitStatus, std::io::Error> {
 
     let nvim_args = {
         let mut a = String::new();
@@ -380,12 +390,12 @@ fn spawn_child_nvim_process(
 
     let term = current_term();
 
-    tokio::process::Command::new("nvim")
+    std::process::Command::new("nvim")
         .args(&nvim_args)
-        .env_remove("RUST_LOG")
         .stdin(term)
         .spawn()
         .expect("Cannot spawn a child neovim process")
+        .wait()
 }
 
 
