@@ -273,7 +273,7 @@ To pick a bit better neovim's native `man` highlighting:
 man () {
     PROGRAM="${@[-1]}"
     SECTION="${@[-2]}"
-    page "man://$PROGRAM${SECTION:+($SECTION)}"
+    page -W "man://$PROGRAM${SECTION:+($SECTION)}"
 }
 ```
 
