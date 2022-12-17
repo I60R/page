@@ -1,6 +1,6 @@
 [package]
 name = "page"
-version = "4.4.0"
+version = "4.5.0"
 authors = ["160R <160R@protonmail.com>"]
 description = "Pager powered by neovim and inspired by neovim-remote"
 repository = "https://github.com/I60R/page"
@@ -17,7 +17,7 @@ walkdir = { version = "2.3.2", optional = true }
 
 once_cell = "1.16.0"
 futures = "0.3.25"
-async-trait = "0.1.59"
+async-trait = "0.1.60"
 tokio = { version = "1.23.0", features = ["full"] }
 tokio-util = { version = "0.7.4", features = ["compat"] }
 parity-tokio-ipc = "0.9.0"
@@ -26,7 +26,7 @@ atty = "0.2.14"
 shell-words = "1.1.0"
 log = "0.4.17"
 fern = "0.6.1"
-indoc = "1.0.7"
+indoc = "1.0.8"
 clap = { version = "4.0.29", features = ["wrap_help", "derive", "env"] }
 
 
