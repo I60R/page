@@ -526,6 +526,9 @@ vim.api.nvim_exec_autocmds('User', {
   * Package [page-git](https://aur.archlinux.org/packages/page-git/) is available on AUR
   * Or: `git clone git@github.com:I60R/page.git && cd page && makepkg -ef && sudo pacman -U page-git*.pkg.tar.xz`
 
+* Homebrew:
+  * Package [page](https://formulae.brew.sh/formula/page) is available on [Homebrew](https://brew.sh/)
+
 * Manually:
   * Install `rustup` from your distribution package manager
   * Configure toolchain: `rustup install stable && rustup default stable`
