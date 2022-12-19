@@ -941,9 +941,15 @@ mod output_buffer_usage {
                 }
             }
 
-            self.lines_displayed += 1;
-            if self.lines_displayed == 100_000 && self.outp_ctx.opt.pagerize {
-                self.pagerize_output()
+
+
+            if self.outp_ctx.pagerization_usage.is_enabled() {
+                self.lines_displayed += 1;
+                if self.outp_ctx.pagerization_usage
+                    .should_pagerize(self.lines_displayed)
+                {
+                    self.pagerize_output()
+                }
             }
 
             Ok(())
@@ -968,7 +974,7 @@ mod output_buffer_usage {
                     .to_string()
             };
 
-            std::process::Command::new("./page")
+            std::process::Command::new("page")
                 .args(page_args)
                 .arg("--pagerize-hidden")
                 .env("NVIM", &nvim_addr)

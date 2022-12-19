@@ -114,10 +114,11 @@ pub struct Options {
     #[clap(display_order=800, short='W')]
     pub page_no_protect: bool,
 
-    /// Pagerize output when it exceeds 100_000 lines (to view `journalctl`) {n}
+    /// Pagerize output when it exceeds <PAGERIZE> lines
+    /// (to view `journalctl`) [default: 100_000] {n}
     /// ~ ~ ~
     #[clap(display_order=12, short='z')]
-    pub pagerize: bool,
+    pub pagerize: Option<Option<usize>>,
 
     #[clap(long="pagerize-hidden", hide = true)]
     pub pagerize_hidden: bool,

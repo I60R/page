@@ -367,6 +367,7 @@ pub mod output_buffer_available {
         pub nvim_child_proc_spawned: bool,
         pub print_output_buf_pty: bool,
         pub page_id: String,
+        pub pagerization_usage: PageriztionUsage,
     }
 
     impl OutputContext {
@@ -411,6 +412,17 @@ pub mod output_buffer_available {
         let print_output_buf_pty = opt.pty_path_print ||
             (!nvim_child_proc_spawned && !input_from_pipe);
 
+        let pagerization_usage = {
+            let page_size = match opt.pagerize {
+                Some(Some(number)) => Some(number),
+                Some(None) => Some(100_000),
+                None => None,
+            };
+            PageriztionUsage {
+                page_size,
+            }
+        };
+
         OutputContext {
             opt,
             buf_pty_path,
@@ -422,6 +434,7 @@ pub mod output_buffer_available {
             restore_initial_buf_focus,
             print_output_buf_pty,
             page_id,
+            pagerization_usage,
         }
     }
 
@@ -441,6 +454,24 @@ pub mod output_buffer_available {
 
         pub fn is_vi_mode_insert(&self) -> bool {
             matches!(self, Self::ViModeInsert)
+        }
+    }
+
+
+    #[derive(Debug)]
+    pub struct PageriztionUsage {
+        page_size: Option<usize>,
+    }
+
+    impl PageriztionUsage {
+
+        pub fn should_pagerize(&self, lines_displayed: usize) -> bool {
+            self.page_size
+                .map_or(false, |page_size| lines_displayed >= page_size)
+        }
+
+        pub fn is_enabled(&self) -> bool {
+            self.page_size.is_some()
         }
     }
 }
