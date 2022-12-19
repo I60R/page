@@ -115,7 +115,7 @@ pub struct Options {
     pub page_no_protect: bool,
 
     /// Pagerize output when it exceeds <PAGERIZE> lines
-    /// (to view `journalctl`) [default: 100_000] {n}
+    /// (to view `journalctl`) [default: disabled; empty: 100_000] {n}
     /// ~ ~ ~
     #[clap(display_order=12, short='z')]
     pub pagerize: Option<Option<usize>>,

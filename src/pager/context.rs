@@ -60,12 +60,24 @@ pub mod gather_env {
             Lazy::new(|| term_dimensions.1),
         );
 
-        let prefetch_lines_count = match opt.output.noopen_lines {
+        let mut prefetch_lines_count = match opt.output.noopen_lines {
             Some(Some(positive_number @ 0..)) => positive_number as usize,
             Some(Some(negative_number)) => term_height.saturating_sub(negative_number.abs() as usize),
             Some(None) => term_height.saturating_sub(3),
             None => 0
         };
+
+        if prefetch_lines_count > 0 {
+            match opt.pagerize {
+                Some(Some(n)) if prefetch_lines_count > n => {
+                    prefetch_lines_count = n
+                },
+                Some(None) if prefetch_lines_count > 100_000 => {
+                    prefetch_lines_count = 100_000
+                }
+                _ => {}
+            }
+        }
 
         let query_lines_count = match opt.output.query_lines {
             Some(Some(positive_number @ 0..)) => positive_number as usize,
@@ -367,7 +379,7 @@ pub mod output_buffer_available {
         pub nvim_child_proc_spawned: bool,
         pub print_output_buf_pty: bool,
         pub page_id: String,
-        pub pagerization_usage: PageriztionUsage,
+        pub pagerized_page_size: Option<usize>,
     }
 
     impl OutputContext {
@@ -380,6 +392,11 @@ pub mod output_buffer_available {
                 // Obtains focus on buffer creation
                 *focused = true;
             }
+        }
+
+        pub fn should_pagerize(&self, lines_displayed: usize) -> bool {
+            self.pagerized_page_size
+                .map_or(false, |pps| lines_displayed >= pps)
         }
     }
 
@@ -412,15 +429,10 @@ pub mod output_buffer_available {
         let print_output_buf_pty = opt.pty_path_print ||
             (!nvim_child_proc_spawned && !input_from_pipe);
 
-        let pagerization_usage = {
-            let page_size = match opt.pagerize {
-                Some(Some(number)) => Some(number),
-                Some(None) => Some(100_000),
-                None => None,
-            };
-            PageriztionUsage {
-                page_size,
-            }
+        let pagerized_page_size = match opt.pagerize {
+            Some(Some(number)) => Some(number),
+            Some(None) => Some(100_000),
+            None => None,
         };
 
         OutputContext {
@@ -434,7 +446,7 @@ pub mod output_buffer_available {
             restore_initial_buf_focus,
             print_output_buf_pty,
             page_id,
-            pagerization_usage,
+            pagerized_page_size,
         }
     }
 
@@ -454,24 +466,6 @@ pub mod output_buffer_available {
 
         pub fn is_vi_mode_insert(&self) -> bool {
             matches!(self, Self::ViModeInsert)
-        }
-    }
-
-
-    #[derive(Debug)]
-    pub struct PageriztionUsage {
-        page_size: Option<usize>,
-    }
-
-    impl PageriztionUsage {
-
-        pub fn should_pagerize(&self, lines_displayed: usize) -> bool {
-            self.page_size
-                .map_or(false, |page_size| lines_displayed >= page_size)
-        }
-
-        pub fn is_enabled(&self) -> bool {
-            self.page_size.is_some()
         }
     }
 }

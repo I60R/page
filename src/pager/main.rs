@@ -799,6 +799,13 @@ mod output_buffer_usage {
                 self.display_line(ln)
                     .await
                     .expect("Cannot write next prefetched line");
+
+                if self.outp_ctx
+                    .should_pagerize(self.lines_displayed)
+                {
+                    self.pagerize_output();
+                    return
+                }
             }
 
             // Then copy the rest of lines from stdin into buffer pty
@@ -823,6 +830,13 @@ mod output_buffer_usage {
                             .expect("Cannot write next line");
 
                         ln.clear();
+
+                        if self.outp_ctx
+                            .should_pagerize(self.lines_displayed)
+                        {
+                            self.pagerize_output();
+                            return
+                        }
                     }
 
                     Ok(b) => ln.push(b)
@@ -854,6 +868,16 @@ mod output_buffer_usage {
                     .expect("Cannot write next prefetched queried line");
 
                 state.line_has_been_sent();
+
+                if self.outp_ctx
+                    .should_pagerize(self.lines_displayed)
+                {
+                    self.exchange_query_messages(&mut state)
+                        .await;
+
+                    self.pagerize_output();
+                    return
+                }
             }
 
             self.exchange_query_messages(&mut state)
@@ -885,6 +909,13 @@ mod output_buffer_usage {
                             .await;
 
                         ln.clear();
+
+                        if self.outp_ctx
+                            .should_pagerize(self.lines_displayed)
+                        {
+                            self.pagerize_output();
+                            return
+                        }
                     }
 
                     Ok(b) => ln.push(b)
@@ -941,16 +972,7 @@ mod output_buffer_usage {
                 }
             }
 
-
-
-            if self.outp_ctx.pagerization_usage.is_enabled() {
-                self.lines_displayed += 1;
-                if self.outp_ctx.pagerization_usage
-                    .should_pagerize(self.lines_displayed)
-                {
-                    self.pagerize_output()
-                }
-            }
+            self.lines_displayed += 1;
 
             Ok(())
         }
