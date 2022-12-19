@@ -148,7 +148,7 @@ pub async fn open<Apis: From<Neovim<IoWrite>>>(
         {
             let tcp = tokio::net::TcpStream::connect(nvim_listen_addr)
                 .await
-                .expect("Cannot connect to neoim at TCP/IP address");
+                .expect("Cannot connect to neovim at TCP/IP address");
 
             let (rx, tx) = tokio::io::split(tcp);
             let (rx, tx) = (IoRead::Tcp(rx.compat()), IoWrite::Tcp(tx.compat_write()));
