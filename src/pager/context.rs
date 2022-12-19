@@ -62,8 +62,10 @@ pub mod gather_env {
 
         let mut prefetch_lines_count = match opt.output.noopen_lines {
             Some(Some(positive_number @ 0..)) => positive_number as usize,
-            Some(Some(negative_number)) => term_height.saturating_sub(negative_number.abs() as usize),
-            Some(None) => term_height.saturating_sub(3),
+            Some(Some(negative_number)) => term_height
+                .saturating_sub(negative_number.abs() as usize),
+            Some(None) => term_height
+                .saturating_sub(3),
             None => 0
         };
 
@@ -81,8 +83,10 @@ pub mod gather_env {
 
         let query_lines_count = match opt.output.query_lines {
             Some(Some(positive_number @ 0..)) => positive_number as usize,
-            Some(Some(negative_number)) => term_height.saturating_sub(negative_number.abs() as usize),
-            Some(None) => term_height.saturating_sub(3),
+            Some(Some(negative_number)) => term_height
+                .saturating_sub(negative_number.abs() as usize),
+            Some(None) => term_height
+                .saturating_sub(3),
             None => 0,
         };
 
@@ -102,7 +106,8 @@ pub mod gather_env {
         {
             if let crate::cli::FileOption::Path(f) = opt.files
                 .last()
-                .unwrap() {
+                .unwrap()
+            {
                 prefetch_usage = PrefetchLinesUsage::Enabled {
                     line_count: prefetch_lines_count,
                     term_width: *term_width,
