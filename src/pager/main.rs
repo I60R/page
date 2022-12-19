@@ -611,6 +611,7 @@ mod output_buffer_usage {
         outp_ctx: &'a OutputContext,
         buf: NeovimBuffer,
         buf_pty: once_cell::unsync::OnceCell<std::fs::File>,
+        lines_displayed: usize,
     }
 
     pub fn begin<'a>(
@@ -623,6 +624,7 @@ mod output_buffer_usage {
             outp_ctx,
             buf,
             buf_pty: once_cell::unsync::OnceCell::new(),
+            lines_displayed: 0,
         }
     }
 
@@ -939,7 +941,43 @@ mod output_buffer_usage {
                 }
             }
 
+            self.lines_displayed += 1;
+            if self.lines_displayed == 100_000 && self.outp_ctx.opt.pagerize {
+                self.pagerize_output()
+            }
+
             Ok(())
+        }
+
+        /// If there's more than 100_000 lines to read and -z flag provided
+        /// then output will be pagerized through spawning `page` again and again
+        fn pagerize_output(&self) {
+            let mut page_args = std::env::args();
+            page_args.next(); // skip `page`
+
+            let page_args = page_args
+                .filter(|a| a != "--pagerize-hidden");
+
+            let nvim_addr = if let Some(addr) = &self.outp_ctx.opt.address {
+                addr.clone()
+            } else {
+                std::env::temp_dir()
+                    .join("neovim-page")
+                    .join(&format!("socket-{}", &self.outp_ctx.page_id))
+                    .to_string_lossy()
+                    .to_string()
+            };
+
+            std::process::Command::new("./page")
+                .args(page_args)
+                .arg("--pagerize-hidden")
+                .env("NVIM", &nvim_addr)
+                .spawn()
+                .expect("Cannot spawn `page`")
+                .wait()
+                .expect("`page` died unexpectedly")
+                .code()
+                .unwrap_or(0);
         }
 
 

@@ -22,6 +22,10 @@ pub mod gather_env {
         let opt = {
             let mut opt = crate::cli::get_options();
 
+            if opt.pagerize_hidden {
+                opt.pagerized();
+            }
+
             // Fallback for neovim < 8.0 which don't uses $NVIM
             if opt.address.is_none() {
                 if let Some(address) = std::env::var("NVIM_LISTEN_ADDRESS").ok() {
@@ -362,6 +366,7 @@ pub mod output_buffer_available {
         pub input_from_pipe: bool,
         pub nvim_child_proc_spawned: bool,
         pub print_output_buf_pty: bool,
+        pub page_id: String,
     }
 
     impl OutputContext {
@@ -390,6 +395,7 @@ pub mod output_buffer_available {
             inst_usage,
             prefetched_lines,
             query_lines_count,
+            page_id,
             ..
         } = nvim_ctx;
 
@@ -415,6 +421,7 @@ pub mod output_buffer_available {
             nvim_child_proc_spawned,
             restore_initial_buf_focus,
             print_output_buf_pty,
+            page_id,
         }
     }
 

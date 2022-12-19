@@ -114,6 +114,14 @@ pub struct Options {
     #[clap(display_order=800, short='W')]
     pub page_no_protect: bool,
 
+    /// Pagerize output when it exceeds 100_000 lines (to view `journalctl`) {n}
+    /// ~ ~ ~
+    #[clap(display_order=12, short='z')]
+    pub pagerize: bool,
+
+    #[clap(long="pagerize-hidden", hide = true)]
+    pub pagerize_hidden: bool,
+
     /// Open provided file in a separate buffer
     /// [without other flags revokes implied by default -o or -p option]
     #[clap(name="FILE", value_hint=ValueHint::AnyPath)]
@@ -164,6 +172,31 @@ impl Options {
             self.output.split.split_below > 0u8
         )
     }
+
+    pub fn pagerized(&mut self) {
+        self.pagerize_hidden = false;
+        self.arguments = None;
+        self.config = None;
+        self.command_post = None;
+        self.lua_post = None;
+        self.instance = None;
+        self.instance_append = None;
+        self.instance_close = None;
+        self.output_open = false;
+        self.page_no_protect = false;
+        self.output.lua = None;
+        self.output.command = None;
+        self.output.noopen_lines = None;
+        self.output.split.split_left = 0;
+        self.output.split.split_right = 0;
+        self.output.split.split_above = 0;
+        self.output.split.split_below = 0;
+        self.output.split.split_left_cols = None;
+        self.output.split.split_right_cols = None;
+        self.output.split.split_above_rows = None;
+        self.output.split.split_below_rows = None;
+        self.files = vec![];
+    }
 }
 
 
@@ -205,8 +238,7 @@ pub struct OutputOptions {
     pub filetype: String,
 
     /// Do not remap i, I, a, A, u, d, x, q (and r, R with -q) keys
-    /// [wouldn't unmap on connected instance output buffer] {n}
-    /// ~ ~ ~
+    /// [wouldn't unmap on connected instance output buffer]
     #[clap(display_order=11, short='w')]
     pub writable: bool,
 
