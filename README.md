@@ -68,6 +68,10 @@ Options:
                              PAGE_BUFFER_NAME=]
   -w                         Do not remap i, I, a, A, u, d, x, q (and r, R with -q) keys [wouldn't unmap on
                              connected instance output buffer]
+  -z [<PAGERIZE>]            Pagerize output when it exceeds <PAGERIZE> lines (to view `journalctl`)
+                             [default: disabled; empty: 100_000]
+                              ~ ~ ~
+
                               ~ ~ ~
   -a <ADDRESS>               TCP/IP socked address or path to named pipe listened by running host neovim
                              process [env: NVIM=/run/user/1000/nvim.9389.0]
@@ -258,18 +262,20 @@ vim.api.nvim_create_autocmd('User', {
 To use as `$PAGER` without [scrollback overflow](https://github.com/I60R/page/issues/7):
 
 ```zsh
-export PAGER="page -q 90000"
+export PAGER="page -q 100000"
+
+# Alternatively
+
+export PAGER="page -z" # will pagerize output
 ```
 
 To use as `$MANPAGER`:
 
 ```zsh
 export MANPAGER="page -t man"
-```
 
-To pick a bit better neovim's native `man` highlighting:
+# Alternatively, to pick a bit better `man` highlighting:
 
-```zsh
 man () {
     PROGRAM="${@[-1]}"
     SECTION="${@[-2]}"
@@ -280,14 +286,15 @@ man () {
 To set `nv` as popup `git` commit message editor:
 
 ```zsh
- git config --global core.editor "nv -K -+-R 80 -B"
+# Will spawn popup editor and exit on first write
+git config --global core.editor "nv -K -+-R 80 -B"
 ```
 
 To cd into directory passed to `nv`
 
 ```zsh
 nv() {
-    #stdin_is_term one_argument    it's_dir
+    #stdin_is_term #one_argument   #it's_dir
     if [ -t 1 ] && [ 1 -eq $# ] && [ -d $1 ]; then
         cd $1
     else
@@ -298,26 +305,34 @@ nv() {
 compdef _nv nv # if you have completions installed
 ```
 
+To automatically `lcd` into terminal's directory:
+
+```
+chpwd () {
+    [ ! -z "$NVIM" ] && nv -x "lcd $PWD"
+}
+```
+
 To circumvent neovim config picking:
 
 ```zsh
 page -c NONE
-```
 
-To override neovim config (create this file or use -c option):
+# Alternatively, to override neovim config create this file:
 
-```zsh
-$XDG_CONFIG_HOME/page/init.lua # init.vim is also supported
+touch $XDG_CONFIG_HOME/page/init.lua # init.vim is also supported
 ```
 
 To set output buffer name as first two words from invoked command (zsh only):
 
 ```zsh
-
 preexec () {
-    [ -z "$NVIM" ] && return
-    WORDS=(${1// *|*})
-    export PAGE_BUFFER_NAME="${WORDS[@]:0:2}"
+    if [ -z "$NVIM" ]; then
+        export PAGE_BUFFER_NAME="page"
+    else
+        WORDS=(${1// *|*})
+        export PAGE_BUFFER_NAME="${WORDS[@]:0:2}"
+    fi
 }
 ```
 
