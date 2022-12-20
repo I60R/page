@@ -235,11 +235,15 @@ vim.api.create_autocmd('User', {
 To use as `$PAGER` without [scrollback overflow](https://github.com/I60R/page/issues/7):
 
 ```zsh
-export PAGER="page -q 100000"
+export PAGER="page -q 90000"
 
 # Alternatively
 
-export PAGER="page -z" # will pagerize output
+export PAGER="page -z 90000" # will pagerize output
+
+# And you can combine both
+
+export PAGER="page -q 90000 -z 90000"
 ```
 
 To use as `$MANPAGER`:
