@@ -977,7 +977,7 @@ mod output_buffer_usage {
             Ok(())
         }
 
-        /// If there's more than 100_000 lines to read and -z flag provided
+        /// If there's more than 90_000 lines to read and -z flag provided
         /// then output will be pagerized through spawning `page` again and again
         fn pagerize_output(&self) {
             let mut page_args = std::env::args();

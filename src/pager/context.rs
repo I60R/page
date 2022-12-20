@@ -106,8 +106,8 @@ pub mod gather_env {
                 Some(Some(n)) if prefetch_lines_count > n => {
                     prefetch_lines_count = n
                 },
-                Some(None) if prefetch_lines_count > 100_000 => {
-                    prefetch_lines_count = 100_000
+                Some(None) if prefetch_lines_count > 90_000 => {
+                    prefetch_lines_count = 90_000
                 }
                 _ => {}
             }
@@ -543,7 +543,7 @@ pub mod output_buffer_available {
     ) -> Option<usize> {
         match pagerize {
             Some(Some(number)) => Some(*number),
-            Some(None) => Some(100_000),
+            Some(None) => Some(90_000),
             None => None,
         }
     }
