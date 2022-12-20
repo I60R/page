@@ -211,9 +211,11 @@ vim.api.create_autocmd('User', {
     pattern = 'PageOpenFile',
     callback = lua_function,
 })
+```
 
--- Only with -C option provided: --
+Only with `-C` option provided:
 
+```lua
 -- will run always when output buffer is created
 -- and also when `page` connects to instance `-i, -I` buffers:
 vim.api.create_autocmd('User', {
@@ -225,35 +227,6 @@ vim.api.create_autocmd('User', {
 vim.api.create_autocmd('User', {
     pattern = 'PageDisconnect',
     callback = lua_function,
-})
-```
-
----
-
-Example: close `page` buffer on `<C-c>` hotkey:
-
-```lua
-_G.page_close = function(page_alternate_buf)
-    local current_buf = vim.api.nvim_get_current_buf()
-    vim.api.nvim_buf_delete(current_buf, { force = true })
-    -- reenter into terminal mode
-    if current_buf == page_alternate_buf and
-        vim.api.nvim_get_mode() == 'n'
-    then
-        vim.cmd 'norm a'
-    end
-end
-
-vim.api.nvim_create_autocmd('User', {
-    pattern = 'PageOpen',
-    callback = function()
-        vim.api.nvim_set_keymap('n', '<C-c>', function()
-            page_close(vim.b.page_alternate_bufnr)
-        end, { buffer = 0 })
-        vim.api.nvim_set_keymap('t', '<C-c>', function()
-            page_close(vim.b.page_alternate_bufnr)
-        end, { buffer = 0 })
-    end
 })
 ```
 
@@ -337,6 +310,9 @@ preexec () {
 ```
 
 ## Buffer defaults (pager)
+
+
+<details><summary> expand </summary>
 
 These commands are run on each `page` buffer creation:
 
@@ -526,6 +502,8 @@ vim.api.nvim_exec_autocmds('User', {
     pattern = 'PageOpenFile',
 })
 ```
+
+</details>
 
 ## Limitations (pager)
 
