@@ -381,8 +381,8 @@ mod open_files {
         context::EnvContext,
     };
 
-    use once_cell::unsync::Lazy;
-    const PWD: Lazy<PathBuf> = Lazy::new(|| {
+    use once_cell::sync::Lazy;
+    static PWD: Lazy<PathBuf> = Lazy::new(|| {
         PathBuf::from(
             std::env::var("PWD")
                 .expect("Cannot read $PWD value")
@@ -583,7 +583,7 @@ mod open_files {
                 Some(connection::NotificationFromNeovim::BufferClosed) | None => {
                     return
                 },
-                n @ _ => {
+                n => {
                     log::error!("Unhandled notification: {n:?}")
                 }
             }

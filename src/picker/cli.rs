@@ -174,31 +174,31 @@ pub struct SplitOptions {
 
 fn back_arg_group() -> ArgGroup {
     ArgGroup::new("focusing")
-        .args(&["back", "back_restore"])
+        .args(["back", "back_restore"])
         .multiple(false)
 }
 
 fn command_only_arg_group() -> ArgGroup {
     ArgGroup::new("commands")
-        .args(&["command_only", "lua_only"])
+        .args(["command_only", "lua_only"])
         .multiple(false)
 }
 
 fn follow_arg_group() -> ArgGroup {
     ArgGroup::new("movement")
-        .args(&["follow", "pattern", "pattern_backwards"])
+        .args(["follow", "pattern", "pattern_backwards"])
         .multiple(false)
 }
 
 fn splits_arg_group() -> ArgGroup {
     ArgGroup::new("splits")
-        .args(&[
+        .args([
             "split_left",
             "split_right",
             "split_above",
             "split_below"
         ])
-        .args(&[
+        .args([
             "split_left_cols",
             "split_right_cols",
             "split_above_rows",
@@ -221,7 +221,7 @@ pub enum FileOption {
 
 impl From<&std::ffi::OsStr> for FileOption {
     fn from(value: &std::ffi::OsStr) -> Self {
-        let s = value.to_string_lossy().to_string();
+        let s = value.to_string_lossy();
         let mut chars = s.chars();
 
         loop {

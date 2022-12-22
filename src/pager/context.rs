@@ -57,7 +57,7 @@ pub mod gather_env {
 
         // Fallback for neovim < 8.0 which don't uses $NVIM
         if opt.address.is_none() {
-            if let Some(address) = std::env::var("NVIM_LISTEN_ADDRESS").ok() {
+            if let Ok(address) = std::env::var("NVIM_LISTEN_ADDRESS") {
                 opt.address.replace(address);
             }
         }
@@ -100,7 +100,7 @@ pub mod gather_env {
         let mut prefetch_lines_count = match noopen_lines {
             Some(Some(positive_number @ 0..)) => positive_number as usize,
             Some(Some(negative_number)) => term_height
-                .saturating_sub(negative_number.abs() as usize),
+                .saturating_sub(negative_number.unsigned_abs()),
             Some(None) => term_height
                 .saturating_sub(3),
             None => 0
@@ -150,7 +150,7 @@ pub mod gather_env {
         match query_lines {
             Some(Some(positive_number @ 0..)) => positive_number as usize,
             Some(Some(negative_number)) => term_height
-                .saturating_sub(negative_number.abs() as usize),
+                .saturating_sub(negative_number.unsigned_abs()),
             Some(None) => term_height
                 .saturating_sub(3),
             None => 0,

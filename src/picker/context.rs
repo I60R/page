@@ -17,7 +17,7 @@ pub mod env_context {
 
         // Fallback for neovim < 8.0 which don't uses $NVIM
         if opt.address.is_none() {
-            if let Some(address) = std::env::var("NVIM_LISTEN_ADDRESS").ok() {
+            if let Ok(address) = std::env::var("NVIM_LISTEN_ADDRESS") {
                 opt.address.replace(address);
             }
         }

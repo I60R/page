@@ -141,7 +141,7 @@ async fn prefetch_lines(env_ctx: context::EnvContext) {
     'read_next_ln: while i > 0 {
         let mut ln = Vec::with_capacity(*term_width);
 
-        while let Some(b) = bytes.next() {
+        for b in bytes.by_ref() {
             match b {
                 Err(e) => {
                     panic!("Failed to prefetch line from stdin: {e}")
@@ -1037,7 +1037,7 @@ mod output_buffer_usage {
                     Box::new(
                         std::fs::OpenOptions::new()
                             .append(true)
-                            .open(&page_pty.trim())
+                            .open(page_pty.trim())
                             .expect("Cannot open pagerized PTY device")
                     )
                 );
