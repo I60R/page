@@ -604,10 +604,7 @@ mod neovim_api_usage {
 mod output_buffer_usage {
     use super::{NeovimConnection, NeovimBuffer, context::OutputContext};
     use connection::NotificationFromNeovim;
-    use std::{
-        io::{Read, Write},
-        process::ExitStatus
-    };
+    use std::io::{Read, Write};
 
     /// This struct implements actions that should be done
     /// after output buffer is attached
@@ -616,8 +613,7 @@ mod output_buffer_usage {
         outp_ctx: &'a OutputContext,
         buf: NeovimBuffer,
         sink: Option<Box<dyn std::io::Write>>,
-        lines_displayed: usize,
-        child_page_process: Option<tokio::task::JoinHandle<Result<ExitStatus, std::io::Error>>>
+        pagerize_lines_displayed: usize,
     }
 
     pub fn begin<'a>(
@@ -630,8 +626,7 @@ mod output_buffer_usage {
             outp_ctx,
             buf,
             sink: None,
-            lines_displayed: 0,
-            child_page_process: None,
+            pagerize_lines_displayed: 0,
         }
     }
 
@@ -810,7 +805,7 @@ mod output_buffer_usage {
                     .expect("Cannot write next prefetched line");
 
                 if self.outp_ctx
-                    .should_pagerize(self.lines_displayed)
+                    .should_pagerize(self.pagerize_lines_displayed)
                 {
                     self.pagerize_output();
                 }
@@ -840,7 +835,7 @@ mod output_buffer_usage {
                         ln.clear();
 
                         if self.outp_ctx
-                            .should_pagerize(self.lines_displayed)
+                            .should_pagerize(self.pagerize_lines_displayed)
                         {
                             self.pagerize_output();
                         }
@@ -887,7 +882,7 @@ mod output_buffer_usage {
                 state.line_has_been_sent();
 
                 if self.outp_ctx
-                    .should_pagerize(self.lines_displayed)
+                    .should_pagerize(self.pagerize_lines_displayed)
                 {
                     self.exchange_query_messages(&mut state)
                         .await;
@@ -927,7 +922,7 @@ mod output_buffer_usage {
                         ln.clear();
 
                         if self.outp_ctx
-                            .should_pagerize(self.lines_displayed)
+                            .should_pagerize(self.pagerize_lines_displayed)
                         {
                             self.pagerize_output();
                         }
@@ -994,7 +989,7 @@ mod output_buffer_usage {
                 }
             }
 
-            self.lines_displayed += 1;
+            self.pagerize_lines_displayed += 1;
 
             Ok(())
         }
@@ -1002,9 +997,7 @@ mod output_buffer_usage {
         /// If there's more than 90_000 lines to read and -z flag provided
         /// then output will be pagerized through spawning `page` again and again
         fn pagerize_output(&mut self) {
-            if self.child_page_process.is_some() {
-                return
-            }
+            self.pagerize_lines_displayed = 0;
 
             log::trace!(target: "pagerize", "output is too large");
 
@@ -1024,26 +1017,30 @@ mod output_buffer_usage {
                     .to_string()
             };
 
-            let mut page_process = std::process::Command::new("./page")
-                .stdin(std::process::Stdio::piped())
+            let mut page_pty = String::with_capacity(15);
+
+            std::process::Command::new("./page")
+                .stdout(std::process::Stdio::piped())
                 .args(page_args)
                 .arg("--pagerize-hidden")
                 .arg(&format!("-a={nvim_addr}"))
+                .arg("-p")
                 .spawn()
-                .expect("Cannot spawn `page`");
+                .expect("Cannot spawn `page`")
+                .stdout
+                .expect("Cannot get `page` stdout")
+                .read_to_string(&mut page_pty)
+                .expect("Cannot read `page` stdout");
 
             self.sink
                 .replace(
-                    Box::new(page_process.stdin
-                        .take()
-                        .unwrap()
+                    Box::new(
+                        std::fs::OpenOptions::new()
+                            .append(true)
+                            .open(&page_pty.trim())
+                            .expect("Cannot open pagerized PTY device")
                     )
                 );
-
-            let page_proc = tokio::task::spawn(async move {
-                page_process.wait()
-            });
-            self.child_page_process = Some(page_proc);
         }
 
 
@@ -1138,18 +1135,9 @@ mod output_buffer_usage {
             }
         }
 
-        /// Closes child page process if some and neovim connection
-        /// then exits with 0 status code
+        /// Closes neovim connection then exits with 0 status code
         pub async fn done(&mut self) {
             log::trace!(target: "done", "now page can exit");
-
-            if let Some(page_proc) = &mut self.child_page_process {
-                log::trace!(target: "done", "wait on pagerized page");
-
-                if !page_proc.is_finished() {
-                    page_proc.await;
-                }
-            }
 
             connection::close_and_exit(self.nvim_conn).await
         }
