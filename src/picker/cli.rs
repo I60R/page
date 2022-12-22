@@ -11,6 +11,7 @@ use clap::{
     author,
     disable_help_subcommand = true,
     allow_negative_numbers = true,
+    args_override_self = true,
     group = splits_arg_group(),
     group = back_arg_group(),
     group = follow_arg_group(),
