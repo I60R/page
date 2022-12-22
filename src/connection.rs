@@ -228,6 +228,8 @@ pub async fn open<Apis: From<Neovim<IoWrite>>>(
 pub async fn close_and_exit<Apis: From<Neovim<IoWrite>>>(
     nvim_connection: &mut NeovimConnection<Apis>
 ) -> ! {
+    log::trace!(target: "exit", "close and exit");
+
     if let Some(ref mut process) = nvim_connection.nvim_proc {
         if !process.is_finished() {
             process

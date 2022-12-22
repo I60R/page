@@ -50,6 +50,11 @@ pub mod gather_env {
             opt.pagerized();
         }
 
+        // Don't pagerize with -p enabled or when not read from pipe
+        if opt.pty_path_print || !input_from_pipe {
+            opt.pagerize = None;
+        }
+
         // Fallback for neovim < 8.0 which don't uses $NVIM
         if opt.address.is_none() {
             if let Some(address) = std::env::var("NVIM_LISTEN_ADDRESS").ok() {

@@ -284,7 +284,7 @@ compdef _nv nv # if you have completions installed
 
 To automatically `lcd` into terminal's directory:
 
-```
+```zsh
 chpwd () {
     [ ! -z "$NVIM" ] && nv -x "lcd $PWD"
 }
