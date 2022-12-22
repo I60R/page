@@ -1019,7 +1019,7 @@ mod output_buffer_usage {
 
             let mut page_pty = String::with_capacity(15);
 
-            std::process::Command::new("./page")
+            std::process::Command::new("page")
                 .stdout(std::process::Stdio::piped())
                 .args(page_args)
                 .arg("--pagerize-hidden")
