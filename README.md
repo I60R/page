@@ -246,6 +246,17 @@ export PAGER="page -z 90000" # will pagerize output
 export PAGER="page -q 90000 -z 90000"
 ```
 
+To configure:
+
+```zsh
+export PAGER="page -WfC -q 90000 -z 90000" # some sensible flags
+alias page="$PAGER"
+
+# Usage
+ls | page -q 100 # you can specify the same flag multiple times:
+                 # last provided will override previous
+```
+
 To use as `$MANPAGER`:
 
 ```zsh
