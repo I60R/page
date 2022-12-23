@@ -5,21 +5,21 @@ use connection::IoWrite;
 use std::{path::PathBuf, convert::TryFrom};
 
 
-/// This struct wraps nvim_rs::Neovim and decorates it
+/// This struct wraps `nvim_rs::Neovim` and decorates it
 /// with methods required in page. Results returned from underlying
 /// Neovim methods are mostly unwrapped, since we anyway cannot provide
 /// any meaningful falback logic on call side
-pub struct NeovimActions {
+pub struct Actions {
     nvim: Neovim<IoWrite>,
 }
 
-impl From<Neovim<IoWrite>> for NeovimActions {
+impl From<Neovim<IoWrite>> for Actions {
     fn from(nvim: Neovim<IoWrite>) -> Self {
-        NeovimActions { nvim }
+        Actions { nvim }
     }
 }
 
-impl NeovimActions {
+impl Actions {
     pub async fn get_current_buffer(&mut self) -> Result<Buffer<IoWrite>, Box<CallError>> {
         self.nvim
             .get_current_buf()
@@ -347,7 +347,7 @@ impl NeovimActions {
             }
         }
 
-        log::error!(target: "update title", "Max attempts to rename buffer reached")
+        log::error!(target: "update title", "Max attempts to rename buffer reached");
     }
 
 
@@ -629,7 +629,7 @@ impl NeovimActions {
                     log::error!(
                         target: "get var",
                         "Error getting var: {key}, {e}"
-                    )
+                    );
                 }
             }
 

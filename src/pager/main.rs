@@ -2,7 +2,7 @@ pub(crate) mod cli;
 pub(crate) mod neovim;
 pub(crate) mod context;
 
-pub type NeovimConnection = connection::NeovimConnection<neovim::NeovimActions>;
+pub type NeovimConnection = connection::NeovimConnection<neovim::Actions>;
 pub type NeovimBuffer = connection::Buffer<connection::IoWrite>;
 
 
@@ -52,7 +52,7 @@ mod main {
 }
 
 
-async fn validate_files(mut env_ctx: context::EnvContext) {
+async fn validate_files(mut env_ctx: context::Env) {
     log::info!(target: "context", "{env_ctx:#?}");
 
     let files_count = env_ctx.opt.files.len();
@@ -69,7 +69,7 @@ async fn validate_files(mut env_ctx: context::EnvContext) {
 
                 *path = canonical
                     .to_string_lossy()
-                    .to_string()
+                    .to_string();
             }
             Err(e) => {
                 log::error!(
@@ -92,11 +92,11 @@ async fn validate_files(mut env_ctx: context::EnvContext) {
         std::process::exit(1)
     }
 
-    prefetch_lines(env_ctx).await
+    prefetch_lines(env_ctx).await;
 }
 
 
-async fn prefetch_lines(env_ctx: context::EnvContext) {
+async fn prefetch_lines(env_ctx: context::Env) {
     log::info!(target: "context", "{env_ctx:#?}");
 
     use context::gather_env::PrefetchLinesUsage;
@@ -173,8 +173,10 @@ async fn prefetch_lines(env_ctx: context::EnvContext) {
 
             let extenstion = std::path::Path::new(&path)
                 .extension()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_else(|| String::from(&env_ctx.opt.output.filetype));
+                .map_or_else(
+                    || String::from(&env_ctx.opt.output.filetype),
+                    |s| s.to_string_lossy().to_string()
+                );
 
             dump_prefetched_lines_and_exit(
                 prefetched_lines,
@@ -222,7 +224,7 @@ fn dump_prefetched_lines_and_exit(lines: Vec<Vec<u8>>, filetype: &str) -> ! {
                 let proc = bat_proc.get_or_insert(proc);
                 output = proc.stdin
                     .as_mut()
-                    .expect("Cannot get bat stdin")
+                    .expect("Cannot get bat stdin");
             }
             Err(e) => {
                 log::warn!(target: "dump", "cannot spawn bat, use stdout: {e:?}");
@@ -237,7 +239,7 @@ fn dump_prefetched_lines_and_exit(lines: Vec<Vec<u8>>, filetype: &str) -> ! {
 
         stdout = std::io::stdout();
         stdout_lock = stdout.lock();
-        output = &mut stdout_lock
+        output = &mut stdout_lock;
     }
 
     for ln in lines {
@@ -256,7 +258,7 @@ fn dump_prefetched_lines_and_exit(lines: Vec<Vec<u8>>, filetype: &str) -> ! {
 }
 
 
-async fn connect_neovim(cli_ctx: context::UsageContext) {
+async fn connect_neovim(cli_ctx: context::Usage) {
     log::info!(target: "context", "{cli_ctx:#?}");
 
     connection::init_panic_hook();
@@ -273,16 +275,16 @@ async fn connect_neovim(cli_ctx: context::UsageContext) {
     let mut nvim_ctx = context::connect_neovim::enter(cli_ctx);
     if nvim_conn.nvim_proc.is_some() {
         nvim_ctx
-            .child_neovim_process_has_been_spawned()
+            .child_neovim_process_has_been_spawned();
     }
 
-    manage_page_state(&mut nvim_conn, nvim_ctx).await
+    manage_page_state(&mut nvim_conn, nvim_ctx).await;
 }
 
 
 async fn manage_page_state(
     nvim_conn: &mut NeovimConnection,
-    nvim_ctx: context::NeovimContext
+    nvim_ctx: context::Neovim
 ) {
     log::info!(target: "context", "{nvim_ctx:#?}");
 
@@ -320,7 +322,7 @@ async fn manage_page_state(
                 active_inst_outp.buf,
                 outp_ctx
             )
-                .await
+                .await;
 
         } else {
             let new_inst_outp = api_actions
@@ -339,7 +341,7 @@ async fn manage_page_state(
                 new_inst_outp.buf,
                 outp_ctx
             )
-                .await
+                .await;
         }
 
     } else {
@@ -357,7 +359,7 @@ async fn manage_page_state(
             new_outp.buf,
             outp_ctx
         )
-            .await
+            .await;
     };
 }
 
@@ -365,7 +367,7 @@ async fn manage_page_state(
 async fn manage_output_buffer(
     nvim_conn: &mut NeovimConnection,
     buf: NeovimBuffer,
-    outp_ctx: context::OutputContext
+    outp_ctx: context::Output
 ) {
     log::info!(target: "context", "{outp_ctx:#?}");
 
@@ -430,7 +432,7 @@ async fn manage_output_buffer(
 mod neovim_api_usage {
     use super::{
         NeovimConnection,
-        context::NeovimContext,
+        context::Neovim,
         neovim::{OutputBuffer, OutputCommands}
     };
 
@@ -438,12 +440,12 @@ mod neovim_api_usage {
     /// before output buffer is available
     pub struct ApiActions<'a> {
         nvim_conn: &'a mut NeovimConnection,
-        nvim_ctx: &'a NeovimContext,
+        nvim_ctx: &'a Neovim,
     }
 
     pub fn begin<'a>(
         nvim_conn: &'a mut NeovimConnection,
-        nvim_ctx: &'a NeovimContext
+        nvim_ctx: &'a Neovim
     ) -> ApiActions<'a> {
         ApiActions {
             nvim_conn,
@@ -459,7 +461,7 @@ mod neovim_api_usage {
             if let Some(ref instance) = opt.instance_close {
                 self.nvim_conn.nvim_actions
                     .close_instance_buffer(instance)
-                    .await
+                    .await;
             }
         }
 
@@ -517,7 +519,7 @@ mod neovim_api_usage {
                 // Split terminal buffer instead of file buffer
                 nvim_actions
                     .switch_to_window_and_buffer(initial_win_and_buf)
-                    .await
+                    .await;
             }
         }
 
@@ -590,7 +592,7 @@ mod neovim_api_usage {
             let channel = if let Some(chan_id) = &nvim_ctx.opt.pagerize_hidden {
                 chan_id[0]
             } else {
-                *channel as u128
+                u128::from(*channel)
             };
 
             let outp_buf_opts = OutputCommands::for_output_buffer(
@@ -609,7 +611,7 @@ mod neovim_api_usage {
 }
 
 mod output_buffer_usage {
-    use super::{NeovimConnection, NeovimBuffer, context::OutputContext};
+    use super::{NeovimConnection, NeovimBuffer, context::Output};
     use connection::NotificationFromNeovim;
     use std::io::{Read, Write};
 
@@ -617,7 +619,7 @@ mod output_buffer_usage {
     /// after output buffer is attached
     pub struct BufferActions<'a> {
         nvim_conn: &'a mut NeovimConnection,
-        outp_ctx: &'a OutputContext,
+        outp_ctx: &'a Output,
         buf: NeovimBuffer,
         sink: Option<Box<dyn std::io::Write>>,
         pagerize_lines_displayed: usize,
@@ -626,7 +628,7 @@ mod output_buffer_usage {
 
     pub fn begin<'a>(
         nvim_conn: &'a mut NeovimConnection,
-        outp_ctx: &'a OutputContext,
+        outp_ctx: &'a Output,
         buf: NeovimBuffer,
         channel: u64,
     ) -> BufferActions<'a> {
@@ -730,9 +732,9 @@ mod output_buffer_usage {
         }
 
 
-        /// Executes PageConnect (-C) and post command (-E) on page buffer.
-        /// If any of these flags are passed then
-        /// output buffer should be already focused
+        /// Executes `PageConnect` (-C) and post command (-E)
+        /// on page buffer. If any of these flags are passed
+        /// then output buffer should be already focused
         pub async fn execute_commands(&mut self) {
             let BufferActions {
                 outp_ctx,
@@ -958,8 +960,8 @@ mod output_buffer_usage {
 
 
         /// Writes line to PTY device and gracefully handles failures:
-        /// if error occurs then page waits for "page_buffer_closed"
-        /// notification that's sent on BufDelete event and signals
+        /// if error occurs then page waits for `page_buffer_closed`
+        /// notification that's sent on `BufDelete` event and signals
         /// that buffer was closed intentionally, so page must just exit.
         /// If no such notification was arrived then page crashes
         /// with the received IO error
@@ -983,7 +985,7 @@ mod output_buffer_usage {
                         );
 
                         self.done()
-                            .await
+                            .await;
                     },
                     Ok(None) if self.nvim_conn.nvim_proc.is_some() => {
                         log::info!(
@@ -1004,8 +1006,9 @@ mod output_buffer_usage {
             Ok(())
         }
 
-        /// If there's more than 90_000 lines to read and -z flag provided
-        /// then output will be pagerized through spawning `page` again and again
+        /// If there's more than -z value lines to read (default `90_000`)
+        /// then output will be pagerized through spawning `page -p` and
+        /// writing to it's PTY device
         fn pagerize_output(&mut self) {
             self.pagerize_lines_displayed = 0;
 
@@ -1093,7 +1096,7 @@ mod output_buffer_usage {
         }
 
 
-        /// Executes PageDisconnect autocommand if -C flag was provided.
+        /// Executes `PageDisconnect` autocommand if -C flag was provided.
         /// Some time might pass since page buffer was created and
         /// output was started, so this function might temporarily refocus
         /// on output buffer in order to run autocommand
@@ -1150,7 +1153,7 @@ mod output_buffer_usage {
         pub async fn done(&mut self) {
             log::trace!(target: "done", "now page can exit");
 
-            connection::close_and_exit(self.nvim_conn).await
+            connection::close_and_exit(self.nvim_conn).await;
         }
 
         /// Returns PTY device associated with output buffer.

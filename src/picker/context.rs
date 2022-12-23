@@ -1,9 +1,9 @@
-pub use env_context::EnvContext;
+pub use env_context::Env;
 
 pub mod env_context {
 
     #[derive(Debug)]
-    pub struct EnvContext {
+    pub struct Env {
         pub opt: crate::cli::Options,
         pub files_usage: FilesUsage,
         pub tmp_dir: std::path::PathBuf,
@@ -12,7 +12,7 @@ pub mod env_context {
         pub split_usage: SplitUsage
     }
 
-    pub fn enter() -> EnvContext {
+    pub fn enter() -> Env {
         let mut opt = crate::cli::get_options();
 
         // Fallback for neovim < 8.0 which don't uses $NVIM
@@ -52,7 +52,8 @@ pub mod env_context {
 
         let pipe_path = {
             // This should provide enough entropy for current use case
-            std::time::UNIX_EPOCH.elapsed()
+            std::time::UNIX_EPOCH
+                .elapsed()
                 .unwrap()
                 .as_nanos()
         };
@@ -64,10 +65,10 @@ pub mod env_context {
 
         let mut pipe_buf_usage = ReadStdinUsage::Disabled;
         if input_from_pipe {
-            pipe_buf_usage = ReadStdinUsage::Enabled
+            pipe_buf_usage = ReadStdinUsage::Enabled;
         }
 
-        EnvContext {
+        Env {
             opt,
             files_usage,
             tmp_dir,

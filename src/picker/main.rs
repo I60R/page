@@ -13,7 +13,7 @@ async fn main() {
 
     main::warn_if_incompatible_options(&env_ctx.opt);
 
-    redirect_to_page(env_ctx).await
+    redirect_to_page(env_ctx).await;
 }
 
 mod main {
@@ -42,7 +42,7 @@ mod main {
 }
 
 
-async fn redirect_to_page(env_ctx: context::EnvContext) {
+async fn redirect_to_page(env_ctx: context::Env) {
     if env_ctx.opt.view_only {
         let mut page_args = std::env::args();
         page_args.next(); // skip `nv`
@@ -65,7 +65,7 @@ async fn redirect_to_page(env_ctx: context::EnvContext) {
 }
 
 
-async fn connect_neovim(env_ctx: context::EnvContext) {
+async fn connect_neovim(env_ctx: context::Env) {
     log::info!(target: "context", "{env_ctx:#?}");
 
     connection::init_panic_hook();
@@ -85,7 +85,7 @@ async fn connect_neovim(env_ctx: context::EnvContext) {
             .await
             .expect("Cannot spawn cmd only");
 
-        connection::close_and_exit(&mut nvim_conn).await
+        connection::close_and_exit(&mut nvim_conn).await;
 
     } else if let Some(lua) = &env_ctx.opt.lua_only {
         nvim_conn.nvim_actions
@@ -93,14 +93,14 @@ async fn connect_neovim(env_ctx: context::EnvContext) {
             .await
             .expect("Cannot spawn lua only");
 
-        connection::close_and_exit(&mut nvim_conn).await
+        connection::close_and_exit(&mut nvim_conn).await;
     };
 
     split_current_buffer(env_ctx, nvim_conn).await;
 }
 
 
-async fn split_current_buffer(env_ctx: context::EnvContext, conn: NeovimConnection) {
+async fn split_current_buffer(env_ctx: context::Env, conn: NeovimConnection) {
     use context::env_context::SplitUsage;
     if let SplitUsage::Enabled = env_ctx.split_usage {
         let cmd = split_current_buffer::create_split_command(&env_ctx.opt.split);
@@ -227,7 +227,7 @@ mod split_current_buffer {
 }
 
 
-async fn read_stdin(env_ctx: context::EnvContext, conn: NeovimConnection) {
+async fn read_stdin(env_ctx: context::Env, conn: NeovimConnection) {
     use context::env_context::ReadStdinUsage;
     if let ReadStdinUsage::Enabled = &env_ctx.read_stdin_usage {
         log::info!(target: "read_stdin", "");
@@ -270,11 +270,11 @@ async fn read_stdin(env_ctx: context::EnvContext, conn: NeovimConnection) {
         }
     }
 
-    open_files(env_ctx, conn).await
+    open_files(env_ctx, conn).await;
 }
 
 
-async fn open_files(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
+async fn open_files(env_ctx: context::Env, mut conn: NeovimConnection) {
     use context::env_context::FilesUsage;
     match env_ctx.files_usage {
 
@@ -378,7 +378,7 @@ mod open_files {
     use std::{path::{PathBuf, Path}, time::SystemTime};
     use crate::{
         cli::FileOption,
-        context::EnvContext,
+        context::Env,
     };
 
     use once_cell::sync::Lazy;
@@ -473,7 +473,7 @@ mod open_files {
 
     pub async fn open_file(
         conn: &mut super::NeovimConnection,
-        env_ctx: &EnvContext,
+        env_ctx: &Env,
         f: &str
     ) {
         log::info!(target: "open_file", "{f}");
@@ -500,7 +500,7 @@ mod open_files {
                 .command("norm! G")
                 .await
             {
-                log::error!(target: "G", "Cannot execute follow command: {e:#?}")
+                log::error!(target: "G", "Cannot execute follow command: {e:#?}");
             }
 
         } else if let Some(pattern) = &env_ctx.opt.pattern {
@@ -508,7 +508,7 @@ mod open_files {
                 .command(&(format!("norm! /{pattern}")))
                 .await
             {
-                log::error!(target: "pattern", "Cannot execute follow command: {e:#?}")
+                log::error!(target: "pattern", "Cannot execute follow command: {e:#?}");
             }
 
         } else if let Some(pattern_backwards) = &env_ctx.opt.pattern_backwards {
@@ -519,7 +519,7 @@ mod open_files {
                 log::error!(
                     target: "pattern_backwards",
                     "Cannot execute follow backwards command: {e:#?}"
-                )
+                );
             }
         }
 
@@ -565,7 +565,7 @@ mod open_files {
                 .exec_lua(lua, vec![])
                 .await
             {
-                log::error!(target: "lua", "Cannot execute lua command: {e:#?}")
+                log::error!(target: "lua", "Cannot execute lua command: {e:#?}");
             }
         }
 
@@ -574,17 +574,15 @@ mod open_files {
                 .command(command)
                 .await
             {
-                log::error!(target: "cmd", "Cannot execute command: {e:#?}")
+                log::error!(target: "cmd", "Cannot execute command: {e:#?}");
             }
         }
 
         if env_ctx.opt.keep || env_ctx.opt.keep_until_write {
             match conn.rx.recv().await {
-                Some(connection::NotificationFromNeovim::BufferClosed) | None => {
-                    return
-                },
+                Some(connection::NotificationFromNeovim::BufferClosed) | None => {},
                 n => {
-                    log::error!("Unhandled notification: {n:?}")
+                    log::error!("Unhandled notification: {n:?}");
                 }
             }
         }
@@ -592,7 +590,7 @@ mod open_files {
 }
 
 
-async fn exit_from_neovim(env_ctx: context::EnvContext, mut conn: NeovimConnection) {
+async fn exit_from_neovim(env_ctx: context::Env, mut conn: NeovimConnection) {
     log::info!(target: "exit_from_neovim", "");
 
     if !env_ctx.opt.back && !env_ctx.opt.back_restore {

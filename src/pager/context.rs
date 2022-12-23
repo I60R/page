@@ -1,22 +1,22 @@
 /// A module that contains data collected throughout page invocation
 
-pub use gather_env::EnvContext;
-pub use check_usage::UsageContext;
-pub use connect_neovim::NeovimContext;
-pub use output_buffer_available::OutputContext;
+pub use gather_env::Env;
+pub use check_usage::Usage;
+pub use connect_neovim::Neovim;
+pub use output_buffer_available::Output;
 
 
 pub mod gather_env {
     /// Contains data available after cli options parsed
     #[derive(Debug)]
-    pub struct EnvContext {
+    pub struct Env {
         pub opt: crate::cli::Options,
         pub prefetch_usage: PrefetchLinesUsage,
         pub query_lines_count: usize,
         pub input_from_pipe: bool,
     }
 
-    pub fn enter() -> EnvContext {
+    pub fn enter() -> Env {
         let input_from_pipe = !atty::is(atty::Stream::Stdin);
 
         let opt = parse_and_alter_opts(input_from_pipe);
@@ -33,7 +33,7 @@ pub mod gather_env {
             term_height
         );
 
-        EnvContext {
+        Env {
             opt,
             prefetch_usage,
             query_lines_count,
@@ -79,12 +79,15 @@ pub mod gather_env {
         opt
     }
 
+
+    type TermHeight = usize;
+
     fn determine_prefetch_usage(
         noopen_lines: Option<Option<isize>>,
         pagerize: Option<Option<usize>>,
         files: &Vec<crate::cli::FileOption>,
         input_from_pipe: bool
-    ) -> (usize, PrefetchLinesUsage) {
+    ) -> (TermHeight, PrefetchLinesUsage) {
         use once_cell::unsync::Lazy;
 
         let term_dimensions = Lazy::new(|| {
@@ -109,10 +112,10 @@ pub mod gather_env {
         if prefetch_lines_count > 0 {
             match pagerize {
                 Some(Some(n)) if prefetch_lines_count > n => {
-                    prefetch_lines_count = n
+                    prefetch_lines_count = n;
                 },
                 Some(None) if prefetch_lines_count > 90_000 => {
-                    prefetch_lines_count = 90_000
+                    prefetch_lines_count = 90_000;
                 }
                 _ => {}
             }
@@ -145,7 +148,7 @@ pub mod gather_env {
 
     fn determine_query_lines_count(
         query_lines: Option<Option<isize>>,
-        term_height: usize
+        term_height: TermHeight,
     ) -> usize {
         match query_lines {
             Some(Some(positive_number @ 0..)) => positive_number as usize,
@@ -180,19 +183,19 @@ pub mod check_usage {
 
     /// Contains data available after page was spawned from shell
     #[derive(Debug)]
-    pub struct UsageContext {
+    pub struct Usage {
         pub opt: crate::cli::Options,
-        pub page_id: u128,
         pub tmp_dir: std::path::PathBuf,
+        pub page_id: u128,
         pub prefetched_lines: PrefetchedLines,
         pub query_lines_count: usize,
         pub input_from_pipe: bool,
         pub print_protection: bool,
     }
 
-    impl UsageContext {
+    impl Usage {
         pub fn is_focus_on_existed_instance_buffer_implied(&self) -> bool {
-            let UsageContext { opt, .. } = self;
+            let Usage { opt, .. } = self;
 
             // Should focus in order to scroll buffer down
             opt.follow ||
@@ -217,9 +220,9 @@ pub mod check_usage {
     }
 
 
-    pub fn enter(env_ctx: super::EnvContext) -> UsageContext {
+    pub fn enter(env_ctx: super::Env) -> Usage {
 
-        let super::EnvContext {
+        let super::Env {
             input_from_pipe,
             opt,
             query_lines_count,
@@ -230,8 +233,8 @@ pub mod check_usage {
 
         let tmp_dir = create_temp_directory();
 
-        let page_id = if let Some(args) = &opt.pagerize_hidden {
-            args[1]
+        let page_id = if let Some([_, page_id]) = opt.pagerize_hidden.as_deref() {
+            *page_id
         } else {
             create_page_id()
         };
@@ -241,14 +244,14 @@ pub mod check_usage {
             opt.page_no_protect,
         );
 
-        UsageContext {
+        Usage {
             opt,
             tmp_dir,
             page_id,
-            input_from_pipe,
-            print_protection,
             prefetched_lines,
             query_lines_count,
+            input_from_pipe,
+            print_protection,
         }
     }
 
@@ -261,7 +264,9 @@ pub mod check_usage {
     }
 
     fn create_page_id() -> u128 {
-        std::time::UNIX_EPOCH.elapsed()
+        // This should provide enough entropy for current use case
+        std::time::UNIX_EPOCH
+            .elapsed()
             .unwrap()
             .as_nanos()
     }
@@ -289,7 +294,7 @@ pub mod check_usage {
 pub mod connect_neovim {
     /// Contains data available after neovim is connected to page
     #[derive(Debug)]
-    pub struct NeovimContext {
+    pub struct Neovim {
         pub opt: crate::cli::Options,
         pub page_id: u128,
         pub prefetched_lines: super::check_usage::PrefetchedLines,
@@ -300,7 +305,7 @@ pub mod connect_neovim {
         pub input_from_pipe: bool,
     }
 
-    impl NeovimContext {
+    impl Neovim {
         pub fn is_split_flag_given_with_files(&self) -> bool {
             self.outp_buf_usage.is_create_split() &&
                 !self.opt.files.is_empty()
@@ -317,11 +322,11 @@ pub mod connect_neovim {
     }
 
 
-    pub fn enter(cli_ctx: super::UsageContext) -> NeovimContext {
+    pub fn enter(cli_ctx: super::Usage) -> Neovim {
         let should_focus_on_existed_instance_buffer = cli_ctx
             .is_focus_on_existed_instance_buffer_implied();
 
-        let super::UsageContext {
+        let super::Usage {
             opt,
             input_from_pipe,
             page_id,
@@ -344,7 +349,7 @@ pub mod connect_neovim {
             input_from_pipe
         );
 
-        NeovimContext {
+        Neovim {
             opt,
             page_id,
             prefetched_lines,
@@ -390,11 +395,11 @@ pub mod connect_neovim {
         let mut outp_buf_usage = OutputBufferUsage::Disabled;
 
         if is_output_split_implied {
-            outp_buf_usage = OutputBufferUsage::CreateSplit
+            outp_buf_usage = OutputBufferUsage::CreateSplit;
         } else if input_from_pipe || is_output_implied ||
             (instance_close.is_none() && files.is_empty())
         {
-            outp_buf_usage = OutputBufferUsage::CreateSubstituting
+            outp_buf_usage = OutputBufferUsage::CreateSubstituting;
         }
 
         outp_buf_usage
@@ -451,21 +456,21 @@ pub mod connect_neovim {
 pub mod output_buffer_available {
     /// Contains data available after buffer for output was found
     #[derive(Debug)]
-    pub struct OutputContext {
+    pub struct Output {
         pub opt: crate::cli::Options,
         pub buf_pty_path: std::path::PathBuf,
         pub prefetched_lines: super::check_usage::PrefetchedLines,
         pub query_lines_count: usize,
         pub inst_usage: super::connect_neovim::InstanceUsage,
-        pub restore_initial_buf_focus: RestoreInitialBufferFocus,
         pub input_from_pipe: bool,
+        pub restore_initial_buf_focus: RestoreInitialBufferFocus,
         pub nvim_child_proc_spawned: bool,
         pub print_output_buf_pty: bool,
         pub page_id: u128,
         pub pagerized_page_size: Option<usize>,
     }
 
-    impl OutputContext {
+    impl Output {
         pub fn instance_output_buffer_has_been_created(&mut self) {
             if let super::connect_neovim::InstanceUsage::Enabled {
                 focused,
@@ -485,11 +490,11 @@ pub mod output_buffer_available {
 
 
     pub fn enter(
-        nvim_ctx: super::NeovimContext,
+        nvim_ctx: super::Neovim,
         buf_pty_path: std::path::PathBuf
-    ) -> OutputContext {
+    ) -> Output {
 
-        let super::NeovimContext {
+        let super::Neovim {
             opt,
             nvim_child_proc_spawned,
             input_from_pipe,
@@ -511,15 +516,15 @@ pub mod output_buffer_available {
         let print_output_buf_pty = opt.pty_path_print ||
             (!nvim_child_proc_spawned && !input_from_pipe);
 
-        OutputContext {
+        Output {
             opt,
             buf_pty_path,
             prefetched_lines,
             query_lines_count,
             inst_usage,
             input_from_pipe,
-            nvim_child_proc_spawned,
             restore_initial_buf_focus,
+            nvim_child_proc_spawned,
             print_output_buf_pty,
             page_id,
             pagerized_page_size,
@@ -535,9 +540,9 @@ pub mod output_buffer_available {
 
         if !nvim_child_proc_spawned {
             if back {
-                restore_initial_buf_focus = RestoreInitialBufferFocus::ViModeNormal
+                restore_initial_buf_focus = RestoreInitialBufferFocus::ViModeNormal;
             } else if back_restore {
-                restore_initial_buf_focus = RestoreInitialBufferFocus::ViModeInsert
+                restore_initial_buf_focus = RestoreInitialBufferFocus::ViModeInsert;
             }
         }
 

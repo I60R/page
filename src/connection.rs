@@ -53,13 +53,13 @@ pub fn init_logger() {
 
         let mut msg_color = GRAY;
         if module.starts_with("page") {
-            msg_color = ""
+            msg_color = "";
         };
 
         cb.finish(format_args!(
             "{BOLD}{UNDERL}[ {time:010} | {lvl:5} | \
             {target}{prep}{module} ]{CLEAR}\n{msg_color}{msg}{CLEAR}\n",
-        ))
+        ));
     });
 
     let log_lvl_filter = std::str::FromStr::from_str(
@@ -95,7 +95,7 @@ pub fn init_panic_hook() {
                 log::error!(
                     target: "termreset",
                     "`reset` exited with status: {err_exit_code}"
-                )
+                );
             }
             Err(e) => {
                 log::error!(target: "termreset", "`reset` failed: {e:?}");
@@ -279,10 +279,10 @@ async fn create_new_neovim_process_ipc(
         );
         async move {
             spawn_child_nvim_process(
-                config,
-                custom_args,
+                &config,
+                &custom_args,
                 &nvim_listen_addr
-            ).await
+            )
         }
     });
 
@@ -309,7 +309,7 @@ async fn create_new_neovim_process_ipc(
                     break e
                 }
 
-                use std::task::Poll::*;
+                use std::task::Poll::{Ready, Pending};
                 let poll = futures::poll!(std::pin::Pin::new(&mut nvim_proc));
 
                 match poll {
@@ -329,7 +329,7 @@ async fn create_new_neovim_process_ipc(
 
                 tokio::time::sleep(std::time::Duration::from_millis(16)).await;
 
-                i += 1
+                i += 1;
             }
 
             Err(e) => break e
@@ -356,12 +356,12 @@ fn print_redirect_protection(tmp_dir: &Path) {
 /// which further will be connected to page with UNIX socket.
 /// In this way neovim UI is displayed properly on top of page,
 /// and page as well is able to handle its own input to redirect it
-/// unto proper target (which is impossible with methods provided by neovim_lib).
-/// Also custom neovim config will be picked
+/// unto proper target (which is impossible with methods provided by
+/// `neovim_lib`). Also custom neovim config will be picked
 /// if it exists on corresponding locations.
-async fn spawn_child_nvim_process(
-    config: Option<String>,
-    custom_args: Option<String>,
+fn spawn_child_nvim_process(
+    config: &Option<String>,
+    custom_args: &Option<String>,
     nvim_listen_addr: &Path
 ) -> Result<ExitStatus, std::io::Error> {
 
@@ -372,6 +372,7 @@ async fn spawn_child_nvim_process(
         a.push_str(&nvim_listen_addr.to_string_lossy());
 
         if let Some(config) = config
+            .clone()
             .or_else(default_config_path)
         {
             a.push(' ');
@@ -593,7 +594,7 @@ mod io_handler {
             self.tx
                 .send(notification_from_neovim)
                 .await
-                .expect("Cannot receive notification")
+                .expect("Cannot receive notification");
         }
     }
 
