@@ -1017,9 +1017,8 @@ mod output_buffer_usage {
                     .to_string()
             };
 
-            let mut page_pty = String::with_capacity(15);
-
-            std::process::Command::new("page")
+            let page_pty = std::process::Command::new("page")
+                .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::piped())
                 .args(page_args)
                 .arg("--pagerize-hidden")
@@ -1027,10 +1026,12 @@ mod output_buffer_usage {
                 .arg("-p")
                 .spawn()
                 .expect("Cannot spawn `page`")
-                .stdout
+                .wait_with_output()
                 .expect("Cannot get `page` stdout")
-                .read_to_string(&mut page_pty)
-                .expect("Cannot read `page` stdout");
+                .stdout;
+
+            let page_pty = String::from_utf8(page_pty)
+                .expect("Non UTF8 `page` output");
 
             self.sink
                 .replace(
