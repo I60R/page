@@ -263,7 +263,7 @@ async fn connect_neovim(cli_ctx: context::UsageContext) {
 
     let mut nvim_conn = connection::open(
         &cli_ctx.tmp_dir,
-        &cli_ctx.page_id,
+        cli_ctx.page_id,
         &cli_ctx.opt.address,
         &cli_ctx.opt.config,
         &cli_ctx.opt.config,
@@ -372,7 +372,8 @@ async fn manage_output_buffer(
     let mut outp_buf_actions = output_buffer_usage::begin(
         nvim_conn,
         &outp_ctx,
-        buf
+        buf,
+        nvim_conn.channel,
     );
 
     use context::connect_neovim::InstanceUsage;
@@ -586,9 +587,15 @@ mod neovim_api_usage {
                     .await
             };
 
+            let channel = if let Some(chan_id) = &nvim_ctx.opt.pagerize_hidden {
+                chan_id[0]
+            } else {
+                *channel as u128
+            };
+
             let outp_buf_opts = OutputCommands::for_output_buffer(
-                &nvim_ctx.page_id,
-                *channel,
+                nvim_ctx.page_id,
+                channel,
                 nvim_ctx.query_lines_count,
                 &nvim_ctx.opt.output
             );
@@ -614,12 +621,14 @@ mod output_buffer_usage {
         buf: NeovimBuffer,
         sink: Option<Box<dyn std::io::Write>>,
         pagerize_lines_displayed: usize,
+        channel: u64,
     }
 
     pub fn begin<'a>(
         nvim_conn: &'a mut NeovimConnection,
         outp_ctx: &'a OutputContext,
-        buf: NeovimBuffer
+        buf: NeovimBuffer,
+        channel: u64,
     ) -> BufferActions<'a> {
         BufferActions {
             nvim_conn,
@@ -627,6 +636,7 @@ mod output_buffer_usage {
             buf,
             sink: None,
             pagerize_lines_displayed: 0,
+            channel,
         }
     }
 
@@ -1004,9 +1014,6 @@ mod output_buffer_usage {
             let mut page_args = std::env::args();
             page_args.next(); // skip `page`
 
-            let page_args = page_args
-                .filter(|a| a != "--pagerize-hidden");
-
             let nvim_addr = if let Some(addr) = &self.outp_ctx.opt.address {
                 addr.clone()
             } else {
@@ -1020,9 +1027,12 @@ mod output_buffer_usage {
             let page_pty = std::process::Command::new("page")
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::piped())
-                .args(page_args)
                 .arg("--pagerize-hidden")
-                .arg(&format!("-a={nvim_addr}"))
+                .arg(self.channel.to_string())
+                .arg(self.outp_ctx.page_id.to_string())
+                .arg("-a")
+                .arg(nvim_addr)
+                .args(page_args)
                 .arg("-p")
                 .spawn()
                 .expect("Cannot spawn `page`")

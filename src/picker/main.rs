@@ -72,7 +72,7 @@ async fn connect_neovim(env_ctx: context::EnvContext) {
 
     let mut nvim_conn: NeovimConnection = connection::open(
         &env_ctx.tmp_dir,
-        &env_ctx.page_id,
+        env_ctx.page_id,
         &env_ctx.opt.address,
         &env_ctx.opt.config,
         &env_ctx.opt.config,

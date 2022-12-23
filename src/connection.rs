@@ -125,7 +125,7 @@ pub struct NeovimConnection<Apis: From<Neovim<IoWrite>>> {
 /// since it uses --embed flag and steals page stdin
 pub async fn open<Apis: From<Neovim<IoWrite>>>(
     tmp_dir: &Path,
-    page_id: &str,
+    page_id: u128,
     nvim_listen_addr: &Option<String>,
     config_path: &Option<String>,
     custom_nvim_args: &Option<String>,
@@ -254,7 +254,7 @@ pub async fn close_and_exit<Apis: From<Neovim<IoWrite>>>(
 /// that could cause some harm (see --help[-W])
 async fn create_new_neovim_process_ipc(
     tmp_dir: &Path,
-    page_id: &str,
+    page_id: u128,
     config: &Option<String>,
     custom_args: &Option<String>,
     print_protection: bool,

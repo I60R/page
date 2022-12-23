@@ -46,7 +46,7 @@ pub mod gather_env {
         let mut opt = crate::cli::get_options();
 
         // Remove some arguments from pagerized invocation
-        if opt.pagerize_hidden {
+        if opt.pagerize_hidden.is_some() {
             opt.pagerized();
         }
 
@@ -182,7 +182,7 @@ pub mod check_usage {
     #[derive(Debug)]
     pub struct UsageContext {
         pub opt: crate::cli::Options,
-        pub page_id: String,
+        pub page_id: u128,
         pub tmp_dir: std::path::PathBuf,
         pub prefetched_lines: PrefetchedLines,
         pub query_lines_count: usize,
@@ -230,7 +230,11 @@ pub mod check_usage {
 
         let tmp_dir = create_temp_directory();
 
-        let page_id = create_page_id();
+        let page_id = if let Some(args) = &opt.pagerize_hidden {
+            args[1]
+        } else {
+            create_page_id()
+        };
 
         let print_protection = determine_if_should_print_protection(
             input_from_pipe,
@@ -256,12 +260,10 @@ pub mod check_usage {
         d
     }
 
-    fn create_page_id() -> String {
-        let pid = std::process::id();
-        let time = std::time::UNIX_EPOCH.elapsed()
+    fn create_page_id() -> u128 {
+        std::time::UNIX_EPOCH.elapsed()
             .unwrap()
-            .as_nanos();
-        format!("{pid}{time}")
+            .as_nanos()
     }
 
 
@@ -289,7 +291,7 @@ pub mod connect_neovim {
     #[derive(Debug)]
     pub struct NeovimContext {
         pub opt: crate::cli::Options,
-        pub page_id: String,
+        pub page_id: u128,
         pub prefetched_lines: super::check_usage::PrefetchedLines,
         pub query_lines_count: usize,
         pub inst_usage: InstanceUsage,
@@ -459,7 +461,7 @@ pub mod output_buffer_available {
         pub input_from_pipe: bool,
         pub nvim_child_proc_spawned: bool,
         pub print_output_buf_pty: bool,
-        pub page_id: String,
+        pub page_id: u128,
         pub pagerized_page_size: Option<usize>,
     }
 

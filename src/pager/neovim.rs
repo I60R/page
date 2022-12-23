@@ -839,8 +839,8 @@ impl OutputCommands {
 
 
     pub fn for_output_buffer(
-        page_id: &str,
-        channel: u64,
+        page_id: u128,
+        channel: u128,
         query_lines_count: usize,
         opt: &crate::cli::OutputOptions
     ) -> OutputCommands {

@@ -7,7 +7,7 @@ pub mod env_context {
         pub opt: crate::cli::Options,
         pub files_usage: FilesUsage,
         pub tmp_dir: std::path::PathBuf,
-        pub page_id: String,
+        pub page_id: u128,
         pub read_stdin_usage: ReadStdinUsage,
         pub split_usage: SplitUsage
     }
@@ -52,11 +52,9 @@ pub mod env_context {
 
         let pipe_path = {
             // This should provide enough entropy for current use case
-            let pid = std::process::id();
-            let time = std::time::UNIX_EPOCH.elapsed()
+            std::time::UNIX_EPOCH.elapsed()
                 .unwrap()
-                .as_nanos();
-            format!("{pid}{time}")
+                .as_nanos()
         };
 
         let mut split_usage = SplitUsage::Disabled;

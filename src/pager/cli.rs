@@ -121,8 +121,8 @@ pub struct Options {
     #[clap(display_order=12, short='z')]
     pub pagerize: Option<Option<usize>>,
 
-    #[clap(long="pagerize-hidden", hide = true)]
-    pub pagerize_hidden: bool,
+    #[clap(long="pagerize-hidden", hide = true, number_of_values = 2)]
+    pub pagerize_hidden: Option<Vec<u128>>,
 
     /// Open provided file in a separate buffer
     /// [without other flags revokes implied by default -o or -p option]
@@ -176,7 +176,6 @@ impl Options {
     }
 
     pub fn pagerized(&mut self) {
-        self.pagerize_hidden = false;
         self.arguments = None;
         self.config = None;
         self.command_post = None;
@@ -184,7 +183,6 @@ impl Options {
         self.instance = None;
         self.instance_append = None;
         self.instance_close = None;
-        self.output_open = false;
         self.page_no_protect = false;
         self.output.lua = None;
         self.output.command = None;
