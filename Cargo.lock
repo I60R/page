@@ -118,6 +118,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap_mangen"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "904eb24d05ad587557e0f484ddce5c737c30cf81372badb16d13e41c4b8340b1"
+dependencies = [
+ "clap",
+ "roff",
+]
+
+[[package]]
 name = "errno"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -432,6 +442,7 @@ dependencies = [
  "atty",
  "clap",
  "clap_complete",
+ "clap_mangen",
  "fern",
  "futures 0.3.25",
  "indoc",
@@ -619,6 +630,12 @@ dependencies = [
  "num-traits",
  "rmp",
 ]
+
+[[package]]
+name = "roff"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b833d8d034ea094b1ea68aa6d5c740e0d04bad9d16568d08ba6f76823a114316"
 
 [[package]]
 name = "rustix"
