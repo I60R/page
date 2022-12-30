@@ -445,16 +445,16 @@ mod open_files {
 
     pub fn is_text_file<F: AsRef<std::ffi::OsStr>>(f: F) -> bool {
         let file_cmd = std::process::Command::new("file")
+            .arg("--mime")
             .arg(f.as_ref())
             .output()
             .expect("Cannot get `file` output");
         let file_cmd_output = String::from_utf8(file_cmd.stdout)
             .expect("Non UTF8 `file` output");
 
-        if file_cmd_output.contains("ASCII text") ||
-            file_cmd_output.contains("UTF-8") ||
-            file_cmd_output.contains("UTF-16") ||
-            file_cmd_output.contains(": empty") ||
+        if file_cmd_output.contains("text/") ||
+            file_cmd_output.contains("inode/symlink") ||
+            file_cmd_output.contains("inode/x-empty") ||
             file_cmd_output.contains(": cannot open")
         {
             return true
