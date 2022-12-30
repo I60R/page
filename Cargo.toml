@@ -1,6 +1,6 @@
 [package]
 name = "page"
-version = "4.6.2"
+version = "4.6.3"
 authors = ["160R <160R@protonmail.com>"]
 description = "Pager powered by neovim and inspired by neovim-remote"
 repository = "https://github.com/I60R/page"
@@ -15,7 +15,7 @@ build = "build_shell_completions_and_man_pages.rs"
 term_size = { version = "0.3.2", optional = true }
 walkdir = { version = "2.3.2", optional = true }
 
-once_cell = "1.16.0"
+once_cell = "1.17.0"
 futures = "0.3.25"
 async-trait = "0.1.60"
 tokio = { version = "1.23.0", features = ["full"] }
@@ -31,7 +31,7 @@ clap = { version = "4.0.32", features = ["wrap_help", "derive", "env"] }
 
 
 [build-dependencies]
-once_cell = "1.16.0"
+once_cell = "1.17.0"
 clap = { version = "4.0.32", features = ["derive", "env"] }
 clap_complete = "4.0.7"
 clap_mangen = "0.2.6"
