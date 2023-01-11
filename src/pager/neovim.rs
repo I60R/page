@@ -801,7 +801,7 @@ impl OutputCommands {
                 page_map('x', 'G')
             "#};
 
-            edit.push_str(cmd);
+            edit += cmd;
         }
 
         OutputCommands {
@@ -832,8 +832,8 @@ impl OutputCommands {
                 pattern = 'PageOpenFile',
             })
         "};
-        cmds.after.push_str(cmd);
 
+        cmds.after += cmd;
         cmds
     }
 

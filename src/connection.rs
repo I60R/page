@@ -367,22 +367,22 @@ fn spawn_child_nvim_process(
 
     let nvim_args = {
         let mut a = String::new();
-        a.push_str("--cmd 'set shortmess+=I' ");
-        a.push_str("--listen ");
-        a.push_str(&nvim_listen_addr.to_string_lossy());
+        a += "--cmd 'set shortmess+=I' ";
+        a += "--listen ";
+        a += &nvim_listen_addr.to_string_lossy();
 
         if let Some(config) = config
             .clone()
             .or_else(default_config_path)
         {
-            a.push(' ');
-            a.push_str("-u ");
-            a.push_str(&config);
+            a += " ";
+            a += "-u ";
+            a += &config;
         }
 
         if let Some(custom_args) = custom_args.as_ref() {
-            a.push(' ');
-            a.push_str(custom_args);
+            a += " ";
+            a += custom_args;
         }
 
         shell_words::split(&a)
