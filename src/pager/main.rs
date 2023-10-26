@@ -210,7 +210,7 @@ fn dump_prefetched_lines_and_exit(lines: Vec<Vec<u8>>, filetype: &str) -> ! {
 
     if !filetype.is_empty() && filetype != "pager" {
         let try_spawn_bat = std::process::Command::new("bat")
-            .arg("--plain")
+            .arg("--style=plain")
             .arg("--paging=never")
             .arg("--color=always")
             .arg(&format!("--language={}", filetype))
